@@ -22,7 +22,7 @@
   <div id="hud">
     <div id="marcador">
       <div class="eq azul"><span class="nom">CONAZO</span><span id="golesA" class="gol">0</span></div>
-      <div id="reloj">2:00</div>
+      <div id="reloj">2:00</div><div id="pausaIco" aria-label="Pausa"><i></i><i></i></div>
       <div class="eq rojo"><span id="golesB" class="gol">0</span><span class="nom">CALCETROL</span></div>
     </div>
     <div id="banner"></div>
@@ -43,6 +43,13 @@
         <span class="btnTxt">REGATE</span>
       </div>
     </div>
+    <div id="btnAlto" class="btnAccion alto" role="button" aria-label="Chut alto">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="cargaAlto" cx="50" cy="50" r="46" class="cargaAro"/></svg>
+      <div class="btnInner">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19c3-10 12-14 18-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="3 2.6"/><path d="M17.5 6.2l4.3 3.1-4.6 2.4z"/><circle cx="4.2" cy="19" r="2.4"/></svg>
+        <span class="btnTxt">CHUT<br>ALTO</span>
+      </div>
+    </div>
     <div id="btnChutar" class="btnAccion chutar principal" role="button" aria-label="Chutar">
       <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="carga" cx="50" cy="50" r="46" class="cargaAro"/></svg>
       <div class="btnInner">
@@ -59,7 +66,7 @@
     </div>
   </div>
   <div id="aimJoy" aria-hidden="true"><div id="aimCancel">✕</div><div id="aimKnob"></div></div>
-  <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) · SHIFT: turbo · E: regate / entrada</div>
+  <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) · SHIFT: turbo · E: regate / entrada · Q: chut alto · ESC: pausa</div>
   <div id="menu">
     <div class="mTitulo"><h1>MONSTER<br> LEAGUE</h1></div>
     <div id="menuStage" aria-label="Personaje (arrastra para girar)"></div>
@@ -69,6 +76,13 @@
       <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div></div>
       <div id="mCartas"></div>
       <div class="mAbajo"><div id="mVs"></div><button id="btnMenuJugar">JUGAR</button></div>
+    </div>
+  </div>
+  <div id="pausa">
+    <div class="pausaCaja">
+      <div class="pausaTit">PAUSA</div>
+      <button id="btnReanudar">REANUDAR</button>
+      <button id="btnSalir">SALIR DE LA PARTIDA</button>
     </div>
   </div>
   <div id="pantalla">

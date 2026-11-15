@@ -47,7 +47,12 @@ html,body{position:fixed;inset:0;width:100%;height:100%;height:100svh;overflow:h
 #btnTurbo.pulsado{box-shadow:0 2px 0 #1f8a36,0 3px 8px rgba(0,0,0,.3)}
 #btnTurbo.activo{background:#54e872}
 #btnTurbo .btnTxt{font-size:11px}
-#acciones.sin-balon #btnChutar,#acciones.sin-balon #btnRegate{visibility:hidden;pointer-events:none}
+#acciones.sin-balon #btnChutar,#acciones.sin-balon #btnRegate,#acciones.sin-balon #btnAlto{visibility:hidden;pointer-events:none}
+#btnAlto{width:80px;height:80px;right:120px;bottom:calc(env(safe-area-inset-bottom) + 176px);background:#ff4f7b;box-shadow:0 5px 0 #b0204a,0 7px 12px rgba(0,0,0,.35)}
+#btnAlto.pulsado{box-shadow:0 2px 0 #b0204a,0 3px 8px rgba(0,0,0,.3)}
+#btnAlto .btnTxt{font-size:10px;text-align:center;line-height:.95}
+#btnAlto .icono{width:22px;height:22px}
+#btnAlto .icono [fill="none"]{fill:none;stroke:currentColor}
 #acciones.con-balon #btnEntrada{visibility:hidden;pointer-events:none}
 #pantalla{position:absolute;inset:0;background:rgba(15,22,45,.72);display:none;align-items:center;justify-content:center;text-align:center;color:#fff;z-index:8}
 #pantalla.visible{display:flex}
@@ -129,16 +134,23 @@ body.horizontal #btnChutar,body.horizontal #btnEntrada{
 }
 body.horizontal #btnChutar .btnTxt,body.horizontal #btnEntrada .btnTxt{font-size:clamp(11px, 3.4vmin, 15px)}
 body.horizontal #btnChutar .icono.icoGrande,body.horizontal #btnEntrada .icono.icoGrande{width:clamp(20px, 5.5vmin, 28px);height:clamp(20px, 5.5vmin, 28px)}
+/* REGATE, CHUT ALTO y TURBO en arco alrededor de CHUTAR (ángulos -2°, 49°, 100° desde la izquierda) */
+body.horizontal{--arc-r:calc(var(--btn-c) / 2 + var(--btn-s) / 2 + 14px)}
+body.horizontal #btnRegate,body.horizontal #btnAlto,body.horizontal #btnTurbo{width:var(--btn-s);height:var(--btn-s)}
 body.horizontal #btnRegate{
-  width:var(--btn-s);height:var(--btn-s);
-  right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) + 6px);
-  bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) * 0.42);
+  right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) / 2 + var(--arc-r) * 0.999 - var(--btn-s) / 2);
+  bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) / 2 - var(--arc-r) * 0.035 - var(--btn-s) / 2);
+}
+body.horizontal #btnAlto{
+  right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) / 2 + var(--arc-r) * 0.656 - var(--btn-s) / 2);
+  bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) / 2 + var(--arc-r) * 0.755 - var(--btn-s) / 2);
 }
 body.horizontal #btnTurbo{
-  width:var(--btn-s);height:var(--btn-s);
-  right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) * 0.16);
-  bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) + 6px);
+  right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) / 2 - var(--arc-r) * 0.174 - var(--btn-s) / 2);
+  bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) / 2 + var(--arc-r) * 0.985 - var(--btn-s) / 2);
 }
+body.horizontal #btnAlto .btnTxt{font-size:clamp(8px, 2.4vmin, 10px)}
+body.horizontal #btnAlto .icono{width:clamp(15px, 4.6vmin, 22px);height:clamp(15px, 4.6vmin, 22px)}
 body.horizontal #btnRegate .btnTxt,body.horizontal #btnTurbo .btnTxt{font-size:clamp(9px, 2.7vmin, 11px)}
 body.horizontal #pantalla h1{font-size:clamp(32px,8vh,52px)}
 body.horizontal #btnJugar{margin-top:16px;padding:10px 36px;font-size:22px}
@@ -199,3 +211,19 @@ body.horizontal #btnMenuJugar{font-size:clamp(20px,6.4vh,32px);padding:8px 44px 
 body.horizontal.pantalla-completa #app{left:0 !important;top:0 !important}
 :root:fullscreen,:root:-webkit-full-screen{width:100%;height:100%;background:#11172b}
 body.horizontal.pantalla-completa{height:100% !important}
+
+#aimJoy.alto{border-color:#ff4f7b}
+#aimJoy.alto #aimKnob{background:#ff4f7b}
+
+/* ---------- marcador = botón de pausa ---------- */
+#marcador{pointer-events:auto;cursor:pointer;touch-action:none;z-index:21}
+#pausaIco{display:flex;align-items:center;justify-content:center;gap:3px;background:#1b2440;padding:0 8px 0 0}
+#pausaIco i{display:block;width:4px;height:13px;border-radius:2px;background:#ffd23f}
+#pausa{position:absolute;inset:0;z-index:30;display:none;align-items:center;justify-content:center;background:rgba(15,22,45,.62);touch-action:none}
+#pausa.visible{display:flex}
+.pausaCaja{display:flex;flex-direction:column;align-items:center;gap:clamp(8px,2.6vmin,14px);padding:clamp(14px,4vmin,26px) clamp(22px,6vmin,40px);background:#2459c9;border:3px solid #14193a;border-radius:20px;box-shadow:0 6px 0 #14193a}
+.pausaTit{font:400 clamp(28px,9vmin,44px) "Lilita One",system-ui,sans-serif;color:#ffd23f;-webkit-text-stroke:2px #14193a;text-shadow:0 4px 0 #14193a;letter-spacing:1px}
+#pausa button{font:400 clamp(16px,5vmin,22px) "Lilita One",system-ui,sans-serif;color:#fff;border:3px solid #14193a;border-radius:14px;padding:clamp(6px,2vmin,10px) 26px;min-width:clamp(200px,52vmin,280px);cursor:pointer;touch-action:manipulation;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a;box-shadow:0 5px 0 #14193a}
+#pausa button:active{transform:translateY(3px);box-shadow:0 2px 0 #14193a}
+#btnReanudar{background:#3ccf5a}
+#btnSalir{background:#e23b3b}

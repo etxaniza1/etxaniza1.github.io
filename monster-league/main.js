@@ -14,10 +14,13 @@ const HORIZONTAL = !VERTICAL;
 const CAM_MODE = (P.get('camara') || (HORIZONTAL ? 'G' : 'A')).toUpperCase();
 if (HORIZONTAL) document.body.classList.add('horizontal');
 const HW = 19, HL = 24;                    // medio ancho / medio largo entre líneas (campo v5 38×48 m)
-const WX = 21.2, WY = 27.3;                // cara interior de las vallas (RUN_X 2.2 / RUN_Y 3.3)
-const GW = 5.0, POST_X = 5.28, POST_R = 0.28, GH = 4.0, GD = 2.5, BACK_H = 2.2;
+const WX = 21.2, WY = 28.0;                // cara interior de las vallas (RUN_X 2.2 / RUN_Y 3.3)
+const GW = 5.0, POST_X = 5.28, POST_R = 0.28, GH = 4.0, GD = 2.8;   // v6: portería de caja (techo horizontal)
+const NET_X = POST_X - 0.11, NET_Z = GH - 0.08;   // caras interiores de la red (laterales / techo)
 const BR = 0.35;                           // radio del balón (un pelín mayor que el 0,30 del glb para que se lea en móvil)
-const GRAV = 22;
+const GRAV = 13;            // gravedad del balón (m/s²), ajustada a la escala del juego (personajes ×1,3)
+const AIR_DRAG = 0.15, ROLL_DRAG = 1.1, ROLL_DECEL = 0.9, BOUNCE_E = 0.55;
+const GK_REACH = 2.0, GK_REACH_DIVE = 1.6;   // altura de alcance del portero (×ESCALA): de pie+salto / en estirada
 const PR = 0.6 * ESCALA;                   // radio de colisión del jugador
 const SPEED_USER = 7.6, SPEED_AI = 6.3, SPEED_GK = 5.6;
 const DRIBBLE_T = 0.32, DRIBBLE_CD = 1.5, DRIBBLE_SPEED = 13.5;
@@ -91,7 +94,7 @@ function applyCamClip(side) {
   });
 }
 function updateSideCam(cfg, snap) {
-  if (cfg.follow && ball && (S.mode === 'play' || S.mode === 'kickoff' || S.mode === 'goal' || S.mode === 'end')) {
+  if (cfg.follow && ball && (S.mode === 'play' || S.mode === 'kickoff' || S.mode === 'goal' || S.mode === 'out' || S.mode === 'end')) {
     const half = cfg.viewHalfY;
     const target = THREE.MathUtils.clamp(ball.pos.y, -HL + half * 0.65, HL - half * 0.65);
     camFollowY = snap ? target : camFollowY + (target - camFollowY) * 0.14;
@@ -103,7 +106,7 @@ function updateSideCam(cfg, snap) {
   camera.lookAt(g2t(cfg.xLook, camFollowY, 0));
 }
 function updateBrawlCam(cfg, snap) {
-  if (cfg.follow && user && (S.mode === 'play' || S.mode === 'kickoff' || S.mode === 'goal' || S.mode === 'end')) {
+  if (cfg.follow && user && (S.mode === 'play' || S.mode === 'kickoff' || S.mode === 'goal' || S.mode === 'out' || S.mode === 'end')) {
     const behind = cfg.behind || 8;
     const lo = -HL + behind * 0.35;                 // la cámara puede quedar detrás de tu portería
     const hi =  HL - (cfg.aheadPlay != null ? cfg.aheadPlay : (cfg.ahead || 16) * 0.28);
@@ -418,7 +421,7 @@ let ballMesh, ballShadow, aimArrow, ballGhost, aimLine;
 
 // ===================== ESTADO =====================
 let user, rival, gkA, gkB, actors = [];
-const S = { mode: 'menu', score: [0, 0], time: DURACION, pauseT: 0, kickoffTeam: 0, t: 0, goals: 0, saves: 0, shots: 0 };
+const S = { paused: false, mode: 'menu', score: [0, 0], time: DURACION, pauseT: 0, kickoffTeam: 0, t: 0, goals: 0, saves: 0, shots: 0 };
 const LOGS = []; const NAME = (a) => a === user ? 'usuario' : a === rival ? 'rival' : a === gkA ? 'portero_azul' : 'portero_rojo';
 function LOG(ev, a, extra) { LOGS.push({ t: +S.t.toFixed(2), ev, who: a ? NAME(a) : null, ...extra }); if (LOGS.length > 300) LOGS.shift(); }
 window.__game = {
@@ -439,9 +442,9 @@ window.__game = {
 const input = { jx: 0, jy: 0, shootDown: false, turboDown: false, charge: 0, keys: {} };
 const joyZona = document.getElementById('joyZona'), joyBase = document.getElementById('joyBase'), joyPunta = document.getElementById('joyPunta');
 const acciones = document.getElementById('acciones');
-const btnChutar = document.getElementById('btnChutar'), btnRegate = document.getElementById('btnRegate');
+const btnChutar = document.getElementById('btnChutar'), btnRegate = document.getElementById('btnRegate'), btnAlto = document.getElementById('btnAlto');
 const btnEntrada = document.getElementById('btnEntrada'), btnTurbo = document.getElementById('btnTurbo');
-const cargaAro = document.getElementById('carga'), cargaRegate = document.getElementById('cargaRegate');
+const cargaAro = document.getElementById('carga'), cargaRegate = document.getElementById('cargaRegate'), cargaAlto = document.getElementById('cargaAlto');
 const cargaEntrada = document.getElementById('cargaEntrada'), cargaTurbo = document.getElementById('cargaTurbo');
 let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 };
 function cssEnvPx(expr) {
@@ -575,6 +578,20 @@ function aimedShot(dir, p) {
   shoot(user, dir.clone(), 0.35 + 0.65 * p, false); LOG('tiro_apuntado', user, { p: +p.toFixed(2) });
   return true;
 }
+function quickLobAim() {   // toque rápido de CHUT ALTO: dirección del joystick de mover o portería rival; globo medio
+  const md = moveDir();
+  if (md) return { dir: md, power: 0.5 };
+  const to = goalCenter(user.team).sub(user.pos); const dist = to.length();
+  return { dir: to.normalize(), power: lobPowerForDist(Math.min(dist - 1.0, LOB_MIN_D + (LOB_MAX_D - LOB_MIN_D) * 0.5)) };
+}
+function quickLob() {
+  if (S.mode !== 'play' || ball.owner !== user) return false;
+  const q = quickLobAim(); shootLob(user, q.dir, q.power); return true;
+}
+function aimedLob(dir, p) {
+  if (S.mode !== 'play' || ball.owner !== user) return false;
+  shootLob(user, dir.clone(), p); return true;
+}
 function aimEnd(e, cancelAll) {
   if (aim.id === null || (e && e.pointerId !== aim.id)) return;
   const el = aim.el, kind = aim.kind;
@@ -582,6 +599,7 @@ function aimEnd(e, cancelAll) {
   const quick = !aim.dragged;
   if (!cancelAll && !aim.cancel) {
     if (kind === 'chutar') { if (quick) quickShot(); else aimedShot(aim.dir, aim.power); }
+    else if (kind === 'alto') { if (quick) quickLob(); else aimedLob(aim.dir, aim.power); }
     else { if (quick) tryDribble(user); else tryDribble(user, aim.dir); }
   } else if (aim.cancel) LOG('apuntado_cancelado', user, { kind });
   el.classList.remove('pulsado', 'apuntando');
@@ -595,7 +613,7 @@ function bindAim(el, kind) {
     if (S.mode !== 'play' || !user || ball.owner !== user) return;
     const r = el.getBoundingClientRect();
     Object.assign(aim, { id: e.pointerId, kind, el, cx: r.left + r.width / 2, cy: r.top + r.height / 2, t0: performance.now(), dragged: false, shown: false, dx: 0, dy: 0, R: aimRadius(el), power: 0, cancel: false, active: true });
-    const md = moveDir(); aim.dir.copy(md || (kind === 'chutar' ? goalCenter(user.team).sub(user.pos).normalize() : user.face));
+    const md = moveDir(); aim.dir.copy(md || (kind !== 'regate' ? goalCenter(user.team).sub(user.pos).normalize() : user.face));
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
     el.classList.add('pulsado');
   });
@@ -609,6 +627,7 @@ window.addEventListener('pointerup', (e) => aimEnd(e));
 window.addEventListener('pointercancel', (e) => aimEnd(e, true));
 bindAim(btnChutar, 'chutar');
 bindAim(btnRegate, 'regate');
+bindAim(btnAlto, 'alto');
 bindHold(btnEntrada, () => { btnEntrada.classList.add('pulsado'); tryDash(user); }, () => btnEntrada.classList.remove('pulsado'));
 bindHold(btnTurbo, () => { input.turboDown = true; }, () => { input.turboDown = false; });
 
@@ -618,6 +637,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) { if (S.mode === 'menu') menuPlay(); else if (S.mode === 'end') startGame(); else if (e.code === 'Space') pressShoot(); } e.preventDefault(); }
   if (S.mode === 'menu' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !e.repeat) menuStep(e.code === 'ArrowLeft' ? -1 : 1);
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { input.turboDown = true; e.preventDefault(); }
+  if (e.code === 'KeyQ' && !e.repeat) { quickLob(); e.preventDefault(); }
+  if (e.code === 'Escape' && !e.repeat) { if (S.paused) resumeGame(); else openPause(); }
   if (e.code === 'KeyE' && !e.repeat) {
     if (S.mode === 'play') { if (ball.owner === user) tryDribble(user); else tryDash(user); }
     e.preventDefault();
@@ -695,13 +716,13 @@ function kickLocal(a) {   // posición del balón en el impacto (m, relativo al 
   const t = a.meta.Kick.toe_at_impact;   // coords de Blender: x (izq +), y (adelante -)
   return { fwd: -t[1] * ESCALA + BR * 0.85, right: -t[0] * ESCALA };
 }
-function shoot(a, dir, power, assist, loft) {
+function shoot(a, dir, power, assist, loft, hspeed) {
   if (a.kickPending) return;
   dir = dir.clone(); if (dir.lengthSq() < 0.01) dir.set(0, a.team === 0 ? 1 : -1);
   dir.normalize();
   a.face.copy(dir);
   const impact = a.meta.Kick.impact / 30 / KICK_RATE;
-  a.kickPending = { dir, power, assist, loft, t: impact };
+  a.kickPending = { dir, power, assist, loft, hspeed, t: impact };
   a.kickAnimT = a.meta.Kick.frames / 30 / KICK_RATE * 0.8;
   a.play('Kick', 0.06, true);
 }
@@ -710,9 +731,9 @@ function updateKick(a, dt) {
   a.vel.multiplyScalar(Math.exp(-9 * dt));
   if (ball.owner !== a) { a.kickPending = null; return; }
   k.t -= dt;
-  if (k.t <= 0) { a.kickPending = null; releaseShot(a, k.dir, k.power, k.assist, k.loft); }
+  if (k.t <= 0) { a.kickPending = null; releaseShot(a, k.dir, k.power, k.assist, k.loft, k.hspeed); }
 }
-function releaseShot(a, dir, power, assist, loft) {
+function releaseShot(a, dir, power, assist, loft, hspeed) {
   dir = dir.clone().normalize();
   if (dir.lengthSq() < 0.01) dir.set(0, a.team === 0 ? 1 : -1);
   if (assist) {
@@ -723,11 +744,12 @@ function releaseShot(a, dir, power, assist, loft) {
       if (Math.abs(xh) < 10) { dir.set(THREE.MathUtils.clamp(xh, -GW + 0.8, GW - 0.8) - a.pos.x, gy - a.pos.y).normalize(); }
     }
   }
-  const sp = 13 + 19 * power;
+  const sp = hspeed !== undefined ? hspeed : 13 + 19 * power;
   ball.owner = null; ball.noCatch = a; ball.noCatchT = 0.35; ball.lastTouch = a;
   if (Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y) < PR + BR * 0.5) ball.pos.set(a.pos.x + dir.x * (PR + BR + 0.15), a.pos.y + dir.y * (PR + BR + 0.15), BR + 0.05);
   ball.pos.z = Math.max(ball.pos.z, BR + 0.05);
-  ball.vel.set(dir.x * sp, dir.y * sp, loft !== undefined ? loft : 1.5 + 5.5 * power * power);
+  ball.vel.set(dir.x * sp, dir.y * sp, loft !== undefined ? loft : 0.8 + 3.2 * power * power);   // chut normal: raso / poca altura
+  if (hspeed !== undefined) ball.pos.z = BR + 0.02;
   a.kickT = 0.35; a.face.copy(dir);
   S.shots++; sfx.kick(power); LOG('tiro', a, { pos: [+a.pos.x.toFixed(1), +a.pos.y.toFixed(1)], vel: [+ball.vel.x.toFixed(1), +ball.vel.y.toFixed(1), +ball.vel.z.toFixed(1)] });
 }
@@ -788,30 +810,85 @@ function collideCircle2D(cx, cy, r, restitution) {
   }
   return false;
 }
+// integración del vuelo (la usa también la predicción de trayectoria, para que coincida con el real)
+function airStep(p, v, dt) {
+  v.z -= GRAV * dt;
+  p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt;
+  if (p.z > BR + 0.02) { const f = Math.exp(-AIR_DRAG * dt); v.x *= f; v.y *= f; }
+}
+// predicción del vuelo hasta el primer bote (misma integración que el balón real; sin colisiones)
+const _pp = new THREE.Vector3(), _pv = new THREE.Vector3();
+function predictFlight(pos, vel, out, maxT = 5, h = 1 / 120) {
+  _pp.copy(pos); _pv.copy(vel); let t = 0, peak = pos.z;
+  if (out) out.length = 0;
+  while (t < maxT) {
+    airStep(_pp, _pv, h); t += h; peak = Math.max(peak, _pp.z);
+    if (out) out.push(_pp.x, _pp.y, _pp.z);
+    if (_pp.z <= BR && _pv.z < 0) { _pp.z = BR; break; }
+  }
+  return { x: _pp.x, y: _pp.y, t, peak, dist: Math.hypot(_pp.x - pos.x, _pp.y - pos.y) };
+}
+// CHUT ALTO: la potencia (0-1) fija ángulo y alcance: poca = globo corto y bajo; mucha = más alto y más lejos
+const LOB_MIN_D = 7, LOB_MAX_D = 30, LOB_MIN_ANG = 45, LOB_MAX_ANG = 60;
+function lobParams(power, from) {
+  const p = THREE.MathUtils.clamp(power, 0, 1);
+  const D = LOB_MIN_D + (LOB_MAX_D - LOB_MIN_D) * p;
+  const ang = THREE.MathUtils.degToRad(LOB_MIN_ANG + (LOB_MAX_ANG - LOB_MIN_ANG) * p);
+  // resolver la velocidad para caer a D (con el rozamiento del aire): bisección sobre la predicción
+  const start = new THREE.Vector3(0, 0, from ? from.z : BR + 0.02);
+  let lo = 3, hi = 40;
+  for (let i = 0; i < 18; i++) {
+    const v = (lo + hi) / 2;
+    const r = predictFlight(start, new THREE.Vector3(0, v * Math.cos(ang), v * Math.sin(ang)), null, 6, 1 / 60);
+    if (r.dist < D) lo = v; else hi = v;
+  }
+  const v = (lo + hi) / 2;
+  return { D, ang, h: v * Math.cos(ang), vz: v * Math.sin(ang) };
+}
+function lobPowerForDist(dist) { return THREE.MathUtils.clamp((dist - LOB_MIN_D) / (LOB_MAX_D - LOB_MIN_D), 0, 1); }
+function shootLob(a, dir, power) {
+  const lp = lobParams(power);
+  shoot(a, dir, power, false, lp.vz, lp.h);
+  LOG('chut_alto', a, { p: +power.toFixed(2), D: +lp.D.toFixed(1), ang: Math.round(THREE.MathUtils.radToDeg(lp.ang)) });
+}
 function stepBall(dt, prev) {
   const b = ball;
-  b.vel.z -= GRAV * dt;
-  b.pos.addScaledVector(b.vel, dt);
-  // suelo
+  airStep(b.pos, b.vel, dt);
+  // suelo: bote con restitución y algo de fricción en el impacto; rodadura con rozamiento
   if (b.pos.z < BR) {
     b.pos.z = BR;
-    if (b.vel.z < -2.5) b.vel.z = -b.vel.z * 0.5; else b.vel.z = 0;
-    const f = Math.exp(-1.1 * dt); b.vel.x *= f; b.vel.y *= f;
-    const sp = Math.hypot(b.vel.x, b.vel.y); if (sp < 0.15) { b.vel.x = 0; b.vel.y = 0; }
-  } else { const f = Math.exp(-0.15 * dt); b.vel.x *= f; b.vel.y *= f; }
-  // vallas (0,9 m de alto: si va muy alto, rebota igual; el estadio es cerrado)
+    if (b.vel.z < -1.2) { b.vel.z = -b.vel.z * BOUNCE_E; b.vel.x *= 0.88; b.vel.y *= 0.88; if (b.vel.z > 3) sfx.bounce && sfx.bounce(); }
+    else b.vel.z = 0;
+    if (b.vel.z === 0) {
+      const sp = Math.hypot(b.vel.x, b.vel.y);
+      if (sp > 0) {
+        const nsp = Math.max(0, sp * Math.exp(-ROLL_DRAG * dt) - ROLL_DECEL * dt);
+        if (nsp < 0.12) { b.vel.x = 0; b.vel.y = 0; } else { b.vel.x *= nsp / sp; b.vel.y *= nsp / sp; }
+      }
+    }
+  }
+  // vallas (estadio cerrado: rebota también por arriba)
   const e = 0.72;
   if (b.pos.x > WX - BR) { b.pos.x = WX - BR; b.vel.x = -Math.abs(b.vel.x) * e; }
   if (b.pos.x < -WX + BR) { b.pos.x = -WX + BR; b.vel.x = Math.abs(b.vel.x) * e; }
   if (b.pos.y > WY - BR) { b.pos.y = WY - BR; b.vel.y = -Math.abs(b.vel.y) * e; }
   if (b.pos.y < -WY + BR) { b.pos.y = -WY + BR; b.vel.y = Math.abs(b.vel.y) * e; }
-  if (b.pos.z > 9) { b.pos.z = 9; b.vel.z = -Math.abs(b.vel.z) * 0.5; }
-  // porterías
+  if (b.pos.z > 40) { b.pos.z = 40; b.vel.z = -Math.abs(b.vel.z) * 0.5; }
+  // línea de fondo: ¿la cruza entera por la boca (gol) o por fuera / por encima del larguero (fuera)?
+  for (const s of [1, -1]) {
+    const yl = s * (HL + BR);
+    if ((prev.y - yl) * s < 0 && (b.pos.y - yl) * s >= 0 && !b.lineEvent) {
+      const t = (yl - prev.y) / ((b.pos.y - prev.y) || 1e-6);
+      const xc = prev.x + (b.pos.x - prev.x) * t, zc = prev.z + (b.pos.z - prev.z) * t;
+      b.lineEvent = (Math.abs(xc) < GW && zc < GH) ? { type: 'gol', s } : { type: 'fuera', s, z: zc };
+    }
+  }
+  // porterías de caja
   for (const s of [1, -1]) {
     const gl = s * HL, back = s * (HL + GD);
-    // postes
+    const inY = (y) => (s > 0 ? (y > gl && y < back) : (y < gl && y > back));
+    // postes y larguero
     if (b.pos.z < GH + BR) { collideCircle2D(POST_X, gl, POST_R, 0.6); collideCircle2D(-POST_X, gl, POST_R, 0.6); }
-    // larguero (cilindro en x)
     if (Math.abs(b.pos.x) < POST_X) {
       const dy = b.pos.y - gl, dz = b.pos.z - GH, L = Math.hypot(dy, dz), min = POST_R + BR;
       if (L < min && L > 1e-5) {
@@ -819,30 +896,37 @@ function stepBall(dt, prev) {
         const vn = b.vel.y * ny + b.vel.z * nz; if (vn < 0) { b.vel.y -= 1.6 * vn * ny; b.vel.z -= 1.6 * vn * nz; sfx.kick(0.1); }
       }
     }
-    // redes: laterales (x=±POST_X), fondo (y=back), techo inclinado
-    const inY = (y) => s > 0 ? (y > gl && y < back) : (y < gl && y > back);
-    const roofZ = (y) => GH + (BACK_H - GH) * Math.min(1, Math.abs(y - gl) / GD);
-    if (inY(b.pos.y) || inY(prev.y)) {
-      for (const sx of [1, -1]) {
-        const wasIn = Math.abs(prev.x) < POST_X, isIn = Math.abs(b.pos.x) < POST_X;
-        if (b.pos.z < roofZ(b.pos.y) + BR && Math.sign(b.pos.x) === sx && wasIn !== isIn) {
-          b.pos.x = sx * (wasIn ? POST_X - BR : POST_X + BR); b.vel.x *= -0.15; b.vel.y *= 0.5;
-        }
+    const nearY = inY(b.pos.y) || inY(prev.y);
+    if (!nearY) {
+      // red trasera desde detrás (balón que vuelve del muro)
+      if (Math.abs(b.pos.x) < NET_X && b.pos.z < NET_Z && (prev.y - back) * s >= BR - 0.01 && (b.pos.y - back) * s < BR) {
+        b.pos.y = back + s * BR; b.vel.y = s * Math.abs(b.vel.y) * 0.25; b.vel.x *= 0.7;
       }
-      if (Math.abs(b.pos.x) < POST_X + BR && b.pos.z < roofZ(b.pos.y) + 0.1 && b.pos.z > 0) {
-        // dentro de la portería: el balón no pasa del fondo
-        if (s > 0 && b.pos.y > back - BR && prev.y <= back) { b.pos.y = back - BR; b.vel.y = -Math.abs(b.vel.y) * 0.15; b.vel.x *= 0.5; }
-        if (s < 0 && b.pos.y < back + BR && prev.y >= back) { b.pos.y = back + BR; b.vel.y = Math.abs(b.vel.y) * 0.15; b.vel.x *= 0.5; }
-      }
-      // techo de la red desde fuera (balón que cae sobre la portería)
-      if (Math.abs(b.pos.x) < POST_X && inY(b.pos.y) && prev.z >= roofZ(prev.y) + BR - 0.05 && b.pos.z < roofZ(b.pos.y) + BR) {
-        b.pos.z = roofZ(b.pos.y) + BR; b.vel.z = Math.abs(b.vel.z) * 0.3; b.vel.y += s * -1.5;
+      continue;
+    }
+    const wasIn = Math.abs(prev.x) < NET_X && prev.z < NET_Z;
+    // dentro de la caja de la red: la malla frena el balón (no vuelve a salir rodando)
+    if (Math.abs(b.pos.x) < NET_X && b.pos.z < NET_Z && (b.pos.y - gl) * s > BR) { const f = Math.exp(-3.5 * dt); b.vel.x *= f; b.vel.y *= f; }
+    // laterales de red
+    for (const sx of [1, -1]) {
+      if (b.pos.z >= NET_Z + BR) continue;
+      const pIn = Math.abs(prev.x) <= NET_X - BR + 0.01, nIn = Math.abs(b.pos.x) <= NET_X - BR;
+      if (wasIn && pIn && !nIn && Math.sign(b.pos.x) === sx) {           // desde dentro: la red amortigua
+        b.pos.x = sx * (NET_X - BR); b.vel.x = -b.vel.x * 0.12; b.vel.y *= 0.6; b.vel.z *= 0.8;
+      } else if (!wasIn && Math.abs(prev.x) >= NET_X + BR - 0.01 && Math.abs(b.pos.x) < NET_X + BR && Math.sign(b.pos.x) === sx) {   // desde fuera
+        b.pos.x = sx * (NET_X + BR); b.vel.x = -b.vel.x * 0.3; b.vel.y *= 0.7;
       }
     }
-    // fondo de red desde detrás (por si el balón llega desde fuera)
-    if (Math.abs(b.pos.x) < POST_X && b.pos.z < BACK_H + BR) {
-      if (s > 0 && prev.y >= back + BR - 0.01 && b.pos.y < back + BR) { b.pos.y = back + BR; b.vel.y = Math.abs(b.vel.y) * 0.3; }
-      if (s < 0 && prev.y <= back - BR + 0.01 && b.pos.y > back - BR) { b.pos.y = back - BR; b.vel.y = -Math.abs(b.vel.y) * 0.3; }
+    if (Math.abs(b.pos.x) < NET_X + 0.05) {
+      // red trasera (desde dentro): frena en seco y cae
+      if (b.pos.z < NET_Z && (b.pos.y - back) * s > -BR) { b.pos.y = back - s * BR; b.vel.y = -b.vel.y * 0.05; b.vel.x *= 0.5; b.vel.z *= 0.6; }
+      // techo desde dentro
+      if (prev.z <= NET_Z - BR + 0.01 && b.pos.z > NET_Z - BR) { b.pos.z = NET_Z - BR; b.vel.z = -Math.abs(b.vel.z) * 0.2; b.vel.x *= 0.8; b.vel.y *= 0.8; }
+      // techo desde fuera (vaselina que cae encima): bota poco y rueda hacia atrás
+      if (prev.z >= NET_Z + BR - 0.02 && b.pos.z < NET_Z + BR) {
+        b.pos.z = NET_Z + BR; b.vel.z = Math.abs(b.vel.z) * 0.25; b.vel.x *= 0.7; b.vel.y = b.vel.y * 0.7 + s * 1.2;
+        b.onRoof = true;
+      }
     }
   }
 }
@@ -901,7 +985,8 @@ function aiField(a, opp, dt) {
   } else {
     a.holdT = 0;
     // ir a por el balón (con predicción)
-    const pred = bp.clone().addScaledVector(new THREE.Vector2(ball.vel.x, ball.vel.y), 0.35);
+    let pred = bp.clone().addScaledVector(new THREE.Vector2(ball.vel.x, ball.vel.y), 0.35);
+    if (ball.pos.z > 1.2) { const l = predictFlight(ball.pos, ball.vel, null, 4, 1 / 60); pred = new THREE.Vector2(l.x, l.y); }   // balón alto: al punto de caída
     pred.x = THREE.MathUtils.clamp(pred.x, -WX + 1, WX - 1); pred.y = THREE.MathUtils.clamp(pred.y, -WY + 1, WY - 1);
     // llegar un poco por detrás del balón respecto a la portería que ataca
     pred.y -= dirY * 0.4;
@@ -947,8 +1032,20 @@ function aiKeeper(k, dt) {
   const near = Math.hypot(ball.pos.x, ball.pos.y - s * HL) < 8 && !ball.owner && Math.hypot(ball.vel.x, ball.vel.y) < 6;
   if (near) { tx = THREE.MathUtils.clamp(ball.pos.x, -GW, GW); ty = THREE.MathUtils.clamp(ball.pos.y, s > 0 ? HL - 6 : -HL + 0.9, s > 0 ? HL - 0.9 : -HL + 6); }
   else ty = lineY;
+  // el rival se acerca con el balón: el portero sale a tapar ángulo (y se expone a la vaselina)
+  const h = ball.owner;
+  if (h && h !== k && h.team !== k.team && !h.keeper) {
+    const dGoal = Math.abs(s * HL - h.pos.y);
+    const out = THREE.MathUtils.clamp((18 - dGoal) * 0.4, 0, 4);
+    if (out > 0) { ty = lineY - s * out; tx = THREE.MathUtils.clamp(h.pos.x * 0.45, -GW + 0.6, GW - 0.6); }
+    k.outY = ty;
+  }
+  // vaselina por encima: vuelve a la línea andando hacia atrás (más lento)
+  const lobOver = !ball.owner && ball.lastTouch && ball.lastTouch.team !== k.team && ball.pos.z > 1.2 && ball.vel.y * s > 2;
+  k.lobT = lobOver ? (k.lobT || 0) + dt : 0;
+  k.backpedal = lobOver;
   const wish = new THREE.Vector2(tx - k.pos.x, ty - k.pos.y);
-  const L = wish.length(); if (L > 0.2) wish.multiplyScalar(Math.min(1, L / 1.2) / L); else wish.set(0, 0);
+  const L = wish.length(); if (L > 0.2) wish.multiplyScalar(Math.min(1, L / 1.2) / L * (k.backpedal ? (k.lobT < 0.35 ? 0 : 0.4) : 1)); else wish.set(0, 0);   // vaselina: tarda en reaccionar y recula despacio
   const f = k.face.clone(); const r = moveKeeperFace(k, s); return { wish, face: r };
 }
 function startDive(k, bx) {
@@ -966,8 +1063,9 @@ function keeperContact(k) {
   if (ball.owner === k) return;
   if (ball.noCatch === k && ball.noCatchT > 0) return;
   const diving = k.diveT > 0 && (k.diveDur - k.diveT) > 0.12 && (k.diveDur - k.diveT) < 0.6;
-  const reach = (diving ? 1.75 : 1.1) * ESCALA, d = Math.hypot(ball.pos.x - k.pos.x, ball.pos.y - k.pos.y);
-  if (d > reach + BR || ball.pos.z > 2.7 * ESCALA) return;
+  const reach = (diving ? 1.75 : k.backpedal ? 0.8 : 1.1) * ESCALA, d = Math.hypot(ball.pos.x - k.pos.x, ball.pos.y - k.pos.y);   // reculando llega peor
+  const reachZ = (diving ? GK_REACH_DIVE : GK_REACH) * ESCALA;     // por encima de esto (vaselina) no llega
+  if (d > reach + BR || ball.pos.z - BR > reachZ) return;
   // solo dentro de su área grande aprox.
   const s = k.team === 0 ? -1 : 1;
   if (Math.abs(ball.pos.y - s * HL) > 8) return;
@@ -1020,6 +1118,21 @@ function goalScored(team) {
   S.mode = 'goal'; S.pauseT = 2.4; ball.owner = null;
   for (const a of actors) { a.celebrate = a.team === team; a.kickPending = null; a.diveT = 0; a.tackleT = 0; a.kickAnimT = 0; }
 }
+// balón fuera por la línea de fondo (incl. por encima del larguero): saque de puerta del portero de ese lado
+function ballOut(ev) {
+  S.mode = 'out'; S.pauseT = 1.3; S.outSide = ev.s;
+  LOG('fuera', ball.lastTouch, { s: ev.s, z: +(ev.z || 0).toFixed(2) });
+  showBanner(ev.z > GH - 0.3 ? '¡POR ENCIMA!' : '¡FUERA!', '', 1100);
+  for (const a of actors) { a.kickPending = null; }
+  if (aim.active) aimEnd(null, true);
+}
+function goalKick() {
+  const k = S.outSide > 0 ? gkB : gkA;
+  k.place(THREE.MathUtils.clamp(ball.pos.x * 0.2, -3, 3), S.outSide * (HL - 2.5));
+  ball.vel.set(0, 0, 0); ball.lineEvent = null; giveBall(k); ball.pos.set(k.pos.x, k.pos.y, 1.1 * ESCALA);
+  k.holdT = 0.2;
+  S.mode = 'play';
+}
 function endGame() {
   S.mode = 'end'; sfx.whistle();
   const [a, b] = S.score;
@@ -1037,6 +1150,7 @@ function update(dt) {
   S.t += dt;
   if (S.mode === 'kickoff') { S.pauseT -= dt; if (S.pauseT <= 0) S.mode = 'play'; }
   if (S.mode === 'goal') { S.pauseT -= dt; if (S.pauseT <= 0) { if (S.time <= 0) endGame(); else kickoff(); } }
+  if (S.mode === 'out' && S.time <= 0) endGame();
   const playing = S.mode === 'play';
   if (playing) {
     S.time -= dt; if (S.time <= 0) { S.time = 0; if (S.score[0] !== S.score[1] || true) { endGame(); } }
@@ -1114,7 +1228,7 @@ function update(dt) {
             giveBall(a); sfx.steal(); showBanner('¡ROBO!', a.team === 0 ? 'bAzul' : 'bRojo', 700);
           }
         }
-      } else if (!ball.owner && d < PR + BR + 0.15 && ball.pos.z < 1.3 * ESCALA) {
+      } else if (!ball.owner && d < PR + BR + 0.15 && ball.pos.z < 1.05 * ESCALA) {   // solo balones bajos (pecho para abajo)
         const sp = Math.hypot(ball.vel.x, ball.vel.y);
         if (sp < 24 || a.dashT > 0) { giveBall(a); if (a.dashT > 0) a.tackleT = Math.min(a.tackleT, 0.22); a.dashT = 0; a.dashHit = true; a.dashEnded = false; }
         else { collideCircle2D(a.pos.x, a.pos.y, PR, 0.4); ball.lastTouch = a; }
@@ -1125,13 +1239,16 @@ function update(dt) {
       a.dashEnded = false;
     }
     keeperContact(gkA); keeperContact(gkB);
-    // gol: el balón entero cruza la línea entre postes y bajo el larguero
-    if (Math.abs(ball.pos.x) < GW && ball.pos.z < GH) {
-      if (ball.pos.y > HL + BR) goalScored(0);
-      else if (ball.pos.y < -HL - BR) goalScored(1);
+    // gol: el balón entero cruza la línea entre postes y por debajo del larguero (lo detecta stepBall)
+    const ev = ball.lineEvent;
+    if (ev) {
+      ball.lineEvent = null;
+      if (ev.type === 'gol') goalScored(ev.s > 0 ? 0 : 1);
+      else ballOut(ev);
     }
-  }
-  if (S.mode === 'goal' && !ball.owner) { const n = 4; for (let i = 0; i < n; i++) stepBall(dt / n, ball.pos.clone()); }
+  } else ball.lineEvent = null;
+  if (S.mode === 'out') { S.pauseT -= dt; if (S.pauseT <= 0) goalKick(); }
+  if ((S.mode === 'goal' || S.mode === 'out') && !ball.owner) { const n = 4; for (let i = 0; i < n; i++) stepBall(dt / n, ball.pos.clone()); }
 
   // --- apuntado (CHUTAR / REGATE mantenidos) ---
   if (aim.active) {
@@ -1144,6 +1261,7 @@ function update(dt) {
   acciones.classList.toggle('sin-balon', !hasBall);
   const ring = (el, fill) => { if (el) el.style.strokeDashoffset = String(289 * (1 - Math.max(0, Math.min(1, fill)))); };
   ring(cargaAro, input.shootDown ? input.charge : (aim.active && aim.kind === 'chutar' && aim.dragged && !aim.cancel ? aim.power : 0));
+  ring(cargaAlto, aim.active && aim.kind === 'alto' && aim.dragged && !aim.cancel ? aim.power : 0);
   ring(cargaRegate, user ? (user.dribbleCd > 0 ? 1 - user.dribbleCd / DRIBBLE_CD : 1) : 1);
   ring(cargaEntrada, user ? (user.dashCd > 0 ? 1 - user.dashCd / DASH_CD_USER : 1) : 1);
   ring(cargaTurbo, user ? user.energy : 1);
@@ -1172,11 +1290,59 @@ function makeAimLine() {
   g.visible = false;
   return g;
 }
+// trayectoria prevista del CHUT ALTO: puntos en arco + sombra en el césped + punto de caída
+const LOB_DOTS = 34;
+let lobArc, lobGround, lobLand, flightMark;
+const _lobPts = [], _m4 = new THREE.Matrix4();
+function makeLobPreview() {
+  lobArc = new THREE.InstancedMesh(new THREE.SphereGeometry(0.15, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }), LOB_DOTS);
+  lobGround = new THREE.InstancedMesh(new THREE.CircleGeometry(0.11, 8).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x14193a, transparent: true, opacity: 0.35, depthWrite: false }), LOB_DOTS);
+  lobGround.renderOrder = 3;
+  lobLand = new THREE.Group();
+  const r1 = new THREE.Mesh(new THREE.RingGeometry(0.75, 1.05, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff4f7b, transparent: true, opacity: 0.95, depthWrite: false }));
+  const r2 = new THREE.Mesh(new THREE.CircleGeometry(0.32, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }));
+  const cr = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.12).rotateX(-Math.PI / 2), r1.material);
+  const cr2 = cr.clone(); cr2.rotation.y = Math.PI / 2;
+  for (const m of [r1, r2, cr, cr2]) { m.renderOrder = 4; m.position.y = 0.05; lobLand.add(m); }
+  flightMark = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.75, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }));
+  flightMark.renderOrder = 3;
+  for (const o of [lobArc, lobGround, lobLand, flightMark]) { o.visible = false; o.frustumCulled = false; scene.add(o); }
+}
+function updateLobPreview(on) {
+  if (!lobArc) return;
+  lobArc.visible = lobGround.visible = lobLand.visible = !!on;
+  if (!on) return;
+  if (!aim.dragged) { const q = quickLobAim(); aim.dir.copy(q.dir); aim.lobP = q.power; } else aim.lobP = aim.power;
+  const lp = lobParams(aim.lobP);
+  const start = new THREE.Vector3(ball.pos.x + aim.dir.x * 0.4, ball.pos.y + aim.dir.y * 0.4, BR + 0.02);
+  const land = predictFlight(start, new THREE.Vector3(aim.dir.x * lp.h, aim.dir.y * lp.h, lp.vz), _lobPts);
+  const n = _lobPts.length / 3;
+  for (let i = 0; i < LOB_DOTS; i++) {
+    const k = Math.min(n - 1, Math.round((i + 0.5) / LOB_DOTS * (n - 1))) * 3;
+    const x = _lobPts[k], y = _lobPts[k + 1], z = _lobPts[k + 2];
+    _m4.makeTranslation(x, z, -y); lobArc.setMatrixAt(i, _m4);
+    _m4.makeTranslation(x, 0.03, -y); lobGround.setMatrixAt(i, _m4);
+  }
+  lobArc.instanceMatrix.needsUpdate = true; lobGround.instanceMatrix.needsUpdate = true;
+  lobLand.position.set(land.x, 0, -land.y);
+  aim.lobLand = { x: +land.x.toFixed(2), y: +land.y.toFixed(2), peak: +land.peak.toFixed(2), dist: +land.dist.toFixed(2) };
+}
+function updateFlightMark() {
+  if (!flightMark) return;
+  const on = !ball.owner && ball.pos.z > 1.4 && S.mode !== 'menu';
+  flightMark.visible = on;
+  if (!on) return;
+  const l = predictFlight(ball.pos, ball.vel, null, 4, 1 / 60);
+  flightMark.position.set(l.x, 0.04, -l.y);
+  flightMark.scale.setScalar(0.8 + Math.min(1.2, ball.pos.z * 0.08));
+}
 function updateAimLine() {
   if (!aimLine) return;
   const on = aim.active && aim.shown && !aim.cancel && user && ball.owner === user && S.mode === 'play';
-  aimLine.visible = !!on;
-  if (!on) return;
+  updateLobPreview(on && aim.kind === 'alto');
+  updateFlightMark();
+  aimLine.visible = !!on && aim.kind !== 'alto';
+  if (!aimLine.visible) return;
   if (!aim.dragged) {      // mantenido sin arrastrar: enseña la dirección del toque rápido
     const md = moveDir();
     aim.dir.copy(md || (aim.kind === 'chutar' ? goalCenter(user.team).sub(user.pos).normalize() : aim.dir));
@@ -1201,7 +1367,7 @@ function render(dt) {
   if (vs > 0.05) { const axis = new THREE.Vector3(0, 1, 0).cross(v); if (axis.lengthSq() > 0.01) ballMesh.rotateOnWorldAxis(axis.normalize(), vs * dt / BR); }
   ballShadow.position.set(ball.pos.x, 0.025, -ball.pos.y);
   ballGhost.position.copy(ballMesh.position); ballGhost.quaternion.copy(ballMesh.quaternion);
-  const h = ball.pos.z - BR; ballShadow.scale.setScalar(Math.max(0.4, 1 - h * 0.08)); ballShadow.material.opacity = Math.max(0.08, 0.35 - h * 0.03);
+  const h = ball.pos.z - BR; ballShadow.scale.setScalar(Math.max(0.45, 1 + h * 0.05)); ballShadow.material.opacity = Math.max(0.12, 0.42 - h * 0.025);   // sombra: más grande y clara cuanto más alto
   // flecha de apuntado
   if (input.shootDown && ball.owner === user) {
     aimArrow.visible = true; aimArrow.position.copy(g2t(user.pos.x, user.pos.y, 0.05));
@@ -1223,9 +1389,37 @@ function frame(now) {
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (window.__game.paused) return;   // solo para pruebas automáticas (avance manual con __game.advance)
   fpsAcc += dt; fpsN++; if (fpsAcc > 1) { window.__game.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+  if (S.paused) { if (ballMesh) render(0); return; }   // menú de pausa abierto: juego congelado
   if (S.mode !== 'menu' && S.mode !== 'end') update(dt); else { for (const a of actors) a.vel.multiplyScalar(0.8); }
   if (S.mode === 'menu' || ballMesh) render(dt);
 }
+
+// ===================== PAUSA (tocar el marcador) =====================
+const pausaEl = document.getElementById('pausa'), marcadorEl = document.getElementById('marcador');
+function resetInputs() {
+  input.keys = {}; input.turboDown = false; releaseShoot(true);
+  if (typeof aimEnd === 'function') aimEnd(null, true);
+  joyId = null; input.jx = input.jy = 0; joyPunta.style.transform = ''; setJoy(joyHome.x, joyHome.y);
+}
+function openPause() {
+  if (S.paused || !['play', 'kickoff', 'goal', 'out'].includes(S.mode)) return;
+  S.paused = true; resetInputs();
+  pausaEl.classList.add('visible'); LOG('pausa', null, {});
+}
+function resumeGame() {
+  if (!S.paused) return;
+  S.paused = false; pausaEl.classList.remove('visible'); last = performance.now();
+}
+function quitMatch() {
+  S.paused = false; pausaEl.classList.remove('visible'); resetInputs();
+  if (ballMesh) { ball.owner = null; ball.vel.set(0, 0, 0); }
+  LOG('salir_partido', null, {});
+  openMenu();
+}
+marcadorEl.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); openPause(); });
+document.getElementById('btnReanudar').addEventListener('click', resumeGame);
+document.getElementById('btnSalir').addEventListener('click', quitMatch);
+pausaEl.addEventListener('pointerdown', (e) => { if (e.target === pausaEl) { e.preventDefault(); resumeGame(); } });
 
 // ===================== MENÚ DE PERSONAJES =====================
 const menuEl = document.getElementById('menu');
@@ -1444,11 +1638,12 @@ function setupField(campo) {
   am.renderOrder = 3;
   aimArrow.add(am); aimArrow.visible = false; scene.add(aimArrow);
   aimLine = makeAimLine(); scene.add(aimLine);
+  makeLobPreview();
   am.rotation.set(-Math.PI / 2, 0, 0);   // la flecha apunta a -Z local (frente del personaje)
 }
 Object.assign(window.__game, {
   paused: false,
-  advance: (sec, step = 1 / 60) => { for (let t = 0; t < sec - 1e-6; t += step) { if (S.mode !== 'menu' && S.mode !== 'end') update(step); render(step); } },
+  advance: (sec, step = 1 / 60, draw = true) => { for (let t = 0; t < sec - 1e-6; t += step) { if (S.mode !== 'menu' && S.mode !== 'end') update(step); if (draw) render(step); } },
   forceGoal: (team) => goalScored(team),
   selectChar: (i) => selectChar(i), menuPlay: () => menuPlay(), openMenu: () => openMenu(),
   get menuSel() { return sel; }, get rivalSel() { return rivalSel; }, CHARS,
@@ -1456,6 +1651,8 @@ Object.assign(window.__game, {
   tryLandscape, updateOrient,
   setCamMode: (m) => setCamMode(m, true),
   setJoyDir,
+  openPause: () => openPause(), resumeGame: () => resumeGame(), quitMatch: () => quitMatch(),
+  lobParams, predictFlight, shootLob: (p, dx, dy) => shootLob(user, new THREE.Vector2(dx, dy), p),
   get aim() { return aim; },
   relayout: () => onViewportChange(),
   setupMatch,
