@@ -57,13 +57,15 @@
   </div>
   <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) · SHIFT: turbo · E: regate / entrada</div>
   <div id="menu">
-    <div class="mTitulo"><h1>MONSTER<br>LEAGUE</h1></div>
+    <div class="mTitulo"><h1>MONSTER<br> LEAGUE</h1></div>
     <div id="menuStage" aria-label="Personaje (arrastra para girar)"></div>
     <button id="mPrev" class="mFlecha izq" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button>
     <button id="mNext" class="mFlecha der" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
-    <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div></div>
-    <div id="mCartas"></div>
-    <div class="mAbajo"><div id="mVs"></div><button id="btnMenuJugar">JUGAR</button></div>
+    <div class="mDerecha">
+      <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div></div>
+      <div id="mCartas"></div>
+      <div class="mAbajo"><div id="mVs"></div><button id="btnMenuJugar">JUGAR</button></div>
+    </div>
   </div>
   <div id="pantalla">
     <div class="caja">
@@ -74,6 +76,13 @@
     </div>
   </div>
   <div id="cargando">Cargando…</div>
+</div>
+<div id="giraMovil" aria-hidden="true">
+  <div class="giraCaja">
+    <div class="giraIcono" aria-hidden="true"><div class="giraPhone"></div></div>
+    <div class="giraTitulo">GIRA EL MÓVIL</div>
+    <div class="giraSub">Monster League se juega en horizontal</div>
+  </div>
 </div>
 <script type="module" src="main.js"></script>
 </body>
