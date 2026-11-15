@@ -1663,7 +1663,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   const cargando = document.getElementById('cargando');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json')).json();
+    META = await (await fetch('assets/anim_meta.json?v=7')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; });
     buildMenuChars(); buildMenuUI();
@@ -1672,7 +1672,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=7').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
