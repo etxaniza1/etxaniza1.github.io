@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1b2440">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Monster League · Prototipo</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="c"></canvas>
+  <div id="hud">
+    <div id="marcador">
+      <div class="eq azul"><span class="nom">CONAZO</span><span id="golesA" class="gol">0</span></div>
+      <div id="reloj">2:00</div>
+      <div class="eq rojo"><span id="golesB" class="gol">0</span><span class="nom">CALCETROL</span></div>
+    </div>
+    <div id="banner"></div>
+  </div>
+  <div id="joyZona"><div id="joyBase"><div id="joyPunta"></div></div></div>
+  <div id="btnChutar"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="aro"/><circle id="carga" cx="50" cy="50" r="46" class="cargaAro"/></svg><span id="btnTxt">CHUTAR</span></div>
+  <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) / entrada</div>
+  <div id="pantalla" class="visible">
+    <div class="caja">
+      <h1>MONSTER<br>LEAGUE</h1>
+      <p class="sub">Prototipo jugable</p>
+      <div id="resultado"></div>
+      <button id="btnJugar">JUGAR</button>
+      <p class="ayuda" id="ayuda">Joystick: mover · Botón: chutar (mantén para cargar)<br>Sin balón, el botón hace una <b>entrada</b> para robar.<br>Teclado: WASD / flechas + espacio</p>
+    </div>
+  </div>
+  <div id="cargando">Cargando estadio…</div>
+</div>
+<script type="module" src="main.js"></script>
+</body>
+</html>
