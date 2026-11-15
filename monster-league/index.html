@@ -2,10 +2,11 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, shrink-to-fit=no">
 <meta name="theme-color" content="#1b2440">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="format-detection" content="telephone=no">
 <title>Monster League · Prototipo</title>
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
@@ -24,15 +25,44 @@
     <div id="banner"></div>
   </div>
   <div id="joyZona"><div id="joyBase"><div id="joyPunta"></div></div></div>
-  <div id="btnChutar"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" class="aro"/><circle id="carga" cx="50" cy="50" r="46" class="cargaAro"/></svg><span id="btnTxt">CHUTAR</span></div>
-  <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) / entrada</div>
+  <div id="acciones" class="sin-balon">
+    <div id="btnTurbo" class="btnAccion turbo" role="button" aria-label="Turbo">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="cargaTurbo" cx="50" cy="50" r="46" class="cargaAro energia"/></svg>
+      <div class="btnInner">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 10-14h-7l0-6z"/></svg>
+        <span class="btnTxt">TURBO</span>
+      </div>
+    </div>
+    <div id="btnRegate" class="btnAccion regate" role="button" aria-label="Regate">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="cargaRegate" cx="50" cy="50" r="46" class="cargaAro"/></svg>
+      <div class="btnInner">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8c4-6 10-1 12 2 1 1.5-1 3-2.5 2.2M20 16c-4 6-10 1-12-2-1-1.5 1-3 2.5-2.2"/><circle cx="12" cy="12" r="2.2"/></svg>
+        <span class="btnTxt">REGATE</span>
+      </div>
+    </div>
+    <div id="btnChutar" class="btnAccion chutar principal" role="button" aria-label="Chutar">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="carga" cx="50" cy="50" r="46" class="cargaAro"/></svg>
+      <div class="btnInner">
+        <svg class="icono icoGrande" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 4.5c2.2 2 3.2 4.6 3.2 7.5S14.2 17.5 12 19.5c-2.2-2-3.2-4.6-3.2-7.5S9.8 6.5 12 4.5z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5.2 10.5h13.6M5.2 13.5h13.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+        <span class="btnTxt" id="btnTxt">CHUTAR</span>
+      </div>
+    </div>
+    <div id="btnEntrada" class="btnAccion entrada principal" role="button" aria-label="Entrada">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="cargaEntrada" cx="50" cy="50" r="46" class="cargaAro"/></svg>
+      <div class="btnInner">
+        <svg class="icono icoGrande" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6l10 8-3.2 1.2L15 21l-6.5-6.2L5 16.5z"/></svg>
+        <span class="btnTxt">ENTRADA</span>
+      </div>
+    </div>
+  </div>
+  <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) · SHIFT: turbo · E: regate / entrada</div>
   <div id="pantalla" class="visible">
     <div class="caja">
       <h1>MONSTER<br>LEAGUE</h1>
       <p class="sub">Prototipo jugable</p>
       <div id="resultado"></div>
       <button id="btnJugar">JUGAR</button>
-      <p class="ayuda" id="ayuda">Joystick: mover · Botón: chutar (mantén para cargar)<br>Sin balón, el botón hace una <b>entrada</b> para robar.<br>Teclado: WASD / flechas + espacio</p>
+      <p class="ayuda" id="ayuda">Joystick: mover<br>CHUTAR (mantén para cargar) · REGATE · TURBO<br>Sin balón, ENTRADA para robar.<br>Teclado: WASD + ESPACIO · SHIFT turbo · E regate/entrada</p>
     </div>
   </div>
   <div id="cargando">Cargando estadio…</div>

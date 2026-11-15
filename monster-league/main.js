@@ -4,7 +4,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
-const ESCALA = parseFloat(P.get('escala') || '1');      // escala de personajes (1 = 2,00 m como en el modelo)
+const ESCALA = parseFloat(P.get('escala') || '1.3');      // escala de personajes (1 = 2,00 m; 1.3 se lee mejor en móvil)
 const DURACION = parseFloat(P.get('tiempo') || '120');   // segundos de partido
 const HW = 11, HL = 24;                    // medio ancho / medio largo entre líneas
 const WX = 13.2, WY = 27.3;                // cara interior de las vallas
@@ -13,6 +13,9 @@ const BR = 0.35;                           // radio del balón (un pelín mayor 
 const GRAV = 22;
 const PR = 0.6 * ESCALA;                   // radio de colisión del jugador
 const SPEED_USER = 7.6, SPEED_AI = 6.3, SPEED_GK = 5.6;
+const DRIBBLE_T = 0.32, DRIBBLE_CD = 1.5, DRIBBLE_SPEED = 13.5;
+const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH_MISS_STUN = 0.42;
+const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 
 // ===================== RENDER =====================
@@ -89,6 +92,9 @@ const sfx = {
   goal: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.22, 'square', 0.05), i * 110)); },
   steal: () => beep(320, 0.08, 'square', 0.05, 200),
   save: () => beep(200, 0.15, 'sawtooth', 0.05, -100),
+  dribble: () => beep(480, 0.1, 'triangle', 0.07, 220),
+  dash: () => beep(180, 0.1, 'sawtooth', 0.06, -80),
+  miss: () => beep(110, 0.16, 'square', 0.05, -40),
 };
 
 // ===================== ENTIDADES =====================
@@ -117,8 +123,14 @@ class Actor {
     this.face = new THREE.Vector2(0, team === 0 ? 1 : -1);
     this.yaw = 0; this.walk = 0; this.kickT = 0; this.dashT = 0; this.dashCd = 0; this.stun = 0;
     this.lean = 0; this.tilt = 0;
+    this.dribbleT = 0; this.dribbleCd = 0; this.dashHit = false; this.dashEnded = false;
+    this.energy = 1; this.sprinting = false;
   }
-  place(x, y) { this.pos.set(x, y); this.vel.set(0, 0); this.face.set(0, this.team === 0 ? 1 : -1); this.dashT = 0; this.stun = 0; this.kickT = 0; }
+  place(x, y) {
+    this.pos.set(x, y); this.vel.set(0, 0); this.face.set(0, this.team === 0 ? 1 : -1);
+    this.dashT = 0; this.stun = 0; this.kickT = 0; this.dribbleT = 0; this.dashCd = 0; this.dribbleCd = 0;
+    this.dashHit = false; this.dashEnded = false; this.sprinting = false;
+  }
   sync(dt, t) {
     const sp = this.vel.length();
     const targetYaw = Math.atan2(this.face.x, -this.face.y);   // los modelos miran a +Z de three (hacia la cámara) por defecto
@@ -130,8 +142,9 @@ class Actor {
     this.walk += dt * (6 + sp * 1.6) * (sp > 0.3 ? 1 : 0);
     const moving = Math.min(1, sp / 5);
     const bob = Math.abs(Math.sin(this.walk)) * 0.16 * moving * ESCALA;
-    this.lean += ((this.dashT > 0 ? 0.35 : 0.12 * moving) - this.lean) * Math.min(1, dt * 10);
-    this.tilt = Math.sin(this.walk) * 0.09 * moving;
+    const leanT = this.dribbleT > 0 ? 0.42 : this.dashT > 0 ? 0.38 : this.sprinting ? 0.2 : 0.12 * moving;
+    this.lean += (leanT - this.lean) * Math.min(1, dt * 10);
+    this.tilt = Math.sin(this.walk) * 0.09 * moving + (this.dribbleT > 0 ? Math.sin(t * 28) * 0.18 : 0);
     let kick = 0;
     if (this.kickT > 0) { const k = 1 - this.kickT / 0.35; kick = k < 0.3 ? -0.25 * (k / 0.3) : 0.45 * Math.sin((k - 0.3) / 0.7 * Math.PI); }
     let stunWob = this.stun > 0 ? Math.sin(t * 40) * 0.15 : 0;
@@ -167,12 +180,28 @@ let user, rival, gkA, gkB, actors = [];
 const S = { mode: 'menu', score: [0, 0], time: DURACION, pauseT: 0, kickoffTeam: 0, t: 0, goals: 0, saves: 0, shots: 0 };
 const LOGS = []; const NAME = (a) => a === user ? 'conazo' : a === rival ? 'calcetrol' : a === gkA ? 'portero_azul' : 'portero_rojo';
 function LOG(ev, a, extra) { LOGS.push({ t: +S.t.toFixed(2), ev, who: a ? NAME(a) : null, ...extra }); if (LOGS.length > 300) LOGS.shift(); }
-window.__game = { LOGS, get input() { return input; }, pressShoot: () => pressShoot(), releaseShoot: () => releaseShoot(), S, ball, camera, scene, renderer, get actors() { return actors; } };
+window.__game = {
+  LOGS,
+  get input() { return input; },
+  pressShoot: () => pressShoot(),
+  releaseShoot: () => releaseShoot(),
+  pressRegate: () => tryDribble(user),
+  pressEntrada: () => tryDash(user),
+  setTurbo: (on) => { input.turboDown = !!on; },
+  S, ball, camera, scene, renderer, ESCALA,
+  get actors() { return actors; },
+  get user() { return user; },
+  get rival() { return rival; },
+};
 
 // ===================== INPUT =====================
-const input = { jx: 0, jy: 0, shootDown: false, charge: 0, keys: {} };
+const input = { jx: 0, jy: 0, shootDown: false, turboDown: false, charge: 0, keys: {} };
 const joyZona = document.getElementById('joyZona'), joyBase = document.getElementById('joyBase'), joyPunta = document.getElementById('joyPunta');
-const btn = document.getElementById('btnChutar'), btnTxt = document.getElementById('btnTxt'), cargaAro = document.getElementById('carga');
+const acciones = document.getElementById('acciones');
+const btnChutar = document.getElementById('btnChutar'), btnRegate = document.getElementById('btnRegate');
+const btnEntrada = document.getElementById('btnEntrada'), btnTurbo = document.getElementById('btnTurbo');
+const cargaAro = document.getElementById('carga'), cargaRegate = document.getElementById('cargaRegate');
+const cargaEntrada = document.getElementById('cargaEntrada'), cargaTurbo = document.getElementById('cargaTurbo');
 let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 };
 function placeJoyBase() {
   const zr = joyZona.getBoundingClientRect();
@@ -180,9 +209,41 @@ function placeJoyBase() {
   if (joyId === null) setJoy(joyHome.x, joyHome.y);
 }
 function setJoy(x, y) { joyBase.style.left = x + 'px'; joyBase.style.top = y + 'px'; joyCx = x; joyCy = y; }
+
+// Evitar zoom, scroll y gestos del navegador (multitáctil de juego sí está permitido)
+const swallow = (e) => { e.preventDefault(); };
+document.addEventListener('touchmove', swallow, { passive: false });
+document.addEventListener('gesturestart', swallow);
+document.addEventListener('gesturechange', swallow);
+document.addEventListener('gestureend', swallow);
+document.addEventListener('dblclick', swallow);
+document.addEventListener('contextmenu', swallow);
+
+function bindHold(el, onDown, onUp) {
+  const downIds = new Set();
+  el.addEventListener('pointerdown', (e) => {
+    if (e.pointerId === joyId) return;
+    downIds.add(e.pointerId);
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    onDown(e);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  const end = (e) => {
+    if (!downIds.has(e.pointerId)) return;
+    downIds.delete(e.pointerId);
+    if (downIds.size === 0) onUp(e);
+    e.preventDefault();
+  };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+}
+
 joyZona.addEventListener('pointerdown', (e) => {
   if (joyId !== null) return;
-  joyId = e.pointerId; joyZona.setPointerCapture(e.pointerId);
+  if (e.target.closest && e.target.closest('.btnAccion')) return;
+  joyId = e.pointerId;
+  try { joyZona.setPointerCapture(e.pointerId); } catch (_) {}
   const r = joyZona.getBoundingClientRect(); setJoy(e.clientX - r.left, e.clientY - r.top);
   e.preventDefault();
 });
@@ -199,29 +260,37 @@ joyZona.addEventListener('pointermove', (e) => {
 });
 const joyEnd = (e) => { if (e.pointerId !== joyId) return; joyId = null; input.jx = input.jy = 0; joyPunta.style.transform = ''; setJoy(joyHome.x, joyHome.y); };
 joyZona.addEventListener('pointerup', joyEnd); joyZona.addEventListener('pointercancel', joyEnd);
-btn.addEventListener('pointerdown', (e) => { btn.setPointerCapture(e.pointerId); pressShoot(); e.preventDefault(); });
-btn.addEventListener('pointerup', () => releaseShoot());
-btn.addEventListener('pointercancel', () => releaseShoot());
+
+bindHold(btnChutar, () => pressShoot(), () => releaseShoot());
+bindHold(btnRegate, () => { btnRegate.classList.add('pulsado'); tryDribble(user); }, () => btnRegate.classList.remove('pulsado'));
+bindHold(btnEntrada, () => { btnEntrada.classList.add('pulsado'); tryDash(user); }, () => btnEntrada.classList.remove('pulsado'));
+bindHold(btnTurbo, () => { input.turboDown = true; }, () => { input.turboDown = false; });
+
 const keyMap = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
 window.addEventListener('keydown', (e) => {
   if (keyMap[e.code]) { input.keys[keyMap[e.code]] = true; e.preventDefault(); }
   if (e.code === 'Space') { if (!e.repeat) { if (S.mode === 'menu' || S.mode === 'end') startGame(); else pressShoot(); } e.preventDefault(); }
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { input.turboDown = true; e.preventDefault(); }
+  if (e.code === 'KeyE' && !e.repeat) {
+    if (S.mode === 'play') { if (ball.owner === user) tryDribble(user); else tryDash(user); }
+    e.preventDefault();
+  }
 });
 window.addEventListener('keyup', (e) => {
   if (keyMap[e.code]) input.keys[keyMap[e.code]] = false;
   if (e.code === 'Space') releaseShoot();
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.turboDown = false;
 });
-window.addEventListener('blur', () => { input.keys = {}; input.jx = input.jy = 0; releaseShoot(true); });
-document.addEventListener('contextmenu', (e) => e.preventDefault());
+window.addEventListener('blur', () => { input.keys = {}; input.jx = input.jy = 0; input.turboDown = false; releaseShoot(true); });
 
 function pressShoot() {
   if (S.mode !== 'play' || input.shootDown) return;
-  btn.classList.add('pulsado');
-  if (ball.owner === user) { input.shootDown = true; input.charge = 0; }
-  else { tryDash(user); }
+  if (ball.owner !== user) return;
+  btnChutar.classList.add('pulsado');
+  input.shootDown = true; input.charge = 0;
 }
 function releaseShoot(cancel) {
-  btn.classList.remove('pulsado');
+  btnChutar.classList.remove('pulsado');
   if (!input.shootDown) return;
   input.shootDown = false;
   if (!cancel && ball.owner === user && S.mode === 'play') shoot(user, user.face.clone(), 0.15 + 0.85 * input.charge, true);
@@ -230,8 +299,45 @@ function releaseShoot(cancel) {
 
 // ===================== MECÁNICAS =====================
 function tryDash(a) {
-  if (a.dashCd > 0 || a.stun > 0) return false;
-  a.dashT = 0.24; a.dashCd = a === user ? 0.8 : 2.0; return true;
+  if (!a || a.dashCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0) return false;
+  if (ball.owner === a) return false;
+  a.dashT = DASH_T; a.dashCd = a === user ? DASH_CD_USER : DASH_CD_AI;
+  a.dashHit = false; a.dashEnded = false;
+  sfx.dash(); LOG('entrada', a, {});
+  return true;
+}
+function tryDribble(a) {
+  if (!a || ball.owner !== a || a.keeper) return false;
+  if (a.dribbleCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0) return false;
+  const dir = new THREE.Vector2();
+  if (a === user && (Math.abs(input.jx) > 0.15 || Math.abs(input.jy) > 0.15)) dir.set(input.jx, input.jy);
+  else {
+    const side = new THREE.Vector2(-a.face.y, a.face.x);
+    const opp = a === user ? rival : user;
+    if (opp) {
+      const toOpp = opp.pos.clone().sub(a.pos);
+      if (side.dot(toOpp) > 0) side.multiplyScalar(-1);
+    }
+    dir.copy(side);
+  }
+  if (dir.lengthSq() < 0.01) dir.set(-a.face.y, a.face.x);
+  dir.normalize();
+  a.face.copy(dir);
+  a.dribbleT = DRIBBLE_T; a.dribbleCd = DRIBBLE_CD;
+  if (a === user) { input.shootDown = false; input.charge = 0; btnChutar.classList.remove('pulsado'); }
+  sfx.dribble(); LOG('regate', a, { dir: [+dir.x.toFixed(2), +dir.y.toFixed(2)] });
+  return true;
+}
+function updateEnergy(a, want, moving, dt) {
+  const can = want && moving && a.stun <= 0 && a.dashT <= 0 && a.dribbleT <= 0 && (a.sprinting ? a.energy > 0 : a.energy > TURBO_MIN);
+  if (can) {
+    a.sprinting = true;
+    a.energy = Math.max(0, a.energy - TURBO_DRAIN * dt);
+    if (a.energy <= 0) a.sprinting = false;
+  } else {
+    a.sprinting = false;
+    a.energy = Math.min(1, a.energy + TURBO_REGEN * dt);
+  }
 }
 function goalCenter(team) { return new THREE.Vector2(0, team === 0 ? HL : -HL); }  // portería que ataca el equipo
 function shoot(a, dir, power, assist) {
@@ -260,14 +366,19 @@ function giveBall(a) {
 
 function moveActor(a, wish, speed, dt) {
   if (a.stun > 0) { a.stun -= dt; a.vel.multiplyScalar(Math.exp(-6 * dt)); }
-  else if (a.dashT > 0) { a.dashT -= dt; a.vel.copy(a.face).multiplyScalar(15); }
-  else {
+  else if (a.dribbleT > 0) { a.dribbleT -= dt; a.vel.copy(a.face).multiplyScalar(DRIBBLE_SPEED); }
+  else if (a.dashT > 0) {
+    a.dashT -= dt; a.vel.copy(a.face).multiplyScalar(DASH_SPEED);
+    if (a.dashT <= 0) a.dashEnded = true;
+  } else {
     const target = wish.clone().multiplyScalar(speed);
     const acc = 1 - Math.exp(-14 * dt);
     a.vel.lerp(target, acc);
     if (wish.lengthSq() > 0.01) a.face.copy(wish).normalize();
   }
-  a.dashCd = Math.max(0, a.dashCd - dt); a.kickT = Math.max(0, a.kickT - dt);
+  a.dashCd = Math.max(0, a.dashCd - dt);
+  a.dribbleCd = Math.max(0, a.dribbleCd - dt);
+  a.kickT = Math.max(0, a.kickT - dt);
   a.pos.addScaledVector(a.vel, dt);
   // límites: vallas y porterías
   const m = PR;
@@ -366,6 +477,7 @@ function aiField(a, opp, dt) {
   const wish = new THREE.Vector2();
   const bp = new THREE.Vector2(ball.pos.x, ball.pos.y);
   const atkY = a.team === 0 ? HL : -HL, dirY = Math.sign(atkY);
+  a.wantTurbo = false;
   if (ball.owner === a) {
     // conducir hacia la portería, esquivando al rival
     const gk = a.team === 0 ? gkB : gkA;
@@ -375,7 +487,9 @@ function aiField(a, opp, dt) {
     const toOpp = opp.pos.clone().sub(a.pos); const dO = toOpp.length();
     if (dO < 4.5 && toOpp.dot(wish) > 0) { const side = new THREE.Vector2(-wish.y, wish.x); const sgn = Math.sign(side.dot(toOpp)) || 1; wish.addScaledVector(side, -sgn * 1.2).normalize(); }
     const distGoal = Math.abs(atkY - a.pos.y);
+    if (distGoal > 8 && a.energy > 0.25) a.wantTurbo = true;
     a.holdT = (a.holdT || 0) + dt;
+    if (dO < 3.2 && a.dribbleCd <= 0 && a.holdT > 0.3 && Math.random() < dt * 1.6) { tryDribble(a); }
     const blocked = dO < 2.6 && toOpp.dot(new THREE.Vector2(0, dirY)) > 0;
     if ((distGoal < 15 && a.holdT > 0.4) || (blocked && distGoal < 26 && a.holdT > 0.8) || a.holdT > 6) {
       const aimX = Math.abs(gk.pos.x - 3.6) > Math.abs(gk.pos.x + 3.6) ? 3.6 : -3.6;
@@ -391,6 +505,7 @@ function aiField(a, opp, dt) {
     const target = opp.pos.clone().lerp(new THREE.Vector2(0, ownY), 0.12);
     wish.copy(target).sub(a.pos);
     const d = opp.pos.distanceTo(a.pos);
+    if (d > 5 && a.energy > 0.3) a.wantTurbo = true;
     if (d < 2.4 && a.dashCd <= 0 && (ball.ownT || 0) > 0.7 && Math.random() < dt * 2.2) { a.face.copy(opp.pos.clone().sub(a.pos).normalize()); tryDash(a); }
     if (wish.lengthSq() > 0.04) wish.normalize(); else wish.set(0, 0);
   } else {
@@ -401,6 +516,7 @@ function aiField(a, opp, dt) {
     // llegar un poco por detrás del balón respecto a la portería que ataca
     pred.y -= dirY * 0.4;
     wish.copy(pred).sub(a.pos);
+    if (wish.length() > 5 && a.energy > 0.3) a.wantTurbo = true;
     if (wish.lengthSq() > 0.04) wish.normalize(); else wish.set(0, 0);
   }
   return wish;
@@ -481,6 +597,7 @@ function startGame() {
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   actx?.resume?.();
   S.score = [0, 0]; S.time = DURACION; S.goals = 0; S.saves = 0; S.shots = 0;
+  if (user) user.energy = 1; if (rival) rival.energy = 1;
   elA.textContent = '0'; elB.textContent = '0';
   pantalla.classList.remove('visible');
   sfx.whistle(); kickoff();
@@ -520,10 +637,18 @@ function update(dt) {
   if (input.keys.u) wish.y += 1; if (input.keys.d) wish.y -= 1; if (input.keys.l) wish.x -= 1; if (input.keys.r) wish.x += 1;
   if (wish.length() > 1) wish.normalize();
   const canMove = playing;
-  moveActor(user, canMove ? wish : new THREE.Vector2(), SPEED_USER * (ball.owner === user ? 0.9 : 1) * (input.shootDown ? 0.55 : 1), dt);
-  if (input.shootDown) { input.charge = Math.min(1, input.charge + dt / 0.85); }
+  if (user) updateEnergy(user, playing && input.turboDown, wish.lengthSq() > 0.04, dt);
+  const userSp = SPEED_USER * (ball.owner === user ? 0.9 : 1) * (input.shootDown ? 0.55 : 1) * (user && user.sprinting ? TURBO_MULT : 1);
+  moveActor(user, canMove ? wish : new THREE.Vector2(), userSp, dt);
+  if (input.shootDown) {
+    if (ball.owner !== user) { input.shootDown = false; input.charge = 0; btnChutar.classList.remove('pulsado'); }
+    else input.charge = Math.min(1, input.charge + dt / 0.85);
+  }
   // --- rival IA ---
-  moveActor(rival, playing ? aiField(rival, user, dt) : new THREE.Vector2(), SPEED_AI * (ball.owner === rival ? 0.88 : 1), dt);
+  const aiWish = playing ? aiField(rival, user, dt) : new THREE.Vector2();
+  if (rival) updateEnergy(rival, playing && !!rival.wantTurbo, aiWish.lengthSq() > 0.04, dt);
+  const aiSp = SPEED_AI * (ball.owner === rival ? 0.88 : 1) * (rival && rival.sprinting ? TURBO_MULT : 1);
+  moveActor(rival, aiWish, aiSp, dt);
   // --- porteros ---
   for (const k of [gkA, gkB]) {
     const r = playing ? aiKeeper(k, dt) : null;
@@ -566,12 +691,24 @@ function update(dt) {
       if (ball.owner && !ball.owner.keeper) {
         // robo: solo con entrada (dash) contra el poseedor
         const o = ball.owner; const dd = a.pos.distanceTo(o.pos);
-        if (a.dashT > 0 && dd < PR * 2 + 0.5 && ball.ownT > 0.7) { giveBall(a); a.dashT = 0; sfx.steal(); showBanner('¡ROBO!', a.team === 0 ? 'bAzul' : 'bRojo', 700); }
+        if ((a.dashT > 0 || a.dashEnded) && dd < PR * 2 + 0.5 && ball.ownT > 0.55) {
+          if (o.dribbleT > 0) {
+            a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
+            sfx.miss(); showBanner('¡REGATE!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('regate_falla_entrada', o, { vs: NAME(a) });
+          } else {
+            a.dashHit = true; a.dashT = 0; a.dashEnded = false;
+            giveBall(a); sfx.steal(); showBanner('¡ROBO!', a.team === 0 ? 'bAzul' : 'bRojo', 700);
+          }
+        }
       } else if (!ball.owner && d < PR + BR + 0.15 && ball.pos.z < 1.3 * ESCALA) {
         const sp = Math.hypot(ball.vel.x, ball.vel.y);
-        if (sp < 24 || a.dashT > 0) { giveBall(a); a.dashT = 0; }
+        if (sp < 24 || a.dashT > 0) { giveBall(a); a.dashT = 0; a.dashHit = true; a.dashEnded = false; }
         else { collideCircle2D(a.pos.x, a.pos.y, PR, 0.4); ball.lastTouch = a; }
       }
+    }
+    for (const a of [user, rival]) {
+      if (a.dashEnded && !a.dashHit) { a.stun = DASH_MISS_STUN; sfx.miss(); LOG('entrada_falla', a, {}); }
+      a.dashEnded = false;
     }
     keeperContact(gkA); keeperContact(gkB);
     // gol: el balón entero cruza la línea entre postes y bajo el larguero
@@ -582,20 +719,29 @@ function update(dt) {
   }
   if (S.mode === 'goal' && !ball.owner) { const n = 4; for (let i = 0; i < n; i++) stepBall(dt / n, ball.pos.clone()); }
 
-  // --- UI botón ---
+  // --- UI botones ---
   const hasBall = ball.owner === user;
-  btn.classList.toggle('entrada', !hasBall);
-  btnTxt.textContent = hasBall ? 'CHUTAR' : 'ENTRADA';
-  cargaAro.style.strokeDashoffset = String(289 * (1 - (input.shootDown ? input.charge : user.dashCd > 0 && !hasBall ? 1 - user.dashCd / 0.8 : 0)));
+  acciones.classList.toggle('con-balon', !!hasBall);
+  acciones.classList.toggle('sin-balon', !hasBall);
+  const ring = (el, fill) => { if (el) el.style.strokeDashoffset = String(289 * (1 - Math.max(0, Math.min(1, fill)))); };
+  ring(cargaAro, input.shootDown ? input.charge : 0);
+  ring(cargaRegate, user ? (user.dribbleCd > 0 ? 1 - user.dribbleCd / DRIBBLE_CD : 1) : 1);
+  ring(cargaEntrada, user ? (user.dashCd > 0 ? 1 - user.dashCd / DASH_CD_USER : 1) : 1);
+  ring(cargaTurbo, user ? user.energy : 1);
+  btnRegate.classList.toggle('cd', !!(user && user.dribbleCd > 0));
+  btnEntrada.classList.toggle('cd', !!(user && user.dashCd > 0));
+  btnTurbo.classList.toggle('pulsado', !!(input.turboDown && user && user.sprinting));
+  btnTurbo.classList.toggle('activo', !!(user && user.sprinting));
+  btnTurbo.classList.toggle('vacio', !!(user && user.energy <= TURBO_MIN && !user.sprinting));
 }
 
 function render(dt) {
   for (const a of actors) a.sync(dt, S.t);
   ballMesh.position.copy(g2t(ball.pos.x, ball.pos.y, ball.pos.z));
-  const v = new THREE.Vector3(ball.vel.x, 0, -ball.vel.y); const sp = v.length();
-  if (ball.owner && !ball.owner.keeper) { v.set(ball.owner.vel.x, 0, -ball.owner.vel.y); }
+  const v = new THREE.Vector3(ball.vel.x, 0, -ball.vel.y);
+  if (ball.owner && !ball.owner.keeper) v.set(ball.owner.vel.x, 0, -ball.owner.vel.y);
   const vs = v.length();
-  if (vs > 0.05) { const axis = new THREE.Vector3(0, 1, 0).cross(v).normalize(); ballMesh.rotateOnWorldAxis(axis, vs * dt / BR); }
+  if (vs > 0.05) { const axis = new THREE.Vector3(0, 1, 0).cross(v); if (axis.lengthSq() > 0.01) ballMesh.rotateOnWorldAxis(axis.normalize(), vs * dt / BR); }
   ballShadow.position.set(ball.pos.x, 0.025, -ball.pos.y);
   const h = ball.pos.z - BR; ballShadow.scale.setScalar(Math.max(0.4, 1 - h * 0.08)); ballShadow.material.opacity = Math.max(0.08, 0.35 - h * 0.03);
   // flecha de apuntado
