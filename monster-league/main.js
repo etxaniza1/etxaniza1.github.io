@@ -13,8 +13,8 @@ const VERTICAL = (P.has('vertical') && P.get('vertical') !== '0')
 const HORIZONTAL = !VERTICAL;
 const CAM_MODE = (P.get('camara') || (HORIZONTAL ? 'G' : 'A')).toUpperCase();
 if (HORIZONTAL) document.body.classList.add('horizontal');
-const HW = 15, HL = 24;                    // medio ancho / medio largo entre líneas (campo 30×48 m)
-const WX = 17.2, WY = 27.3;                // cara interior de las vallas (RUN_X 2.2 / RUN_Y 3.3)
+const HW = 19, HL = 24;                    // medio ancho / medio largo entre líneas (campo v5 38×48 m)
+const WX = 21.2, WY = 27.3;                // cara interior de las vallas (RUN_X 2.2 / RUN_Y 3.3)
 const GW = 5.0, POST_X = 5.28, POST_R = 0.28, GH = 4.0, GD = 2.5, BACK_H = 2.2;
 const BR = 0.35;                           // radio del balón (un pelín mayor que el 0,30 del glb para que se lea en móvil)
 const GRAV = 22;
@@ -68,7 +68,7 @@ const CAMS = {
   F: { layout: 'brawl', D: 13.16, H: 29.55, pitch: 60, fov: 40, lookOff: 3.91, follow: true, viewLen: 30.0, behind: 7.94, ahead: 22.06 },
   // G: base F pero 45° bajo la horizontal, cámara detrás del jugador (y de tu portería al defender),
   //    se ve el estadio de fondo y el cielo arriba. Sigue en Y, personajes legibles.
-  G:  { layout: 'brawl', D: 21.6, H: 25.0, pitch: 45, fov: 50, lookOff: 3.4, follow: true, viewLen: 27.5, behind: 12.5, ahead: 18.5, aheadPlay: 7.5, showBoard: false },
+  G:  { layout: 'brawl', D: 20.3, H: 23.5, pitch: 45, fov: 50, lookOff: 3.2, follow: true, viewLen: 27.5, behind: 12.5, ahead: 18.5, aheadPlay: 7.5, showBoard: false },
   // G2: 40°, un poco más alejada, aún más horizonte. El videomarcador 3D se oculta (choca con el HUD y muestra 0-0 fijo).
   G2: { layout: 'brawl', D: 27.09, H: 26.75, pitch: 40, fov: 50, lookOff: 4.79, follow: true, viewLen: 32.0, behind: 14.62, ahead: 22.0, aheadPlay: 8, showBoard: false },
 };
@@ -149,12 +149,35 @@ function cfgFollowYStart() {
   return 0;
 }
 
-function fitVisualViewport() {
+// Tamaño real de la pantalla de juego.
+// · Pantalla completa (Fullscreen API) o app en inicio (standalone/fullscreen display-mode): el área visible es
+//   la ventana entera -> innerWidth/innerHeight (visualViewport puede llegar con valores viejos tras el cambio).
+// · Navegador normal: visualViewport (excluye la barra del navegador que tapaba los botones).
+function isFullscreenLike() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) return true;
+  if (window.navigator.standalone) return true;
+  try {
+    return matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches;
+  } catch (_) { return false; }
+}
+function viewportBox() {
   const vv = window.visualViewport;
-  const w = Math.max(1, Math.round((vv && vv.width) || window.innerWidth));
-  const h = Math.max(1, Math.round((vv && vv.height) || window.innerHeight));
-  const ox = (vv && vv.offsetLeft) || 0;
-  const oy = (vv && vv.offsetTop) || 0;
+  const iw = window.innerWidth, ih = window.innerHeight;
+  const de = document.documentElement;
+  if (isFullscreenLike() || !vv) {
+    const w = Math.max(1, Math.round(iw || de.clientWidth));
+    const h = Math.max(1, Math.round(ih || de.clientHeight));
+    return { w, h, ox: 0, oy: 0 };
+  }
+  let w = Math.round(vv.width), h = Math.round(vv.height);
+  // visualViewport con orientación vieja (Chrome Android al girar/entrar en fullscreen): no fiarse si no cuadra
+  if (!w || !h || (w > h) !== (iw > ih) || w > iw + 2 || h > ih + 2) { w = iw; h = ih; return { w, h, ox: 0, oy: 0 }; }
+  return { w: Math.max(1, w), h: Math.max(1, h), ox: vv.offsetLeft || 0, oy: vv.offsetTop || 0 };
+}
+let lastVP = '';
+function fitVisualViewport() {
+  const { w, h, ox, oy } = viewportBox();
+  lastVP = `${w}x${h}@${ox},${oy}|${window.innerWidth}x${window.innerHeight}|${isFullscreenLike() ? 1 : 0}`;
   if (HORIZONTAL) {
     app.style.position = 'fixed';
     app.style.width = w + 'px';
@@ -170,6 +193,12 @@ function fitVisualViewport() {
   }
   document.documentElement.style.setProperty('--vvw', w + 'px');
   document.documentElement.style.setProperty('--vvh', h + 'px');
+  document.body.classList.toggle('pantalla-completa', isFullscreenLike());
+}
+// clave barata para detectar cambios de tamaño que no avisan con evento (se mira en cada frame)
+function vpKey() {
+  const { w, h, ox, oy } = viewportBox();
+  return `${w}x${h}@${ox},${oy}|${window.innerWidth}x${window.innerHeight}|${isFullscreenLike() ? 1 : 0}`;
 }
 function layout() {
   fitVisualViewport();
@@ -202,11 +231,26 @@ function onViewportChange() {
   if (typeof layoutMenu === 'function') layoutMenu();
   if (typeof updateOrient === 'function') updateOrient();
 }
+// Re-encaje en todos los cambios de pantalla, y otra vez unos ms después: al entrar en pantalla completa
+// o girar el móvil, Android/iOS mandan el evento antes de tener el tamaño final.
+let relayoutTimers = [];
+function onViewportChangeLate() {
+  onViewportChange();
+  relayoutTimers.forEach(clearTimeout);
+  relayoutTimers = [60, 180, 400, 800, 1500].map((ms) => setTimeout(onViewportChange, ms));
+}
 window.addEventListener('resize', onViewportChange);
+window.addEventListener('orientationchange', onViewportChangeLate);
+document.addEventListener('fullscreenchange', onViewportChangeLate);
+document.addEventListener('webkitfullscreenchange', onViewportChangeLate);
+if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', onViewportChangeLate);
+try { matchMedia('(display-mode: standalone)').addEventListener('change', onViewportChangeLate); } catch (_) {}
+try { matchMedia('(display-mode: fullscreen)').addEventListener('change', onViewportChangeLate); } catch (_) {}
 if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', onViewportChange);
   window.visualViewport.addEventListener('scroll', onViewportChange);
 }
+if (window.ResizeObserver) new ResizeObserver(() => { if (vpKey() !== lastVP) onViewportChange(); }).observe(document.documentElement);
 
 // ===================== CARGA =====================
 const loader = new GLTFLoader();
@@ -370,7 +414,7 @@ function makeBall() {
 }
 
 const ball = { pos: new THREE.Vector3(0, 0, BR), vel: new THREE.Vector3(), owner: null, noCatch: null, noCatchT: 0, lastTouch: null };
-let ballMesh, ballShadow, aimArrow, ballGhost;
+let ballMesh, ballShadow, aimArrow, ballGhost, aimLine;
 
 // ===================== ESTADO =====================
 let user, rival, gkA, gkB, actors = [];
@@ -482,8 +526,89 @@ joyZona.addEventListener('pointermove', (e) => {
 const joyEnd = (e) => { if (e.pointerId !== joyId) return; joyId = null; input.jx = input.jy = 0; joyPunta.style.transform = ''; setJoy(joyHome.x, joyHome.y); };
 joyZona.addEventListener('pointerup', joyEnd); joyZona.addEventListener('pointercancel', joyEnd);
 
-bindHold(btnChutar, () => pressShoot(), () => releaseShoot());
-bindHold(btnRegate, () => { btnRegate.classList.add('pulsado'); tryDribble(user); }, () => btnRegate.classList.remove('pulsado'));
+// ---- CHUTAR / REGATE estilo Brawl Stars ----
+// Toque corto: acción rápida hacia donde apunta el joystick de mover (o la portería rival / auto si no hay dirección).
+// Mantener: aparece un mini joystick en el botón; arrastrando apuntas (y en el chut, la distancia = potencia);
+// al soltar se ejecuta. Volver al centro cancela. Independiente del joystick de mover (multitáctil).
+const AIM_TAP_MS = 180, AIM_SHOW_MS = 110;
+const aimJoy = document.getElementById('aimJoy'), aimKnob = document.getElementById('aimKnob');
+const aim = { id: null, kind: null, el: null, cx: 0, cy: 0, t0: 0, dragged: false, shown: false, dx: 0, dy: 0, R: 60, dir: new THREE.Vector2(0, 1), power: 0, cancel: false, active: false };
+function aimRadius(el) { const r = el.getBoundingClientRect(); return Math.max(46, Math.min(84, r.width * 0.95)); }
+function aimDeadPx() { return Math.max(10, aim.R * 0.22); }
+function showAimJoy(on) {
+  aim.shown = on;
+  if (!aimJoy) return;
+  if (on) {
+    const ar = app.getBoundingClientRect();
+    aimJoy.style.width = aimJoy.style.height = (aim.R * 2) + 'px';
+    aimJoy.style.left = (aim.cx - ar.left - aim.R) + 'px';
+    aimJoy.style.top = (aim.cy - ar.top - aim.R) + 'px';
+    aimJoy.className = 'on ' + aim.kind;
+  } else { aimJoy.className = ''; aimKnob.style.transform = ''; }
+}
+function aimUpdateFromPointer(x, y) {
+  let dx = x - aim.cx, dy = y - aim.cy;
+  const L = Math.hypot(dx, dy);
+  if (L > aimDeadPx()) aim.dragged = true;
+  const k = L > aim.R ? aim.R / L : 1;
+  aim.dx = dx * k; aim.dy = dy * k;
+  if (aimKnob) aimKnob.style.transform = `translate(${aim.dx}px,${aim.dy}px)`;
+  aim.cancel = aim.dragged && L < aimDeadPx();
+  if (L > 1) aim.dir.set(dx / L, -dy / L);        // pantalla arriba = hacia la portería rival (+y), cámara G mira a +y
+  aim.power = THREE.MathUtils.clamp((Math.min(L, aim.R) - aimDeadPx()) / (aim.R - aimDeadPx()), 0, 1);
+  if (aimJoy) aimJoy.classList.toggle('cancel', aim.cancel);
+}
+function moveDir() {
+  const d = new THREE.Vector2(input.jx, input.jy);
+  if (input.keys.u) d.y += 1; if (input.keys.d) d.y -= 1; if (input.keys.l) d.x -= 1; if (input.keys.r) d.x += 1;
+  return d.lengthSq() > 0.04 ? d.normalize() : null;
+}
+function quickShot() {
+  if (S.mode !== 'play' || ball.owner !== user) return false;
+  let dir = moveDir();
+  if (!dir) dir = goalCenter(user.team).sub(user.pos);          // sin dirección: a portería rival
+  shoot(user, dir, 0.72, true); LOG('tiro_rapido', user, {});
+  return true;
+}
+function aimedShot(dir, p) {
+  if (S.mode !== 'play' || ball.owner !== user) return false;
+  shoot(user, dir.clone(), 0.35 + 0.65 * p, false); LOG('tiro_apuntado', user, { p: +p.toFixed(2) });
+  return true;
+}
+function aimEnd(e, cancelAll) {
+  if (aim.id === null || (e && e.pointerId !== aim.id)) return;
+  const el = aim.el, kind = aim.kind;
+  if (e) aimUpdateFromPointer(e.clientX, e.clientY);
+  const quick = !aim.dragged;
+  if (!cancelAll && !aim.cancel) {
+    if (kind === 'chutar') { if (quick) quickShot(); else aimedShot(aim.dir, aim.power); }
+    else { if (quick) tryDribble(user); else tryDribble(user, aim.dir); }
+  } else if (aim.cancel) LOG('apuntado_cancelado', user, { kind });
+  el.classList.remove('pulsado', 'apuntando');
+  aim.id = null; aim.kind = null; aim.el = null; aim.active = false; aim.cancel = false; aim.dragged = false;
+  showAimJoy(false);
+}
+function bindAim(el, kind) {
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (aim.id !== null || e.pointerId === joyId) return;
+    if (S.mode !== 'play' || !user || ball.owner !== user) return;
+    const r = el.getBoundingClientRect();
+    Object.assign(aim, { id: e.pointerId, kind, el, cx: r.left + r.width / 2, cy: r.top + r.height / 2, t0: performance.now(), dragged: false, shown: false, dx: 0, dy: 0, R: aimRadius(el), power: 0, cancel: false, active: true });
+    const md = moveDir(); aim.dir.copy(md || (kind === 'chutar' ? goalCenter(user.team).sub(user.pos).normalize() : user.face));
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    el.classList.add('pulsado');
+  });
+}
+window.addEventListener('pointermove', (e) => {
+  if (aim.id === null || e.pointerId !== aim.id) return;
+  aimUpdateFromPointer(e.clientX, e.clientY);
+  if (aim.dragged && !aim.shown) { showAimJoy(true); aim.el.classList.add('apuntando'); }
+}, { passive: true });
+window.addEventListener('pointerup', (e) => aimEnd(e));
+window.addEventListener('pointercancel', (e) => aimEnd(e, true));
+bindAim(btnChutar, 'chutar');
+bindAim(btnRegate, 'regate');
 bindHold(btnEntrada, () => { btnEntrada.classList.add('pulsado'); tryDash(user); }, () => btnEntrada.classList.remove('pulsado'));
 bindHold(btnTurbo, () => { input.turboDown = true; }, () => { input.turboDown = false; });
 
@@ -503,7 +628,7 @@ window.addEventListener('keyup', (e) => {
   if (e.code === 'Space') releaseShoot();
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.turboDown = false;
 });
-window.addEventListener('blur', () => { input.keys = {}; input.jx = input.jy = 0; input.turboDown = false; releaseShoot(true); });
+window.addEventListener('blur', () => { input.keys = {}; input.jx = input.jy = 0; input.turboDown = false; releaseShoot(true); aimEnd(null, true); });
 
 function pressShoot() {
   if (S.mode !== 'play' || input.shootDown) return;
@@ -529,11 +654,13 @@ function tryDash(a) {
   sfx.dash(); LOG('entrada', a, {});
   return true;
 }
-function tryDribble(a) {
+function tryDribble(a, forceDir) {
   if (!a || ball.owner !== a || a.keeper) return false;
   if (a.dribbleCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0) return false;
   const dir = new THREE.Vector2();
-  if (a === user && (Math.abs(input.jx) > 0.15 || Math.abs(input.jy) > 0.15)) dir.set(input.jx, input.jy);
+  const md = a === user ? moveDir() : null;
+  if (forceDir && forceDir.lengthSq() > 0.01) dir.copy(forceDir);
+  else if (md) dir.copy(md);
   else {
     const side = new THREE.Vector2(-a.face.y, a.face.x);
     const opp = a === user ? rival : user;
@@ -743,7 +870,7 @@ function aiField(a, opp, dt) {
   if (ball.owner === a) {
     // conducir hacia la portería, esquivando al rival
     const gk = a.team === 0 ? gkB : gkA;
-    if (!a.aimX || Math.random() < dt * 0.4) a.aimX = (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 2.5);
+    if (!a.aimX || Math.random() < dt * 0.4) a.aimX = (Math.random() < 0.5 ? -1 : 1) * (2 + Math.random() * 4.5);   // campo v5 más ancho: usa más las bandas
     const target = new THREE.Vector2(a.aimX * 0.6, atkY - dirY * 6);
     wish.copy(target).sub(a.pos).normalize();
     const toOpp = opp.pos.clone().sub(a.pos); const dO = toOpp.length();
@@ -1006,12 +1133,17 @@ function update(dt) {
   }
   if (S.mode === 'goal' && !ball.owner) { const n = 4; for (let i = 0; i < n; i++) stepBall(dt / n, ball.pos.clone()); }
 
+  // --- apuntado (CHUTAR / REGATE mantenidos) ---
+  if (aim.active) {
+    if (ball.owner !== user || S.mode !== 'play') aimEnd(null, true);
+    else if (!aim.shown && performance.now() - aim.t0 > AIM_SHOW_MS) { showAimJoy(true); aim.el.classList.add('apuntando'); }
+  }
   // --- UI botones ---
   const hasBall = ball.owner === user;
   acciones.classList.toggle('con-balon', !!hasBall);
   acciones.classList.toggle('sin-balon', !hasBall);
   const ring = (el, fill) => { if (el) el.style.strokeDashoffset = String(289 * (1 - Math.max(0, Math.min(1, fill)))); };
-  ring(cargaAro, input.shootDown ? input.charge : 0);
+  ring(cargaAro, input.shootDown ? input.charge : (aim.active && aim.kind === 'chutar' && aim.dragged && !aim.cancel ? aim.power : 0));
   ring(cargaRegate, user ? (user.dribbleCd > 0 ? 1 - user.dribbleCd / DRIBBLE_CD : 1) : 1);
   ring(cargaEntrada, user ? (user.dashCd > 0 ? 1 - user.dashCd / DASH_CD_USER : 1) : 1);
   ring(cargaTurbo, user ? user.energy : 1);
@@ -1022,6 +1154,43 @@ function update(dt) {
   btnTurbo.classList.toggle('vacio', !!(user && user.energy <= TURBO_MIN && !user.sprinting));
 }
 
+// línea de apuntado en el césped (botones CHUTAR / REGATE mantenidos)
+function makeAimLine() {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
+  const edge = new THREE.MeshBasicMaterial({ color: 0x14193a, transparent: true, opacity: 0.45, depthWrite: false, side: THREE.DoubleSide });
+  // tramo: plano 1×1 que crece hacia -Z local (adelante); se escala en Z
+  const sg = new THREE.PlaneGeometry(1, 1); sg.rotateX(-Math.PI / 2); sg.translate(0, 0, -0.5);
+  const shadow = new THREE.Mesh(sg, edge); shadow.renderOrder = 3; shadow.position.y = 0.035;
+  const strip = new THREE.Mesh(sg, mat); strip.renderOrder = 4; strip.position.y = 0.045;
+  const hs = new THREE.Shape(); hs.moveTo(-0.85, 0); hs.lineTo(0.85, 0); hs.lineTo(0, 1.25); hs.closePath();
+  const hg = new THREE.ShapeGeometry(hs); hg.rotateX(-Math.PI / 2);
+  const head = new THREE.Mesh(hg, mat); head.renderOrder = 4; head.position.y = 0.05;
+  const headSh = new THREE.Mesh(hg, edge); headSh.renderOrder = 3; headSh.position.y = 0.04; headSh.scale.setScalar(1.25);
+  g.add(shadow, strip, headSh, head);
+  g.userData = { strip, shadow, head, headSh, mat };
+  g.visible = false;
+  return g;
+}
+function updateAimLine() {
+  if (!aimLine) return;
+  const on = aim.active && aim.shown && !aim.cancel && user && ball.owner === user && S.mode === 'play';
+  aimLine.visible = !!on;
+  if (!on) return;
+  if (!aim.dragged) {      // mantenido sin arrastrar: enseña la dirección del toque rápido
+    const md = moveDir();
+    aim.dir.copy(md || (aim.kind === 'chutar' ? goalCenter(user.team).sub(user.pos).normalize() : aim.dir));
+  }
+  const isShot = aim.kind === 'chutar';
+  const len = isShot ? (aim.dragged ? 5 + 15 * aim.power : 11) : DRIBBLE_SPEED * DRIBBLE_T + 1.2;
+  const u = aimLine.userData, start = 0.9 * ESCALA, w = isShot ? 0.42 : 0.5;
+  u.mat.color.set(isShot ? (aim.dragged ? new THREE.Color().setHSL(0.14 - 0.12 * aim.power, 1, 0.55) : 0xffd23f) : 0xd77bff);
+  const body = Math.max(0.3, len - start - 1.25);
+  for (const m of [u.strip, u.shadow]) { m.scale.set(m === u.shadow ? w + 0.16 : w, 1, body); m.position.z = -start; }
+  u.head.position.z = -(start + body); u.headSh.position.z = -(start + body) + 0.12;
+  aimLine.position.copy(g2t(user.pos.x, user.pos.y, 0));
+  aimLine.rotation.y = Math.atan2(-aim.dir.x, aim.dir.y);
+}
 function render(dt) {
   if (S.mode === 'menu') { renderMenu(dt); return; }
   for (const a of actors) a.sync(dt, S.t);
@@ -1040,14 +1209,17 @@ function render(dt) {
     aimArrow.scale.set(1, 1, 0.6 + 2.4 * input.charge);
     aimArrow.children[0].material.color.setHSL(0.13 - 0.13 * input.charge, 1, 0.55);
   } else aimArrow.visible = false;
+  updateAimLine();
   if (HORIZONTAL) updateHorizCam(false);
   renderer.render(scene, camera);
 }
 
 let last = performance.now(), fpsAcc = 0, fpsN = 0;
+frame.n = 0;
 window.__game.fps = 0;
 function frame(now) {
   requestAnimationFrame(frame);
+  if (HORIZONTAL && (++frame.n % 15) === 0 && vpKey() !== lastVP) onViewportChange();   // tamaño cambiado sin evento
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (window.__game.paused) return;   // solo para pruebas automáticas (avance manual con __game.advance)
   fpsAcc += dt; fpsN++; if (fpsAcc > 1) { window.__game.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
@@ -1215,8 +1387,9 @@ async function tryLandscape() {
   if (!HORIZONTAL) return;
   try {
     const root = document.documentElement;
-    if (!document.fullscreenElement) {
-      if (root.requestFullscreen) await root.requestFullscreen();
+    const gesture = !navigator.userActivation || navigator.userActivation.isActive;
+    if (!document.fullscreenElement && gesture) {
+      if (root.requestFullscreen) await root.requestFullscreen({ navigationUI: 'hide' });
       else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
     }
   } catch (_) {}
@@ -1270,6 +1443,7 @@ function setupField(campo) {
   const am = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
   am.renderOrder = 3;
   aimArrow.add(am); aimArrow.visible = false; scene.add(aimArrow);
+  aimLine = makeAimLine(); scene.add(aimLine);
   am.rotation.set(-Math.PI / 2, 0, 0);   // la flecha apunta a -Z local (frente del personaje)
 }
 Object.assign(window.__game, {
@@ -1282,9 +1456,12 @@ Object.assign(window.__game, {
   tryLandscape, updateOrient,
   setCamMode: (m) => setCamMode(m, true),
   setJoyDir,
+  get aim() { return aim; },
+  relayout: () => onViewportChange(),
   setupMatch,
 });
 Object.defineProperty(window.__game, 'camMode', { get: () => camMode });
+Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
 (async function init() {
   const cargando = document.getElementById('cargando');
   try {
