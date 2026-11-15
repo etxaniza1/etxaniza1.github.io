@@ -7,6 +7,12 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 const P = new URLSearchParams(location.search);
 const ESCALA = parseFloat(P.get('escala') || '1.3');      // escala de personajes (1 = 2,00 m; 1.3 se lee mejor en móvil)
 const DURACION = parseFloat(P.get('tiempo') || '120');   // segundos de partido
+// Por defecto: apaisado 16:9, campo en vertical, cámara G. ?vertical=1 recupera el modo retrato antiguo.
+const VERTICAL = (P.has('vertical') && P.get('vertical') !== '0')
+  || (P.get('horizontal') === '0');
+const HORIZONTAL = !VERTICAL;
+const CAM_MODE = (P.get('camara') || (HORIZONTAL ? 'G' : 'A')).toUpperCase();
+if (HORIZONTAL) document.body.classList.add('horizontal');
 const HW = 11, HL = 24;                    // medio ancho / medio largo entre líneas
 const WX = 13.2, WY = 27.3;                // cara interior de las vallas
 const GW = 5.0, POST_X = 5.28, POST_R = 0.28, GH = 4.0, GD = 2.5, BACK_H = 2.2;
@@ -33,7 +39,7 @@ const DRIBBLE_PUSH = 0.55;   // cuánto se adelanta el balón tras cada toque (m
 const app = document.getElementById('app');
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, HORIZONTAL ? 2 : 1.5));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 const scene = new THREE.Scene();
@@ -48,25 +54,124 @@ const sun = new THREE.DirectionalLight(0xffffff, 2.1);
 sun.position.set(-0.384, 0.743, 0.548).multiplyScalar(50);   // dirección del Sol de Blender (42°,0,-35°)
 scene.add(sun);
 
+// Cámaras en pantalla apaisada 16:9 (?horizontal=1&camara=A…G2).
+// A/B/C: campo de LADO (porterías izq/der). D/E/F/G: campo VERTICAL tipo Balón Brawl
+// (portería rival ARRIBA), scroll en Y. F=60° cenital; G=45° más perspectiva, desde detrás
+// de tu portería, con horizonte / gradas de fondo arriba.
+// D,H,look en metros, coords Blender (x derecha, y hacia la portería rival, z arriba).
+const CAMS = {
+  A: { layout: 'side',  D: 32.0, H: 25.0, pitch: 38, fov: 40, xLook: 0.0, follow: false, viewHalfY: 26.5 },
+  B: { layout: 'side',  D: 21.0, H: 15.2, pitch: 40, fov: 40, xLook: 5.0, follow: true,  viewHalfY: 14.0 },
+  C: { layout: 'side',  D: 22.5, H:  9.0, pitch: 28, fov: 34, xLook: 5.5, follow: true,  viewHalfY: 10.8 },
+  D: { layout: 'brawl', D: 38.8, H: 61.1, pitch: 60, fov: 40, yLook: -3.5, follow: false, viewLen: 62.0 },
+  E: { layout: 'brawl', D: 10.08, H: 22.65, pitch: 60, fov: 40, lookOff: 3.00, follow: true, viewLen: 23.0, behind: 6.09, ahead: 16.91 },
+  F: { layout: 'brawl', D: 13.16, H: 29.55, pitch: 60, fov: 40, lookOff: 3.91, follow: true, viewLen: 30.0, behind: 7.94, ahead: 22.06 },
+  // G: base F pero 45° bajo la horizontal, cámara detrás del jugador (y de tu portería al defender),
+  //    se ve el estadio de fondo y el cielo arriba. Sigue en Y, personajes legibles.
+  G:  { layout: 'brawl', D: 23.46, H: 27.15, pitch: 45, fov: 50, lookOff: 3.69, follow: true, viewLen: 30.0, behind: 13.58, ahead: 20.0, aheadPlay: 8, showBoard: false },
+  // G2: 40°, un poco más alejada, aún más horizonte. El videomarcador 3D se oculta (choca con el HUD y muestra 0-0 fijo).
+  G2: { layout: 'brawl', D: 27.09, H: 26.75, pitch: 40, fov: 50, lookOff: 4.79, follow: true, viewLen: 32.0, behind: 14.62, ahead: 22.0, aheadPlay: 8, showBoard: false },
+};
+let camMode = CAMS[CAM_MODE] ? CAM_MODE : 'A';
+let camFollowY = 0;
+let campoRoot = null, camApron = null, camClipPlane = null;
+function camCfg() { return CAMS[camMode]; }
+function applyCamClip(side) {
+  if (!campoRoot || !camClipPlane) return;
+  campoRoot.traverse((o) => {
+    if (!o.isMesh) return;
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    ms.forEach((m) => { m.clippingPlanes = side ? [camClipPlane] : []; });
+  });
+  if (camApron) camApron.visible = !!side;
+  // Videomarcador 3D: oculto en D/E/F (se recorta y choca con el HUD). G/G2 pueden remostrarlo.
+  const hideBoard = HORIZONTAL && !side && !camCfg().showBoard;
+  campoRoot.traverse((o) => {
+    if (/^(Marcador|Texto_Marcador)/.test(o.name)) o.visible = !hideBoard;
+  });
+}
+function updateSideCam(cfg, snap) {
+  if (cfg.follow && ball && (S.mode === 'play' || S.mode === 'kickoff' || S.mode === 'goal' || S.mode === 'end')) {
+    const half = cfg.viewHalfY;
+    const target = THREE.MathUtils.clamp(ball.pos.y, -HL + half * 0.65, HL - half * 0.65);
+    camFollowY = snap ? target : camFollowY + (target - camFollowY) * 0.14;
+  } else if (!cfg.follow) {
+    camFollowY = 0;
+  }
+  camera.position.copy(g2t(cfg.D, camFollowY, cfg.H));
+  camera.up.set(0, 1, 0);
+  camera.lookAt(g2t(cfg.xLook, camFollowY, 0));
+}
+function updateBrawlCam(cfg, snap) {
+  if (cfg.follow && user && (S.mode === 'play' || S.mode === 'kickoff' || S.mode === 'goal' || S.mode === 'end')) {
+    const behind = cfg.behind || 8;
+    const lo = -HL + behind * 0.35;                 // la cámara puede quedar detrás de tu portería
+    const hi =  HL - (cfg.aheadPlay != null ? cfg.aheadPlay : (cfg.ahead || 16) * 0.28);
+    const target = THREE.MathUtils.clamp(user.pos.y, lo, hi);
+    camFollowY = snap ? target : camFollowY + (target - camFollowY) * 0.16;
+    camera.position.copy(g2t(0, camFollowY - cfg.D, cfg.H));
+    camera.up.set(0, 1, 0);
+    camera.lookAt(g2t(0, camFollowY + cfg.lookOff, 0));
+  } else {
+    camFollowY = 0;
+    camera.position.copy(g2t(0, -cfg.D, cfg.H));
+    camera.up.set(0, 1, 0);
+    camera.lookAt(g2t(0, cfg.yLook || 0, 0));
+  }
+}
+function updateHorizCam(snap) {
+  if (!HORIZONTAL) return;
+  const cfg = camCfg();
+  if (cfg.layout === 'brawl') updateBrawlCam(cfg, snap);
+  else updateSideCam(cfg, snap);
+  camera.fov = cfg.fov;
+  camera.updateProjectionMatrix();
+  applyCamClip(cfg.layout === 'side');
+}
+function setCamMode(m, snap) {
+  if (!CAMS[m]) return;
+  camMode = m;
+  camFollowY = cfgFollowYStart();
+  if (HORIZONTAL) {
+    camera.clearViewOffset();
+    updateHorizCam(true);
+  }
+}
+function cfgFollowYStart() {
+  const cfg = camCfg();
+  if (cfg.layout === 'brawl' && cfg.follow && user) {
+    const behind = cfg.behind || 8;
+    const lo = -HL + behind * 0.35;
+    const hi = HL - (cfg.aheadPlay != null ? cfg.aheadPlay : (cfg.ahead || 16) * 0.28);
+    return THREE.MathUtils.clamp(user.pos.y, lo, hi);
+  }
+  if (cfg.follow && ball) return THREE.MathUtils.clamp(ball.pos.y, -HL + (cfg.viewHalfY || 14) * 0.65, HL - (cfg.viewHalfY || 14) * 0.65);
+  return 0;
+}
+
 function layout() {
   const W = app.clientWidth, H = app.clientHeight;
   renderer.setSize(W, H, false);
-  const Hf = W * 16 / 9;                       // marco de referencia 9:16 (como el preview)
-  const t = Math.tan(THREE.MathUtils.degToRad(20));
-  if (H > Hf + 1) {
-    // móvil más alargado que 9:16: mismo encuadre arriba y franja extra abajo para los controles
-    const fullH = Hf + 2 * (H - Hf);
-    camera.fov = 2 * THREE.MathUtils.radToDeg(Math.atan(t * fullH / Hf));
-    camera.aspect = W / fullH;
-    camera.setViewOffset(W, fullH, 0, H - Hf, W, H);
+  camera.clearViewOffset();
+  camera.aspect = W / H;
+  if (HORIZONTAL) {
+    updateHorizCam(true);
   } else {
-    camera.clearViewOffset();
-    camera.aspect = W / H;
-    const hf = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(23.14 / 2)));   // fov horizontal del preview
-    // si la pantalla es más ancha que 9:16 mantenemos el FOV vertical de 40°
-    camera.fov = 40;
+    const Hf = W * 16 / 9;                       // marco de referencia 9:16 (como el preview)
+    const t = Math.tan(THREE.MathUtils.degToRad(20));
+    if (H > Hf + 1) {
+      // móvil más alargado que 9:16: mismo encuadre arriba y franja extra abajo para los controles
+      const fullH = Hf + 2 * (H - Hf);
+      camera.fov = 2 * THREE.MathUtils.radToDeg(Math.atan(t * fullH / Hf));
+      camera.aspect = W / fullH;
+      camera.setViewOffset(W, fullH, 0, H - Hf, W, H);
+    } else {
+      camera.aspect = W / H;
+      // si la pantalla es más ancha que 9:16 mantenemos el FOV vertical de 40°
+      camera.fov = 40;
+    }
+    camera.updateProjectionMatrix();
   }
-  camera.updateProjectionMatrix();
   placeJoyBase();
 }
 window.addEventListener('resize', layout);
@@ -265,8 +370,14 @@ const cargaEntrada = document.getElementById('cargaEntrada'), cargaTurbo = docum
 let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 };
 function placeJoyBase() {
   const zr = joyZona.getBoundingClientRect();
-  joyHome = { x: 92, y: zr.height - 104 };
+  if (HORIZONTAL) joyHome = { x: Math.max(64, Math.min(110, zr.width * 0.22)), y: zr.height - Math.max(56, Math.min(96, zr.height * 0.42)) };
+  else joyHome = { x: 92, y: zr.height - 104 };
   if (joyId === null) setJoy(joyHome.x, joyHome.y);
+}
+function setJoyDir(jx, jy) {
+  input.jx = jx; input.jy = jy;
+  const M = HORIZONTAL ? 40 : 52;
+  joyPunta.style.transform = `translate(${jx * M}px,${-jy * M}px)`;
 }
 function setJoy(x, y) { joyBase.style.left = x + 'px'; joyBase.style.top = y + 'px'; joyCx = x; joyCy = y; }
 
@@ -714,6 +825,7 @@ function kickoff() {
 }
 function startGame() {
   if (!user) return;
+  tryLandscape();
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   actx?.resume?.();
   S.score = [0, 0]; S.time = DURACION; S.goals = 0; S.saves = 0; S.shots = 0;
@@ -878,6 +990,7 @@ function render(dt) {
     aimArrow.scale.set(1, 1, 0.6 + 2.4 * input.charge);
     aimArrow.children[0].material.color.setHSL(0.13 - 0.13 * input.charge, 1, 0.55);
   } else aimArrow.visible = false;
+  if (HORIZONTAL) updateHorizCam(false);
   renderer.render(scene, camera);
 }
 
@@ -989,6 +1102,7 @@ function openMenu() {
 }
 async function menuPlay() {
   if (S.mode !== 'menu') return;
+  tryLandscape();
   const btn = document.getElementById('btnMenuJugar');
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   if (!window.__game.ready) { btn.textContent = 'CARGANDO…'; btn.disabled = true; }
@@ -1015,15 +1129,25 @@ function setupMatch(uk, rk) {
 }
 function layoutMenu() {
   const W = app.clientWidth, H = app.clientHeight;
+  if (!W || !H) return;
   menuCam.aspect = W / H;
-  // el personaje ocupa la franja central (entre el título y las cartas)
-  const visH = 6.7 * Math.max(1, (9 / 16) / (W / H) * 0.82);
-  const dist = visH / 2 / Math.tan(THREE.MathUtils.degToRad(menuCam.fov / 2));
-  menuCam.position.set(0, 1.25, dist);
-  menuCam.lookAt(0, 0.12, 0);
+  if (HORIZONTAL) {
+    // el personaje se ve en la mitad izquierda; encuadre un poco más cercano
+    const visH = H < 520 ? 5.5 : 4.7;
+    const dist = visH / 2 / Math.tan(THREE.MathUtils.degToRad(menuCam.fov / 2));
+    const halfW = dist * Math.tan(THREE.MathUtils.degToRad(menuCam.fov / 2)) * (W / H);
+    // lookAt descentra el personaje: hay que mirar a la derecha para que quede en la mitad izquierda
+    menuCam.position.set(0, 1.05, dist);
+    menuCam.lookAt(halfW * 0.46, 0.20, 0);
+  } else {
+    // el personaje ocupa la franja central (entre el título y las cartas)
+    const visH = 6.7 * Math.max(1, (9 / 16) / (W / H) * 0.82);
+    const dist = visH / 2 / Math.tan(THREE.MathUtils.degToRad(menuCam.fov / 2));
+    menuCam.position.set(0, 1.25, dist);
+    menuCam.lookAt(0, 0.12, 0);
+  }
   menuCam.updateProjectionMatrix();
 }
-window.addEventListener('resize', layoutMenu);
 function renderMenu(dt) {
   const m = menuChars[sel]; if (!m) return;
   menuT += dt; burst.rotation.z += dt * 0.07;
@@ -1036,9 +1160,56 @@ function renderMenu(dt) {
   renderer.render(menuScene, menuCam);
 }
 
+// ===================== ORIENTACIÓN (aviso + lock landscape) =====================
+async function tryLandscape() {
+  if (!HORIZONTAL) return;
+  try {
+    const root = document.documentElement;
+    if (!document.fullscreenElement) {
+      if (root.requestFullscreen) await root.requestFullscreen();
+      else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen();
+    }
+  } catch (_) {}
+  try {
+    if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+  } catch (_) {}
+}
+function isPortraitScreen() {
+  return window.innerHeight > window.innerWidth + 24;
+}
+function updateOrient() {
+  const show = HORIZONTAL && isPortraitScreen();
+  const el = document.getElementById('giraMovil');
+  if (el) {
+    el.classList.toggle('visible', show);
+    el.setAttribute('aria-hidden', show ? 'false' : 'true');
+  }
+  document.body.classList.toggle('gira-activo', show);
+}
+updateOrient();
+window.addEventListener('resize', () => { updateOrient(); layoutMenu(); });
+window.addEventListener('orientationchange', () => { updateOrient(); layoutMenu(); });
+const giraEl = document.getElementById('giraMovil');
+if (giraEl) {
+  giraEl.addEventListener('pointerdown', () => { tryLandscape(); });
+}
+
 // ===================== INICIO =====================
 function setupField(campo) {
-  scene.add(matte(campo.scene));
+  campoRoot = matte(campo.scene);
+  scene.add(campoRoot);
+  // Recorte de la grada derecha: solo en cámaras de LADO (A/B/C). D/E/F ven el estadio entero.
+  camClipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 16.2);
+  renderer.localClippingEnabled = true;
+  camApron = new THREE.Mesh(
+    new THREE.PlaneGeometry(70, 170),
+    new THREE.MeshStandardMaterial({ color: 0xc4684e, roughness: 1, metalness: 0 })
+  );
+  camApron.rotation.x = -Math.PI / 2;
+  camApron.position.set(16.2 + 35, -0.03, 0);
+  camApron.visible = false;
+  scene.add(camApron);
+  if (HORIZONTAL) applyCamClip(camCfg().layout === 'side');
   ballMesh = makeBall(); scene.add(ballMesh);
   // silueta del balón cuando queda tapado por un jugador (la cámara es alta y el balón va delante del pie)
   ballGhost = new THREE.Mesh(ballMesh.geometry, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, depthFunc: THREE.GreaterDepth }));
@@ -1057,7 +1228,13 @@ Object.assign(window.__game, {
   forceGoal: (team) => goalScored(team),
   selectChar: (i) => selectChar(i), menuPlay: () => menuPlay(), openMenu: () => openMenu(),
   get menuSel() { return sel; }, get rivalSel() { return rivalSel; }, CHARS,
+  HORIZONTAL, VERTICAL, CAMS,
+  tryLandscape, updateOrient,
+  setCamMode: (m) => setCamMode(m, true),
+  setJoyDir,
+  setupMatch,
 });
+Object.defineProperty(window.__game, 'camMode', { get: () => camMode });
 (async function init() {
   const cargando = document.getElementById('cargando');
   try {
@@ -1066,7 +1243,7 @@ Object.assign(window.__game, {
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; });
     buildMenuChars(); buildMenuUI();
-    layout(); layoutMenu();
+    layout(); layoutMenu(); updateOrient();
     cargando.classList.add('oculto');
     openMenu();
     window.__game.menuReady = true;

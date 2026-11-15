@@ -72,6 +72,7 @@ h1{font-size:46px;line-height:.95;font-weight:900;color:#ffd23f;-webkit-text-str
 #pantalla h1,#menu h1{font-family:"Lilita One",system-ui,sans-serif;font-weight:400}
 #menu{position:absolute;inset:0;display:none;z-index:7;color:#fff;font-family:"Lilita One",system-ui,sans-serif;touch-action:none}
 #menu.visible{display:block}
+.mDerecha{display:contents}
 .mTitulo{position:absolute;top:calc(env(safe-area-inset-top) + 2.2%);left:0;right:0;text-align:center;pointer-events:none}
 #menu h1{font-size:clamp(34px,11.5vw,50px);line-height:.9;color:#ffd23f;-webkit-text-stroke:2.5px #14193a;text-shadow:0 5px 0 #14193a;letter-spacing:1.5px;transform:rotate(-3deg)}
 #menuStage{position:absolute;left:14%;right:14%;top:15%;height:44%;touch-action:none;cursor:grab}
@@ -95,3 +96,63 @@ h1{font-size:46px;line-height:.95;font-weight:900;color:#ffd23f;-webkit-text-str
 #btnMenuJugar{font:400 30px "Lilita One",system-ui,sans-serif;color:#fff;background:#3ccf5a;border:3px solid #14193a;border-radius:18px;padding:10px 56px 12px;box-shadow:0 6px 0 #14193a;cursor:pointer;touch-action:manipulation;-webkit-text-stroke:1.5px #14193a;text-shadow:0 3px 0 #14193a;letter-spacing:1px}
 #btnMenuJugar:active{transform:translateY(4px);box-shadow:0 2px 0 #14193a}
 #btnMenuJugar:disabled{background:#7a8bb0}
+
+/* ---------- modo horizontal 16:9 (por defecto: cámara G) ---------- */
+body.horizontal #app{width:100vw;height:100dvh;margin:0}
+body.horizontal #joyZona,body.horizontal #acciones{display:block}
+body.horizontal #pistaTeclado{display:none}
+body.horizontal #marcador{font-size:14px;top:calc(env(safe-area-inset-top) + 6px);border-radius:12px}
+body.horizontal .gol{font-size:22px}
+body.horizontal .nom{font-size:10px}
+body.horizontal #reloj{font-size:18px;padding:5px 12px}
+body.horizontal #banner{font-size:42px;top:32%}
+body.horizontal #joyZona{width:36%;height:62%}
+body.horizontal #acciones{width:40%;height:62%}
+body.horizontal #joyBase{width:clamp(72px,16vh,112px);height:clamp(72px,16vh,112px);margin:calc(clamp(72px,16vh,112px)/-2) 0 0 calc(clamp(72px,16vh,112px)/-2);border-width:3px}
+body.horizontal #joyPunta{width:clamp(32px,7.2vh,52px);height:clamp(32px,7.2vh,52px);margin:calc(clamp(32px,7.2vh,52px)/-2) 0 0 calc(clamp(32px,7.2vh,52px)/-2)}
+body.horizontal #btnChutar,body.horizontal #btnEntrada{width:clamp(72px,15.5vh,104px);height:clamp(72px,15.5vh,104px);right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px)}
+body.horizontal #btnChutar .btnTxt,body.horizontal #btnEntrada .btnTxt{font-size:13px}
+body.horizontal #btnChutar .icono.icoGrande,body.horizontal #btnEntrada .icono.icoGrande{width:24px;height:24px}
+body.horizontal #btnRegate{width:clamp(56px,11.5vh,78px);height:clamp(56px,11.5vh,78px);right:clamp(86px,17.5vh,126px);bottom:calc(env(safe-area-inset-bottom) + clamp(56px,11vh,86px))}
+body.horizontal #btnTurbo{width:clamp(56px,11.5vh,78px);height:clamp(56px,11.5vh,78px);right:16px;bottom:calc(env(safe-area-inset-bottom) + clamp(92px,18vh,132px))}
+body.horizontal #btnRegate .btnTxt,body.horizontal #btnTurbo .btnTxt{font-size:10px}
+body.horizontal #pantalla h1{font-size:clamp(32px,8vh,52px)}
+body.horizontal #btnJugar{margin-top:16px;padding:10px 36px;font-size:22px}
+
+/* menú apaisado: personaje a la izquierda, cartas y JUGAR a la derecha */
+body.horizontal .mTitulo{top:calc(env(safe-area-inset-top) + 6px);left:2%;right:auto;text-align:left;z-index:2}
+body.horizontal #menu h1{font-size:clamp(22px,6.2vh,40px);line-height:.92;-webkit-text-stroke:2px #14193a;text-shadow:0 3px 0 #14193a;transform:rotate(-3deg)}
+body.horizontal #menu h1 br{display:none}
+body.horizontal #menuStage{left:2%;right:52%;top:16%;height:auto;bottom:6%;z-index:1}
+body.horizontal .mFlecha{width:clamp(40px,10vh,52px);height:clamp(40px,10vh,52px);top:50%;transform:translateY(-50%);z-index:5}
+body.horizontal .mFlecha:active{transform:translateY(calc(-50% + 3px))}
+body.horizontal .mFlecha.izq{left:10px}
+body.horizontal .mFlecha.der{left:auto;right:calc(50% + 10px)}
+body.horizontal .mFlecha svg{width:22px;height:22px}
+body.horizontal .mDerecha{display:flex;position:absolute;left:54%;right:3%;top:10%;bottom:calc(env(safe-area-inset-bottom) + 3%);flex-direction:column;align-items:center;justify-content:center;gap:clamp(8px,2.8vh,22px);pointer-events:none}
+body.horizontal .mDerecha > *{pointer-events:auto}
+body.horizontal .mInfo,body.horizontal #mCartas,body.horizontal .mAbajo{position:relative;left:auto;right:auto;top:auto;bottom:auto;width:100%}
+body.horizontal .mElige{font-size:clamp(11px,3.2vh,16px)}
+body.horizontal #mNombre{margin-top:6px;font-size:clamp(22px,7vh,40px);padding:3px 16px 6px}
+body.horizontal #mCartas{gap:10px;padding:0;justify-content:center}
+body.horizontal .carta{flex:0 0 30%;max-width:min(200px,24vh)}
+body.horizontal .cartaNom{font-size:clamp(10px,2.8vh,14px);padding:3px 0 4px}
+body.horizontal .carta.sel{transform:translateY(-5px) scale(1.05)}
+body.horizontal #mVs{font-size:clamp(12px,3.2vh,16px);margin-bottom:6px}
+body.horizontal #btnMenuJugar{font-size:clamp(20px,6.4vh,32px);padding:8px 44px 10px;border-radius:16px}
+
+/* aviso "Gira el móvil" (estilo Brawl) */
+#giraMovil{display:none;position:fixed;inset:0;z-index:40;background:#11172b;align-items:center;justify-content:center;text-align:center;touch-action:manipulation;cursor:pointer}
+#giraMovil.visible{display:flex}
+.giraCaja{display:flex;flex-direction:column;align-items:center;gap:18px;padding:24px}
+.giraIcono{width:130px;height:130px;display:flex;align-items:center;justify-content:center}
+.giraPhone{width:48px;height:80px;border:5px solid #fff;border-radius:12px;position:relative;animation:giraPhone 1.6s ease-in-out infinite;box-shadow:0 0 0 3px #11172b,0 8px 0 #0a0e1c}
+.giraPhone::before{content:"";position:absolute;top:7px;left:50%;width:12px;height:4px;background:#fff;border-radius:2px;transform:translateX(-50%)}
+.giraPhone::after{content:"";position:absolute;bottom:7px;left:50%;width:10px;height:10px;border:2px solid #fff;border-radius:50%;transform:translateX(-50%)}
+@keyframes giraPhone{
+  0%,18%{transform:rotate(0deg)}
+  42%,72%{transform:rotate(90deg)}
+  100%{transform:rotate(0deg)}
+}
+.giraTitulo{font-family:"Lilita One",system-ui,sans-serif;font-size:clamp(34px,9vw,56px);line-height:.95;color:#ffd23f;-webkit-text-stroke:2.5px #14193a;text-shadow:0 5px 0 #14193a;letter-spacing:1px}
+.giraSub{color:#cfe0ff;font-weight:800;font-size:clamp(14px,3.8vw,18px);text-shadow:0 2px 0 #14193a}
