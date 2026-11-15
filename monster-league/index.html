@@ -56,16 +56,24 @@
     </div>
   </div>
   <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) · SHIFT: turbo · E: regate / entrada</div>
-  <div id="pantalla" class="visible">
+  <div id="menu">
+    <div class="mTitulo"><h1>MONSTER<br>LEAGUE</h1></div>
+    <div id="menuStage" aria-label="Personaje (arrastra para girar)"></div>
+    <button id="mPrev" class="mFlecha izq" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button>
+    <button id="mNext" class="mFlecha der" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
+    <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div></div>
+    <div id="mCartas"></div>
+    <div class="mAbajo"><div id="mVs"></div><button id="btnMenuJugar">JUGAR</button></div>
+  </div>
+  <div id="pantalla">
     <div class="caja">
       <h1>MONSTER<br>LEAGUE</h1>
-      <p class="sub">Prototipo jugable</p>
       <div id="resultado"></div>
-      <button id="btnJugar">JUGAR</button>
-      <p class="ayuda" id="ayuda">Joystick: mover<br>CHUTAR (mantén para cargar) · REGATE · TURBO<br>Sin balón, ENTRADA para robar.<br>Teclado: WASD + ESPACIO · SHIFT turbo · E regate/entrada</p>
+      <button id="btnJugar">JUGAR OTRA VEZ</button>
+      <button id="btnMenu">CAMBIAR PERSONAJE</button>
     </div>
   </div>
-  <div id="cargando">Cargando estadio…</div>
+  <div id="cargando">Cargando…</div>
 </div>
 <script type="module" src="main.js"></script>
 </body>
