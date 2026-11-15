@@ -1,0 +1,13 @@
+{
+  "name": "Monster League",
+  "short_name": "Monster League",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#11172b",
+  "theme_color": "#1b2440",
+  "icons": [
+    { "src": "assets/cards/conazo.png", "sizes": "240x240", "type": "image/png", "purpose": "any" }
+  ]
+}

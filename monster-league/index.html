@@ -8,6 +8,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
 <title>Monster League · Prototipo</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="assets/cards/conazo.png">
 <link rel="stylesheet" href="style.css">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
@@ -55,6 +58,7 @@
       </div>
     </div>
   </div>
+  <div id="aimJoy" aria-hidden="true"><div id="aimCancel">✕</div><div id="aimKnob"></div></div>
   <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) · SHIFT: turbo · E: regate / entrada</div>
   <div id="menu">
     <div class="mTitulo"><h1>MONSTER<br> LEAGUE</h1></div>
