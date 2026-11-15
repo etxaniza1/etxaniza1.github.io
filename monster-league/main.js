@@ -13,8 +13,8 @@ const VERTICAL = (P.has('vertical') && P.get('vertical') !== '0')
 const HORIZONTAL = !VERTICAL;
 const CAM_MODE = (P.get('camara') || (HORIZONTAL ? 'G' : 'A')).toUpperCase();
 if (HORIZONTAL) document.body.classList.add('horizontal');
-const HW = 11, HL = 24;                    // medio ancho / medio largo entre líneas
-const WX = 13.2, WY = 27.3;                // cara interior de las vallas
+const HW = 15, HL = 24;                    // medio ancho / medio largo entre líneas (campo 30×48 m)
+const WX = 17.2, WY = 27.3;                // cara interior de las vallas (RUN_X 2.2 / RUN_Y 3.3)
 const GW = 5.0, POST_X = 5.28, POST_R = 0.28, GH = 4.0, GD = 2.5, BACK_H = 2.2;
 const BR = 0.35;                           // radio del balón (un pelín mayor que el 0,30 del glb para que se lea en móvil)
 const GRAV = 22;
@@ -68,7 +68,7 @@ const CAMS = {
   F: { layout: 'brawl', D: 13.16, H: 29.55, pitch: 60, fov: 40, lookOff: 3.91, follow: true, viewLen: 30.0, behind: 7.94, ahead: 22.06 },
   // G: base F pero 45° bajo la horizontal, cámara detrás del jugador (y de tu portería al defender),
   //    se ve el estadio de fondo y el cielo arriba. Sigue en Y, personajes legibles.
-  G:  { layout: 'brawl', D: 23.46, H: 27.15, pitch: 45, fov: 50, lookOff: 3.69, follow: true, viewLen: 30.0, behind: 13.58, ahead: 20.0, aheadPlay: 8, showBoard: false },
+  G:  { layout: 'brawl', D: 21.6, H: 25.0, pitch: 45, fov: 50, lookOff: 3.4, follow: true, viewLen: 27.5, behind: 12.5, ahead: 18.5, aheadPlay: 7.5, showBoard: false },
   // G2: 40°, un poco más alejada, aún más horizonte. El videomarcador 3D se oculta (choca con el HUD y muestra 0-0 fijo).
   G2: { layout: 'brawl', D: 27.09, H: 26.75, pitch: 40, fov: 50, lookOff: 4.79, follow: true, viewLen: 32.0, behind: 14.62, ahead: 22.0, aheadPlay: 8, showBoard: false },
 };
@@ -149,7 +149,30 @@ function cfgFollowYStart() {
   return 0;
 }
 
+function fitVisualViewport() {
+  const vv = window.visualViewport;
+  const w = Math.max(1, Math.round((vv && vv.width) || window.innerWidth));
+  const h = Math.max(1, Math.round((vv && vv.height) || window.innerHeight));
+  const ox = (vv && vv.offsetLeft) || 0;
+  const oy = (vv && vv.offsetTop) || 0;
+  if (HORIZONTAL) {
+    app.style.position = 'fixed';
+    app.style.width = w + 'px';
+    app.style.height = h + 'px';
+    app.style.left = ox + 'px';
+    app.style.top = oy + 'px';
+    app.style.right = 'auto';
+    app.style.bottom = 'auto';
+    app.style.margin = '0';
+  } else {
+    app.style.position = app.style.width = app.style.height = '';
+    app.style.left = app.style.top = app.style.right = app.style.bottom = app.style.margin = '';
+  }
+  document.documentElement.style.setProperty('--vvw', w + 'px');
+  document.documentElement.style.setProperty('--vvh', h + 'px');
+}
 function layout() {
+  fitVisualViewport();
   const W = app.clientWidth, H = app.clientHeight;
   renderer.setSize(W, H, false);
   camera.clearViewOffset();
@@ -174,7 +197,16 @@ function layout() {
   }
   placeJoyBase();
 }
-window.addEventListener('resize', layout);
+function onViewportChange() {
+  layout();
+  if (typeof layoutMenu === 'function') layoutMenu();
+  if (typeof updateOrient === 'function') updateOrient();
+}
+window.addEventListener('resize', onViewportChange);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', onViewportChange);
+  window.visualViewport.addEventListener('scroll', onViewportChange);
+}
 
 // ===================== CARGA =====================
 const loader = new GLTFLoader();
@@ -368,15 +400,33 @@ const btnEntrada = document.getElementById('btnEntrada'), btnTurbo = document.ge
 const cargaAro = document.getElementById('carga'), cargaRegate = document.getElementById('cargaRegate');
 const cargaEntrada = document.getElementById('cargaEntrada'), cargaTurbo = document.getElementById('cargaTurbo');
 let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 };
+function cssEnvPx(expr) {
+  const el = document.createElement('div');
+  el.style.cssText = `position:fixed;visibility:hidden;pointer-events:none;width:${expr};height:0;`;
+  document.body.appendChild(el);
+  const v = el.getBoundingClientRect().width;
+  el.remove();
+  return Number.isFinite(v) ? v : 0;
+}
 function placeJoyBase() {
   const zr = joyZona.getBoundingClientRect();
-  if (HORIZONTAL) joyHome = { x: Math.max(64, Math.min(110, zr.width * 0.22)), y: zr.height - Math.max(56, Math.min(96, zr.height * 0.42)) };
-  else joyHome = { x: 92, y: zr.height - 104 };
+  if (!zr.width || !zr.height) return;
+  if (HORIZONTAL) {
+    const short = Math.min(app.clientWidth, app.clientHeight);
+    const joyS = Math.max(64, Math.min(112, short * 0.20));
+    const pad = Math.max(10, short * 0.018);
+    const sl = cssEnvPx('env(safe-area-inset-left, 0px)');
+    const sb = cssEnvPx('env(safe-area-inset-bottom, 0px)');
+    joyHome = { x: sl + pad + joyS / 2, y: zr.height - (sb + pad + joyS / 2) };
+  } else {
+    joyHome = { x: 92, y: zr.height - 104 };
+  }
   if (joyId === null) setJoy(joyHome.x, joyHome.y);
 }
 function setJoyDir(jx, jy) {
   input.jx = jx; input.jy = jy;
-  const M = HORIZONTAL ? 40 : 52;
+  const short = Math.min(app.clientWidth || 390, app.clientHeight || 390);
+  const M = HORIZONTAL ? Math.max(28, Math.min(48, short * 0.08)) : 52;
   joyPunta.style.transform = `translate(${jx * M}px,${-jy * M}px)`;
 }
 function setJoy(x, y) { joyBase.style.left = x + 'px'; joyBase.style.top = y + 'px'; joyCx = x; joyCy = y; }
@@ -891,7 +941,7 @@ function update(dt) {
     const s = k.team === 0 ? -1 : 1;
     // el portero no sale de su área
     k.pos.y = s > 0 ? THREE.MathUtils.clamp(k.pos.y, HL - 6, HL - 0.7) : THREE.MathUtils.clamp(k.pos.y, -HL + 0.7, -HL + 6);
-    k.pos.x = THREE.MathUtils.clamp(k.pos.x, -8, 8);
+    k.pos.x = THREE.MathUtils.clamp(k.pos.x, -10, 10);
   }
   separate();
   for (const a of actors) updateKick(a, dt);
@@ -1199,14 +1249,14 @@ function setupField(campo) {
   campoRoot = matte(campo.scene);
   scene.add(campoRoot);
   // Recorte de la grada derecha: solo en cámaras de LADO (A/B/C). D/E/F ven el estadio entero.
-  camClipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 16.2);
+  camClipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), WX + 3.0);
   renderer.localClippingEnabled = true;
   camApron = new THREE.Mesh(
     new THREE.PlaneGeometry(70, 170),
     new THREE.MeshStandardMaterial({ color: 0xc4684e, roughness: 1, metalness: 0 })
   );
   camApron.rotation.x = -Math.PI / 2;
-  camApron.position.set(16.2 + 35, -0.03, 0);
+  camApron.position.set(WX + 3.0 + 35, -0.03, 0);
   camApron.visible = false;
   scene.add(camApron);
   if (HORIZONTAL) applyCamClip(camCfg().layout === 'side');

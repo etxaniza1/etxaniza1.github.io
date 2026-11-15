@@ -1,6 +1,6 @@
 @font-face{font-family:"Lilita One";src:url(vendor/fonts/LilitaOne-Regular.ttf) format("truetype");font-display:swap}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-html,body{position:fixed;inset:0;width:100%;height:100%;overflow:hidden;background:#11172b;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;touch-action:none;overscroll-behavior:none}
+html,body{position:fixed;inset:0;width:100%;height:100%;height:100svh;overflow:hidden;background:#11172b;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;touch-action:none;overscroll-behavior:none}
 #app{position:relative;height:100%;height:100dvh;width:min(100vw,calc(100dvh*9/16));margin:0 auto;overflow:hidden;background:#9fd0f0;touch-action:none}
 @media (max-aspect-ratio:9/16){#app{width:100vw}}
 #c{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
@@ -62,8 +62,8 @@ h1{font-size:46px;line-height:.95;font-weight:900;color:#ffd23f;-webkit-text-str
 #cargando.oculto{display:none}
 #pistaTeclado{display:none;position:absolute;left:0;right:0;bottom:10px;text-align:center;color:#fff;font-weight:800;font-size:13px;text-shadow:0 2px 0 rgba(0,0,0,.6);pointer-events:none;z-index:5}
 @media (hover:hover) and (pointer:fine) and (min-width:600px){
-  #joyZona,#acciones{display:none}
-  #pistaTeclado{display:block}
+  body:not(.horizontal) #joyZona,body:not(.horizontal) #acciones{display:none}
+  body:not(.horizontal) #pistaTeclado{display:block}
 }
 
 /* ---------- menú de selección de personaje ---------- */
@@ -97,25 +97,49 @@ h1{font-size:46px;line-height:.95;font-weight:900;color:#ffd23f;-webkit-text-str
 #btnMenuJugar:active{transform:translateY(4px);box-shadow:0 2px 0 #14193a}
 #btnMenuJugar:disabled{background:#7a8bb0}
 
-/* ---------- modo horizontal 16:9 (por defecto: cámara G) ---------- */
-body.horizontal #app{width:100vw;height:100dvh;margin:0}
-body.horizontal #joyZona,body.horizontal #acciones{display:block}
+/* ---------- modo horizontal (cámara G). #app se ajusta al visualViewport por JS ---------- */
+body.horizontal{
+  --safe-t:env(safe-area-inset-top, 0px);
+  --safe-r:env(safe-area-inset-right, 0px);
+  --safe-b:env(safe-area-inset-bottom, 0px);
+  --safe-l:env(safe-area-inset-left, 0px);
+  --ui-pad:max(10px, 1.8vmin);
+  --btn-c:clamp(58px, 18vmin, 90px);
+  --btn-s:clamp(46px, 14vmin, 70px);
+  --joy-s:clamp(64px, 20vmin, 112px);
+}
+body.horizontal #app{position:fixed;left:0;top:0;width:100%;width:100svw;height:100%;height:100svh;margin:0;overflow:hidden}
+body.horizontal #joyZona,body.horizontal #acciones{display:block !important;z-index:20;overflow:visible;pointer-events:none}
+body.horizontal #joyZona{pointer-events:auto}
 body.horizontal #pistaTeclado{display:none}
-body.horizontal #marcador{font-size:14px;top:calc(env(safe-area-inset-top) + 6px);border-radius:12px}
+body.horizontal #marcador{font-size:14px;top:calc(var(--safe-t) + 6px);border-radius:12px;z-index:21}
 body.horizontal .gol{font-size:22px}
 body.horizontal .nom{font-size:10px}
 body.horizontal #reloj{font-size:18px;padding:5px 12px}
-body.horizontal #banner{font-size:42px;top:32%}
-body.horizontal #joyZona{width:36%;height:62%}
-body.horizontal #acciones{width:40%;height:62%}
-body.horizontal #joyBase{width:clamp(72px,16vh,112px);height:clamp(72px,16vh,112px);margin:calc(clamp(72px,16vh,112px)/-2) 0 0 calc(clamp(72px,16vh,112px)/-2);border-width:3px}
-body.horizontal #joyPunta{width:clamp(32px,7.2vh,52px);height:clamp(32px,7.2vh,52px);margin:calc(clamp(32px,7.2vh,52px)/-2) 0 0 calc(clamp(32px,7.2vh,52px)/-2)}
-body.horizontal #btnChutar,body.horizontal #btnEntrada{width:clamp(72px,15.5vh,104px);height:clamp(72px,15.5vh,104px);right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px)}
-body.horizontal #btnChutar .btnTxt,body.horizontal #btnEntrada .btnTxt{font-size:13px}
-body.horizontal #btnChutar .icono.icoGrande,body.horizontal #btnEntrada .icono.icoGrande{width:24px;height:24px}
-body.horizontal #btnRegate{width:clamp(56px,11.5vh,78px);height:clamp(56px,11.5vh,78px);right:clamp(86px,17.5vh,126px);bottom:calc(env(safe-area-inset-bottom) + clamp(56px,11vh,86px))}
-body.horizontal #btnTurbo{width:clamp(56px,11.5vh,78px);height:clamp(56px,11.5vh,78px);right:16px;bottom:calc(env(safe-area-inset-bottom) + clamp(92px,18vh,132px))}
-body.horizontal #btnRegate .btnTxt,body.horizontal #btnTurbo .btnTxt{font-size:10px}
+body.horizontal #banner{font-size:42px;top:32%;z-index:22}
+body.horizontal #joyZona{left:0;bottom:0;width:46%;height:78%}
+body.horizontal #acciones{right:0;bottom:0;width:52%;height:78%}
+body.horizontal #joyBase{width:var(--joy-s);height:var(--joy-s);margin:calc(var(--joy-s)/-2) 0 0 calc(var(--joy-s)/-2);border-width:3px}
+body.horizontal #joyPunta{width:calc(var(--joy-s)*0.44);height:calc(var(--joy-s)*0.44);margin:calc(var(--joy-s)*-0.22) 0 0 calc(var(--joy-s)*-0.22)}
+/* Arco estilo Brawl: CHUTAR grande abajo-derecha; REGATE a su izquierda; TURBO encima. ENTRADA en el sitio de CHUTAR. */
+body.horizontal #btnChutar,body.horizontal #btnEntrada{
+  width:var(--btn-c);height:var(--btn-c);
+  right:calc(var(--safe-r) + var(--ui-pad));
+  bottom:calc(var(--safe-b) + var(--ui-pad));
+}
+body.horizontal #btnChutar .btnTxt,body.horizontal #btnEntrada .btnTxt{font-size:clamp(11px, 3.4vmin, 15px)}
+body.horizontal #btnChutar .icono.icoGrande,body.horizontal #btnEntrada .icono.icoGrande{width:clamp(20px, 5.5vmin, 28px);height:clamp(20px, 5.5vmin, 28px)}
+body.horizontal #btnRegate{
+  width:var(--btn-s);height:var(--btn-s);
+  right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) + 6px);
+  bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) * 0.42);
+}
+body.horizontal #btnTurbo{
+  width:var(--btn-s);height:var(--btn-s);
+  right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) * 0.16);
+  bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) + 6px);
+}
+body.horizontal #btnRegate .btnTxt,body.horizontal #btnTurbo .btnTxt{font-size:clamp(9px, 2.7vmin, 11px)}
 body.horizontal #pantalla h1{font-size:clamp(32px,8vh,52px)}
 body.horizontal #btnJugar{margin-top:16px;padding:10px 36px;font-size:22px}
 
