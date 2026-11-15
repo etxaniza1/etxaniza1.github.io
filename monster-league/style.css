@@ -1,3 +1,4 @@
+@font-face{font-family:"Lilita One";src:url(vendor/fonts/LilitaOne-Regular.ttf) format("truetype");font-display:swap}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 html,body{position:fixed;inset:0;width:100%;height:100%;overflow:hidden;background:#11172b;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;touch-action:none;overscroll-behavior:none}
 #app{position:relative;height:100%;height:100dvh;width:min(100vw,calc(100dvh*9/16));margin:0 auto;overflow:hidden;background:#9fd0f0;touch-action:none}
@@ -54,7 +55,7 @@ html,body{position:fixed;inset:0;width:100%;height:100%;overflow:hidden;backgrou
 h1{font-size:46px;line-height:.95;font-weight:900;color:#ffd23f;-webkit-text-stroke:2px #1b2440;text-shadow:0 5px 0 #1b2440;letter-spacing:1px}
 .sub{margin-top:8px;opacity:.8;font-weight:700}
 #resultado{margin:18px 0 0;font-size:26px;font-weight:900}
-#btnJugar{margin-top:26px;font:900 24px system-ui,sans-serif;color:#fff;background:#3ccf5a;border:none;border-radius:16px;padding:14px 46px;box-shadow:0 6px 0 #1f8a36;cursor:pointer;touch-action:manipulation}
+#btnJugar{margin-top:26px;font-family:"Lilita One",system-ui,sans-serif !important;font:900 24px system-ui,sans-serif;color:#fff;background:#3ccf5a;border:none;border-radius:16px;padding:14px 46px;box-shadow:0 6px 0 #1f8a36;cursor:pointer;touch-action:manipulation}
 #btnJugar:active{transform:translateY(4px);box-shadow:0 2px 0 #1f8a36}
 .ayuda{margin-top:22px;font-size:13px;opacity:.85;line-height:1.5}
 #cargando{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#11172b;color:#fff;font-weight:800;font-size:18px;z-index:9}
@@ -64,3 +65,33 @@ h1{font-size:46px;line-height:.95;font-weight:900;color:#ffd23f;-webkit-text-str
   #joyZona,#acciones{display:none}
   #pistaTeclado{display:block}
 }
+
+/* ---------- menú de selección de personaje ---------- */
+#btnMenu{display:block;margin:14px auto 0;font:400 17px "Lilita One",system-ui,sans-serif;color:#1b2440;background:#ffd23f;border:none;border-radius:14px;padding:10px 22px;box-shadow:0 5px 0 #b8901a;cursor:pointer;touch-action:manipulation}
+#btnMenu:active{transform:translateY(3px);box-shadow:0 2px 0 #b8901a}
+#pantalla h1,#menu h1{font-family:"Lilita One",system-ui,sans-serif;font-weight:400}
+#menu{position:absolute;inset:0;display:none;z-index:7;color:#fff;font-family:"Lilita One",system-ui,sans-serif;touch-action:none}
+#menu.visible{display:block}
+.mTitulo{position:absolute;top:calc(env(safe-area-inset-top) + 2.2%);left:0;right:0;text-align:center;pointer-events:none}
+#menu h1{font-size:clamp(34px,11.5vw,50px);line-height:.9;color:#ffd23f;-webkit-text-stroke:2.5px #14193a;text-shadow:0 5px 0 #14193a;letter-spacing:1.5px;transform:rotate(-3deg)}
+#menuStage{position:absolute;left:14%;right:14%;top:15%;height:44%;touch-action:none;cursor:grab}
+.mFlecha{position:absolute;top:36%;width:52px;height:52px;border-radius:50%;border:3px solid #14193a;background:#ffd23f;box-shadow:0 5px 0 #14193a;display:flex;align-items:center;justify-content:center;cursor:pointer;touch-action:manipulation;padding:0}
+.mFlecha svg{width:26px;height:26px;fill:none;stroke:#14193a;stroke-width:4;stroke-linecap:round;stroke-linejoin:round}
+.mFlecha:active{transform:translateY(3px);box-shadow:0 2px 0 #14193a}
+.mFlecha.izq{left:12px}.mFlecha.der{right:12px}
+.mInfo{position:absolute;top:58.5%;left:0;right:0;text-align:center;pointer-events:none}
+.mElige{font-size:14px;letter-spacing:1.5px;color:#cfe0ff;text-shadow:0 2px 0 #14193a}
+#mNombre{--c:#F2751A;display:inline-block;margin-top:2px;font-size:clamp(30px,9.5vw,40px);line-height:1;color:#fff;-webkit-text-stroke:2px #14193a;text-shadow:0 4px 0 #14193a;padding:4px 18px 8px;border-radius:14px;background:var(--c);box-shadow:0 4px 0 #14193a;border:3px solid #14193a}
+#mCartas{position:absolute;top:70%;left:0;right:0;display:flex;justify-content:center;gap:3.5%;padding:0 4%}
+.carta{--c:#888;flex:0 0 28%;max-width:120px;border-radius:14px;border:3px solid #14193a;background:var(--c);box-shadow:0 5px 0 #14193a;overflow:hidden;cursor:pointer;transition:transform .15s;touch-action:manipulation}
+.carta .cartaFoto{background:radial-gradient(circle at 50% 70%,rgba(255,255,255,.35),rgba(255,255,255,0) 70%);aspect-ratio:1/1;display:flex;align-items:flex-end;justify-content:center}
+.carta img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none}
+.cartaNom{background:#14193a;color:#fff;font-size:13px;text-align:center;padding:4px 0 5px;letter-spacing:.5px}
+.carta.sel{transform:translateY(-7px) scale(1.06);border-color:#ffd23f;box-shadow:0 0 0 3px #14193a,0 8px 0 #14193a}
+.carta.sel .cartaNom{background:#ffd23f;color:#14193a}
+.mAbajo{position:absolute;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 3%);text-align:center}
+#mVs{font-size:15px;letter-spacing:.5px;text-shadow:0 2px 0 #14193a;margin-bottom:8px}
+#mVs b{font-weight:400;display:inline-block;margin-left:6px;padding:2px 10px 3px;border-radius:9px;border:2px solid #14193a;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a}
+#btnMenuJugar{font:400 30px "Lilita One",system-ui,sans-serif;color:#fff;background:#3ccf5a;border:3px solid #14193a;border-radius:18px;padding:10px 56px 12px;box-shadow:0 6px 0 #14193a;cursor:pointer;touch-action:manipulation;-webkit-text-stroke:1.5px #14193a;text-shadow:0 3px 0 #14193a;letter-spacing:1px}
+#btnMenuJugar:active{transform:translateY(4px);box-shadow:0 2px 0 #14193a}
+#btnMenuJugar:disabled{background:#7a8bb0}
