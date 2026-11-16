@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=24">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -66,6 +66,8 @@
       </div>
     </div>
   </div>
+  <div id="swipeZona" aria-hidden="true"></div>
+  <canvas id="swipeTrail" aria-hidden="true"></canvas>
   <div id="aimJoy" aria-hidden="true"><div id="aimCancel">✕</div><div id="aimKnob"></div></div>
   <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) · SHIFT: turbo · E: regate / entrada · Q: chut alto · ESC: pausa</div>
   <div id="menu">
@@ -78,7 +80,7 @@
     <div class="mDerecha">
       <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div></div>
       <div id="mCartas"></div>
-      <div class="mAbajo"><div id="mVs"></div><button id="btnMenuCartas">CARTAS</button><button id="btnMenuTienda">TIENDA</button><button id="btnMenuPractica">PRÁCTICA</button><button id="btnMenuJugar">JUGAR</button></div>
+      <div class="mAbajo"><div id="mVs"></div><button id="btnMenuCartas">CARTAS</button><button id="btnMenuTienda">TIENDA</button><button id="btnMenuPractica">PRÁCTICA</button><div class="mFila"><button id="btnMenuTorneo" class="mModo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8M10.5 13h3v3h-3zM8 16h8l1 4H7z"/></svg>TORNEO</button><button id="btnMenuJugar">JUGAR</button><button id="btnMenuLiga" class="mModo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h16M4 20h10"/></svg>LIGA</button></div></div>
     </div>
   </div>
   <div id="pausa">
@@ -104,6 +106,13 @@
     <button id="colNext" class="mFlecha der" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
     <div class="colAbajo"><button id="colCerrar" class="ajBtn ajVolver">VOLVER</button><button id="colElegir" class="ajBtn">ELEGIR</button></div>
   </div>
+  <div id="comp" aria-label="Torneo y liga">
+    <div class="coCaja">
+      <div class="coCab"><div id="coTit" class="coTit">TORNEO</div><div id="coTu" class="coTu"></div></div>
+      <div id="coCuerpo"></div>
+      <div class="coBotones"><button id="coSalir" class="ajBtn ajVolver">MENÚ</button><button id="coNuevo" class="ajBtn coNuevo">NUEVO</button><button id="coJugar" class="ajBtn coJugar">JUGAR</button></div>
+    </div>
+  </div>
   <div id="vsCartas"></div>
   <div id="fpsMeter"></div>
   <div id="ajustes" aria-label="Ajustes">
@@ -116,6 +125,8 @@
       </div>
       <div id="ajInfo" class="ajInfo"></div>
       <button id="ajAsistencia" class="ajBtn ajToggle">ASISTENCIA DE APUNTADO: SÍ</button>
+      <button id="ajDesliz" class="ajBtn ajToggle">CHUT POR DESLIZAMIENTO: NO</button>
+      <div id="ajDeslizNota" class="ajNota">Desliza desde CHUTAR o la zona derecha · <b>rápido</b> = más potencia · <b>largo</b> = más alto · toque = chut rápido</div>
       <button id="ajInstantaneo" class="ajBtn ajToggle">DISPARO INSTANTÁNEO AL TOCAR (SIN APUNTAR): NO</button>
       <button id="ajFps" class="ajBtn ajToggle">CONTADOR FPS: NO</button>
       <button id="ajCerrar" class="ajBtn ajVolver">VOLVER</button>
@@ -154,6 +165,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=23"></script>
+<script type="module" src="main.js?v=24"></script>
 </body>
 </html>
