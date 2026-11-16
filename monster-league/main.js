@@ -30,15 +30,16 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=19';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=20';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
   { key: 'buton', name: 'BUTÓN', color: '#F8B715' },
   { key: 'lobo', name: 'LOBO', color: '#3B4FA8' },
-  { key: 'zorro', name: 'ZORRO', color: '#E2552D' },
-  { key: 'gecko', name: 'GECKO', color: '#58A83A' },
+  { key: 'zorro', name: 'ZORRO', color: '#E2552D', toon: true },
+  { key: 'gecko', name: 'GECKO', color: '#58A83A', toon: true },
   { key: 'rino', name: 'RINO', color: '#7C838B' },
+  { key: 'turtobola', name: 'TURTOBOLA', color: '#1F7A5A', toon: true },   // update 20: personaje nuevo (Tripo)
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`, ...c }));
 // ===================== STATS DE PERSONAJE (update 17) =====================
 // Escala 1-100. ATAQUE: vel (velocidad), tir (potencia de tiro), pre (precisión/control), reg (regate).
@@ -51,6 +52,7 @@ const STATS = {
   lobo: { vel: 88, tir: 78, pre: 76, reg: 80, ent: 88, fis: 74, ref: 72, pos: 'MCD', lema: 'Cazador: rápido y muerde en la presión' },
   zorro: { vel: 86, tir: 72, pre: 90, reg: 88, ent: 70, fis: 64, ref: 86, pos: 'MP', lema: 'Astuto: precisión y engaño' },
   gecko: { vel: 93, tir: 66, pre: 78, reg: 90, ent: 76, fis: 60, ref: 93, pos: 'EI', lema: 'Eléctrico: el más rápido, tiro flojo' },
+  turtobola: { vel: 64, tir: 80, pre: 72, reg: 59, ent: 90, fis: 96, ref: 95, pos: 'POR', lema: 'Blindado: lento, pero bajo palos no pasa nada' },
   rino: { vel: 70, tir: 94, pre: 68, reg: 64, ent: 86, fis: 92, ref: 82, pos: 'DC', lema: 'Ariete: el cañón más fuerte' },
 };
 const STAT_KEYS = ['vel', 'tir', 'pre', 'reg', 'ent', 'fis', 'ref'];
@@ -150,7 +152,7 @@ function applyTextureQuality(root) {
 }
 function shadowFlags(root, cast, receive) {
   if (!root) return;
-  root.traverse((o) => { if (o.isMesh && !(o.material && o.material.isMeshBasicMaterial)) { o.castShadow = cast; o.receiveShadow = receive; } });
+  root.traverse((o) => { if (o.isMesh && !o.userData.outline && !(o.material && o.material.isMeshBasicMaterial && !(o.material.userData && o.material.userData.toon))) { o.castShadow = cast; o.receiveShadow = receive && !(o.material.userData && o.material.userData.toon); } });
 }
 // sombras: nivel 0 = las de la calidad; 1 = sin suavizado; 2 = 1024 px; 3 = solo sombra "blob"
 function shadowSize() {
@@ -191,6 +193,7 @@ function applyQuality(reason) {
   // sombras "blob" bajo los personajes: más suaves si hay sombra real (siguen dando contacto con el suelo)
   let acts = []; try { acts = actors; } catch (_) {}
   for (const a of acts) { if (a.shadow) a.shadow.material.opacity = on ? 0.16 : 0.3; applyLOD(a); }
+  OUTLINE_MAT.visible = AJ.quality !== 'baja';   // update 20: contorno caricatura apagado en Baja
   applyTextureQuality();
   window.__game && (window.__game.quality = { level: AJ.quality, pixelRatio: renderer.getPixelRatio(), shadows: on ? size : 0, soft: on && soft, shadowEvery: on ? shadowEvery : 0, lod: q.lod, fallbackSteps: QS.steps, prStep: QS.prStep, shadowLevel: QS.shadowLevel });
   try { updateFpsMeter(); } catch (_) {}
@@ -230,7 +233,7 @@ function qualityTick(fps) {
 
 // ---- LOD de personajes (meshopt simplifier, se carga aparte; si no está listo se usa el modelo completo) ----
 let Simplifier = null;
-const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=19')
+const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=20')
   .then((m) => m.MeshoptSimplifier.ready.then(() => { Simplifier = m.MeshoptSimplifier; try { for (const a of actors) applyLOD(a); } catch (_) {} }))
   .catch((e) => { console.info('LOD no disponible', e && e.message); });
 const _lodCache = new Map();
@@ -523,6 +526,63 @@ if (window.visualViewport) {
 }
 if (window.ResizeObserver) new ResizeObserver(() => { if (vpKey() !== lastVP) onViewportChange(); }).observe(document.documentElement);
 
+// ===================== ESTILO CARICATURA (update 20) =====================
+// Personajes Tripo (toon:true): textura casi a plena luz (sin oscurecer por la iluminación del campo) con un sombreado
+// muy suave en espacio de vista + contorno negro fino (casco invertido, con skinning: sigue las animaciones).
+// No se tocan los modelos: solo materiales en three.js. El contorno se apaga en calidad Baja.
+const TOON = { min: 0.8, px: 1.5, outline: { value: new THREE.Vector2(0.004, 0.008) } };
+function toonPatch(m) {
+  m.toneMapped = false; m.userData.toon = true;
+  const u = m.userData.toonU = { uToonMin: { value: TOON.min }, uDye: { value: new THREE.Color(1, 1, 1) }, uDyeAmt: { value: 0 } };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader.replace('void main() {', 'varying vec3 vToonN;\nvoid main() {')
+      .replace('#include <fog_vertex>', '#include <fog_vertex>\n#ifdef USE_SKINNING\n\tvToonN = normalize( transformedNormal );\n#else\n\tvToonN = normalize( normalMatrix * normal );\n#endif');
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'varying vec3 vToonN;\nuniform float uToonMin;\nuniform float uDyeAmt;\nuniform vec3 uDye;\nvoid main() {')
+      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', `vec3 outgoingLight = reflectedLight.indirectDiffuse;
+	float tl = dot( normalize( vToonN ), vec3( -0.36, 0.6, 0.71 ) ) * 0.5 + 0.5;
+	outgoingLight *= mix( uToonMin, 1.0, smoothstep( 0.2, 0.7, tl ) );
+	float lumT = dot( outgoingLight, vec3( 0.299, 0.587, 0.114 ) );
+	outgoingLight = mix( outgoingLight, uDye * ( 0.3 + 1.1 * lumT ), uDyeAmt );`);
+  };
+  m.customProgramCacheKey = () => 'mlToon';
+  return m;
+}
+function makeToonMat(src) {
+  const m = new THREE.MeshBasicMaterial({ map: src.map || null, color: 0xffffff, side: src.side, transparent: false });
+  m.name = src.name; return toonPatch(m);
+}
+const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x15161c, side: THREE.BackSide, toneMapped: false });
+OUTLINE_MAT.userData.outline = true;
+OUTLINE_MAT.onBeforeCompile = (sh) => {
+  sh.uniforms.uOutline = TOON.outline;
+  sh.vertexShader = sh.vertexShader.replace('void main() {', 'uniform vec2 uOutline;\nvoid main() {')
+    .replace('#include <project_vertex>', `#include <project_vertex>
+	#ifdef USE_SKINNING
+		vec3 onrm = normalize( transformedNormal );
+	#else
+		vec3 onrm = normalize( normalMatrix * normal );
+	#endif
+	vec2 cn = ( projectionMatrix * vec4( onrm, 0.0 ) ).xy; float cl = length( cn );
+	if ( cl > 1e-5 ) gl_Position.xy += cn / cl * uOutline * gl_Position.w;`);
+};
+OUTLINE_MAT.customProgramCacheKey = () => 'mlOutline';
+// grosor del contorno en píxeles del destino (pantalla o render target de los retratos)
+function setOutlinePx(w, h, px = TOON.px) { TOON.outline.value.set((2 * px) / Math.max(1, w), (2 * px) / Math.max(1, h)); }
+const _dbs = new THREE.Vector2();
+function syncOutline() { renderer.getDrawingBufferSize(_dbs); setOutlinePx(_dbs.x, _dbs.y, TOON.px * Math.max(1, renderer.getPixelRatio() * 0.85)); }
+function applyToon(model, key) {
+  const c = CHARS.find((x) => x.key === key); if (!c || !c.toon) return model;
+  const skinned = []; model.traverse((o) => { if (o.isSkinnedMesh && !o.userData.outline) skinned.push(o); });
+  for (const o of skinned) {
+    o.material = Array.isArray(o.material) ? o.material.map(makeToonMat) : makeToonMat(o.material);
+    const ol = new THREE.SkinnedMesh(o.geometry, OUTLINE_MAT);
+    ol.bind(o.skeleton, o.bindMatrix); ol.bindMode = o.bindMode; ol.frustumCulled = false; ol.castShadow = false; ol.receiveShadow = false;
+    ol.userData.outline = true; ol.position.copy(o.position); ol.quaternion.copy(o.quaternion); ol.scale.copy(o.scale);
+    o.parent.add(ol); o.userData.outlineMesh = ol;
+  }
+  return model;
+}
 // ===================== CARGA =====================
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
@@ -578,7 +638,7 @@ class Actor {
     this.meta = META[charKey];
     this.root = new THREE.Group();
     this.body = new THREE.Group();
-    const model = matte(SkeletonUtils.clone(GLB[charKey].scene));
+    const model = applyToon(matte(SkeletonUtils.clone(GLB[charKey].scene)), charKey);
     model.traverse((o) => { if (o.isSkinnedMesh) o.frustumCulled = false; });
     this.charScale = (CHARS.find((c) => c.key === charKey) || {}).scale || 1;   // multiplicador por personaje (todos 1: alturas igualadas en el modelado)
     model.scale.setScalar(ESCALA * this.charScale);
@@ -1648,8 +1708,12 @@ function applyBoots(model, key) {
       if (!main && !toe) return m;
       found = true;
       let c = map.get(m.uuid);
-      if (!c) { c = m.userData.bootClone ? m : m.clone(); c.userData.bootClone = true; c.userData.orig = m.color.getHex(); map.set(m.uuid, c); map.set(c.uuid, c); }
+      if (!c) { c = m.userData.bootClone ? m : (m.userData.toon ? makeToonMat(m) : m.clone()); c.userData.bootClone = true; c.userData.orig = m.color.getHex(); map.set(m.uuid, c); map.set(c.uuid, c); }
       const hex = main ? b.c1 : b.c2;
+      if (c.userData.toon) {   // update 20: zapatillas texturizadas (Tripo): tinte sobre la textura; Clásicas = textura original intacta
+        const hx = main ? b.c1 : null; c.userData.toonU.uDyeAmt.value = hx === null || hx === undefined ? 0 : 0.8; if (hx !== null && hx !== undefined) c.userData.toonU.uDye.value.setHex(hx);
+        return c;
+      }
       c.color.setHex(hex === null || hex === undefined ? c.userData.orig : hex);
       return c;
     };
@@ -2057,7 +2121,7 @@ function render(dt) {
   updateAimLine();
   if (HORIZONTAL) updateHorizCam(false);
   if (renderer.shadowMap.enabled && (++render.n % shadowEvery) === 0) renderer.shadowMap.needsUpdate = true;
-  renderer.render(scene, camera);
+  syncOutline(); renderer.render(scene, camera);
   checkLatency();
 }
 
@@ -2139,7 +2203,7 @@ let sel = 0, rivalSel = 1, popT = 1, userYaw = 0, menuT = 0, drag = null;
 let campoReady = null, matchKeys = null;
 function buildMenuChars() {
   for (const c of CHARS) {
-    const model = matte(SkeletonUtils.clone(GLB[c.key].scene));
+    const model = applyToon(matte(SkeletonUtils.clone(GLB[c.key].scene)), c.key);
     model.traverse((o) => { if (o.isSkinnedMesh) o.frustumCulled = false; });
     const root = new THREE.Group(); root.add(model); root.visible = false; menuScene.add(root);
     const mixer = new THREE.AnimationMixer(model); const actions = {};
@@ -2177,7 +2241,7 @@ function renderPortraits() {
       const h = size.y * 0.8, cy = box.max.y - h / 2 + size.y * 0.03;      // de las rodillas a la cabeza
       const dist = h / 2 / Math.tan(THREE.MathUtils.degToRad(13)) + size.z / 2;
       cam.position.set(ctr.x, cy + h * 0.08, ctr.z + dist); cam.lookAt(ctr.x, cy, ctr.z);
-      renderer.setRenderTarget(rt); renderer.clear(); renderer.render(ps, cam);
+      setOutlinePx(W, H, 1.6); renderer.setRenderTarget(rt); renderer.clear(); renderer.render(ps, cam);
       renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
       for (let y = 0; y < H; y++) img.data.set(buf.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
       cx.putImageData(img, 0, 0); PORTRAITS[c.key] = cv.toDataURL('image/png');
@@ -2340,7 +2404,7 @@ function renderMenu(dt) {
   if (!drag) userYaw *= Math.exp(-0.8 * dt);
   m.root.rotation.y = Math.sin(menuT * 0.7) * 0.5 + userYaw;
   m.mixer.update(dt);
-  renderer.render(menuScene, menuCam);
+  syncOutline(); renderer.render(menuScene, menuCam);
 }
 
 // ===================== ORIENTACIÓN (aviso + lock landscape) =====================
@@ -2661,7 +2725,7 @@ Object.assign(window.__game, {
   get aim() { return aim; },
   relayout: () => onViewportChange(),
   setupMatch,
-  AJ, QS, setQuality, applyQuality, applyControls, setShowFps, setInstantTap: (on) => setInstantTap(on), lastAction: null,
+  AJ, QS, setQuality, applyQuality, setOutlinePx, TOON, applyControls, setShowFps, setInstantTap: (on) => setInstantTap(on), lastAction: null,
   openSettings: (from) => openAjustes(from), closeSettings: () => closeAjustes(),
   openEditor: () => openEditor(), closeEditor: (save) => closeEditor(save),
   get editor() { return editor; }, edSelect: (id) => edSelect(id), edView: (v) => edView(v),
@@ -2680,7 +2744,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   applyQuality('init');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=19')).json();
+    META = await (await fetch('assets/anim_meta.json?v=20')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
@@ -2690,7 +2754,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=19').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=20').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
