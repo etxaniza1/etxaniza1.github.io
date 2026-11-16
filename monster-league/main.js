@@ -30,7 +30,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=22';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=23';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
@@ -1363,9 +1363,11 @@ function shootLob(a, dir, c) {
 const NET_K = 140, NET_C = 26, NET_MAXPEN = 0.7;
 function netPush(b, ax, sgn, lim, dt, gl, s) {
   const pen = (b.pos[ax] - lim) * sgn; if (pen <= 0) return;
+  // update 23: la red está fija en el marco -> cerca de la boca (laterales / techo) apenas cede; al fondo cede del todo
+  const depth = (b.pos.y - gl) * s, maxPen = ax === 'y' ? NET_MAXPEN : NET_MAXPEN * THREE.MathUtils.clamp((depth - 0.2) / 1.1, 0.12, 1);
   let vn = b.vel[ax] * sgn;
   vn += (-NET_K * pen - NET_C * vn) * dt;                   // muelle + amortiguación (casi crítica: sin rebote)
-  if (pen > NET_MAXPEN) { b.pos[ax] = lim + sgn * NET_MAXPEN; vn = Math.min(vn, 0); }
+  if (pen > maxPen) { b.pos[ax] = lim + sgn * maxPen; vn = Math.min(vn, 0); }   // tope suave (pen nunca salta: el plano tiene signo)
   b.vel[ax] = vn * sgn;
   const f = Math.exp(-5 * dt);                              // la malla agarra el balón: frena lo tangencial
   for (const k of ['x', 'y', 'z']) if (k !== ax && !(k === 'z' && b.vel.z < 0)) b.vel[k] *= f;
@@ -1507,7 +1509,7 @@ function stepBall(dt, prev) {
       const pIn = Math.abs(prev.x) <= NET_X - BR + 0.01, nIn = Math.abs(b.pos.x) <= NET_X - BR;
       if (((wasIn && pIn) || b.netSide === sx) && !nIn && Math.sign(b.pos.x) === sx && Math.abs(b.pos.x) < NET_X + 0.9) {   // desde dentro: la red se abomba y amortigua
         b.netSide = sx;
-        netPush(b, 'x', sx, NET_X - BR, dt, gl, s);
+        netPush(b, 'x', sx, sx * (NET_X - BR), dt, gl, s);   // update 23: plano con signo (antes +NET_X en ambos lados -> el balón 'saltaba' de un lateral al otro)
       } else if (b.netSide === sx && nIn) { b.netSide = 0; }
       else if (!wasIn && Math.abs(prev.x) >= NET_X + BR - 0.01 && Math.abs(b.pos.x) < NET_X + BR && Math.sign(b.pos.x) === sx) {   // desde fuera
         b.pos.x = sx * (NET_X + BR); b.vel.x = -b.vel.x * 0.3; b.vel.y *= 0.7;
@@ -1720,7 +1722,7 @@ function startDive(k, bx) {
 function moveKeeperFace(k, s) { const d = new THREE.Vector2(ball.pos.x - k.pos.x, ball.pos.y - k.pos.y); return d.lengthSq() > 0.01 ? d.normalize() : new THREE.Vector2(0, -s); }
 
 function keeperContact(k) {
-  if (ball.owner === k) return;
+  if (ball.owner === k || window.__game.noKeepers) return;   // noKeepers: solo pruebas automáticas (tiros a la red)
   if (ball.noCatch === k && ball.noCatchT > 0) return;
   const diving = k.diveT > 0 && (k.diveDur - k.diveT) > 0.12 && (k.diveDur - k.diveT) < 0.6;
   const reach = (diving ? 1.75 : k.backpedal ? 0.8 : 1.1) * ESCALA, d = Math.hypot(ball.pos.x - k.pos.x, ball.pos.y - k.pos.y);   // reculando llega peor
@@ -1947,7 +1949,7 @@ function update(dt) {
   // --- usuario ---
   const wish = new THREE.Vector2(input.jx, input.jy);
   if (input.keys.u) wish.y += 1; if (input.keys.d) wish.y -= 1; if (input.keys.l) wish.x -= 1; if (input.keys.r) wish.x += 1;
-  if (wish.length() > 1) wish.normalize();
+  if (wish.lengthSq() > 1e-6) wish.normalize();   // update 23: el joystick solo da dirección; cualquier inclinación (fuera de la zona muerta del 12 %) = velocidad máxima
   const canMove = playing;
   if (playing) runBuffer();
   if (user) updateEnergy(user, playing && input.turboDown, wish.lengthSq() > 0.04, dt);
@@ -2866,7 +2868,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=20').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?' + ASSET_V).then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
