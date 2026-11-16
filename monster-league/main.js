@@ -28,7 +28,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=11';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=12';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
@@ -40,7 +40,7 @@ const CHARS = [
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`, ...c }));
 const GLB = {};          // key -> gltf
 let META = {};           // key -> metadatos de animación
-const USER_KICK_DELAY = 0.07;
+const USER_KICK_DELAY = 0;   // update 12: 0 = el balón sale en el mismo frame (la animación arranca en el impacto)
 const KICK_RATE = 1.45, TACKLE_RATE = 1.5, DIVE_RATE = 1.35, RUN_MIN = 1.7;
 const DRIBBLE_PUSH = 0.55;   // cuánto se adelanta el balón tras cada toque (m)
 
@@ -86,6 +86,7 @@ function loadAjustes() {
   if (!QUALITY[a.quality]) a.quality = DEFAULT_QUALITY;
   a.opacity = Math.max(0.3, Math.min(1, +a.opacity || 1));
   a.showFps = !!a.showFps;
+  a.aimManual = !!a.aimManual;   // update 12: apuntado manual (mantener) apagado por defecto
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
 }
@@ -193,7 +194,7 @@ function qualityTick(fps) {
 
 // ---- LOD de personajes (meshopt simplifier, se carga aparte; si no está listo se usa el modelo completo) ----
 let Simplifier = null;
-const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=11')
+const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=12')
   .then((m) => m.MeshoptSimplifier.ready.then(() => { Simplifier = m.MeshoptSimplifier; try { for (const a of actors) applyLOD(a); } catch (_) {} }))
   .catch((e) => { console.info('LOD no disponible', e && e.message); });
 const _lodCache = new Map();
@@ -617,7 +618,7 @@ class Actor {
   sync(dt, t) {
     const targetYaw = Math.atan2(this.face.x, -this.face.y);   // los modelos miran a +Z de three (hacia la cámara) por defecto
     let d = targetYaw - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
-    this.yaw += d * Math.min(1, dt * 14);
+    this.yaw += d * Math.min(1, dt * (this === user ? 26 : 14));
     this.root.position.copy(g2t(this.pos.x, this.pos.y));
     this.root.rotation.y = this.yaw;
     this.kickAnimT = Math.max(0, this.kickAnimT - dt);
@@ -809,7 +810,7 @@ function moveDir() {
   return d.lengthSq() > 0.04 ? d.normalize() : null;
 }
 function quickShot() {
-  if (S.mode !== 'play' || ball.owner !== user) return false;
+  if (S.mode !== 'play' || ball.owner !== user || user.kickPending) return false;
   let dir = moveDir();
   if (!dir) dir = goalCenter(user.team).sub(user.pos);          // sin dirección: a portería rival
   shoot(user, dir, 0.72, true); LOG('tiro_rapido', user, {});
@@ -827,21 +828,69 @@ function quickLobAim() {   // toque rápido de CHUT ALTO: dirección del joystic
   return { dir: to.normalize(), power: lobPowerForDist(Math.min(dist - 1.0, LOB_MIN_D + (LOB_MAX_D - LOB_MIN_D) * 0.5)) };
 }
 function quickLob() {
-  if (S.mode !== 'play' || ball.owner !== user) return false;
+  if (S.mode !== 'play' || ball.owner !== user || user.kickPending) return false;
   const q = quickLobAim(); shootLob(user, q.dir, q.power); return true;
 }
 function aimedLob(dir, p) {
   if (S.mode !== 'play' || ball.owner !== user) return false;
   shootLob(user, dir.clone(), p); return true;
 }
+// ---- Acciones del jugador (update 12) ----
+// Por defecto CHUTAR y REGATE actúan en el pointerdown (mismo frame) hacia el joystick de mover / portería.
+// Con "Apuntado manual" activo se usa el esquema Brawl (toque·soltar·apuntar). CHUT ALTO: toque < 120 ms = globo medio;
+// mantener = carga potencia (o arrastrar para apuntar). Si la acción no es posible aún (sin balón, enfriamiento),
+// se guarda 150 ms en un buffer y se ejecuta en cuanto se pueda.
+const ALTO_TAP_MS = 120, INPUT_BUFFER_MS = 150;
+function altoHoldPower() { return 0.15 + 0.85 * THREE.MathUtils.clamp((performance.now() - aim.t0 - ALTO_TAP_MS) / 900, 0, 1); }
+function doAction(kind) {
+  if (S.mode !== 'play' || !user || S.paused) return false;
+  if (kind === 'chutar') return quickShot();
+  if (kind === 'regate') return ball.owner === user && !user.kickPending ? tryDribble(user) : false;
+  if (kind === 'alto') return quickLob();
+  if (kind === 'entrada') return tryDash(user);
+  return false;
+}
+function bufferAction(kind) { input.buf = { kind, until: performance.now() + INPUT_BUFFER_MS }; }
+function runBuffer() {
+  const b = input.buf; if (!b) return;
+  if (performance.now() > b.until) { input.buf = null; return; }
+  if (doAction(b.kind)) input.buf = null;
+}
+// ---- medidor de latencia (del pointerdown al cambio de velocidad del balón o del jugador) ----
+const LAT = { pending: false, kind: '', t0: 0, sp0: 0, bv0: 0, until: 0 };
+const LAT_NAMES = { chutar: 'Chutar', regate: 'Regate', alto: 'Chut alto', entrada: 'Entrada', turbo: 'Turbo' };
+function markAction(kind, e) {
+  const now = performance.now();
+  let t0 = e && typeof e.timeStamp === 'number' ? e.timeStamp : now;
+  if (!(t0 > now - 2000 && t0 <= now + 1)) t0 = now;   // navegadores con timeStamp no comparable
+  Object.assign(LAT, { pending: true, kind, t0, sp0: user ? user.vel.length() : 0, bv0: Math.hypot(ball.vel.x, ball.vel.y, ball.vel.z), own0: ball.owner, until: now + 1500 });
+}
+function checkLatency() {
+  if (!LAT.pending) return;
+  const now = performance.now();
+  if (now > LAT.until) { LAT.pending = false; return; }
+  const bv = Math.hypot(ball.vel.x, ball.vel.y, ball.vel.z), sp = user ? user.vel.length() : 0;
+  const ballMoved = LAT.own0 === user && ball.owner !== user && Math.abs(bv - LAT.bv0) > 1;
+  const userMoved = Math.abs(sp - LAT.sp0) > 0.5;
+  if (!(ballMoved || userMoved)) return;
+  LAT.pending = false;
+  window.__game.lastAction = { kind: LAT.kind, ms: Math.round(now - LAT.t0) };
+  updateFpsMeter(true);
+}
 function aimEnd(e, cancelAll) {
   if (aim.id === null || (e && e.pointerId !== aim.id)) return;
   const el = aim.el, kind = aim.kind;
   if (e) aimUpdateFromPointer(e.clientX, e.clientY);
   const quick = !aim.dragged;
+  // latencia: en modo mantener/apuntar se mide desde que suelta (es una espera elegida); el toque rápido de Chut alto, desde el pointerdown
+  if (e && !cancelAll && !aim.cancel && !(kind === 'alto' && quick && performance.now() - aim.t0 < ALTO_TAP_MS)) markAction(kind, e);
   if (!cancelAll && !aim.cancel) {
     if (kind === 'chutar') { if (quick) quickShot(); else aimedShot(aim.dir, aim.power); }
-    else if (kind === 'alto') { if (quick) quickLob(); else aimedLob(aim.dir, aim.power); }
+    else if (kind === 'alto') {
+      if (!quick) aimedLob(aim.dir, aim.power);
+      else if (performance.now() - aim.t0 < ALTO_TAP_MS) quickLob();                  // toque rápido: globo medio
+      else { const q = quickLobAim(); aimedLob(q.dir, altoHoldPower()); }               // mantener sin arrastrar: potencia cargada
+    }
     else { if (quick) tryDribble(user); else tryDribble(user, aim.dir); }
   } else if (aim.cancel) LOG('apuntado_cancelado', user, { kind });
   el.classList.remove('pulsado', 'apuntando');
@@ -849,16 +898,29 @@ function aimEnd(e, cancelAll) {
   showAimJoy(false);
 }
 function bindAim(el, kind) {
+  const instIds = new Set();
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault(); e.stopPropagation();
-    if (aim.id !== null || e.pointerId === joyId) return;
-    if (S.mode !== 'play' || !user || ball.owner !== user) return;
+    if (e.pointerId === joyId) return;
+    markAction(kind, e);
+    const instant = !AJ.aimManual && (kind === 'chutar' || kind === 'regate');
+    if (instant) {
+      instIds.add(e.pointerId);
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      el.classList.add('pulsado');
+      if (!doAction(kind)) bufferAction(kind);
+      return;
+    }
+    if (aim.id !== null) return;
+    if (S.mode !== 'play' || !user || ball.owner !== user || user.kickPending) { bufferAction(kind); return; }   // aún sin balón: toque rápido en buffer
     const r = btnRect(el);
     Object.assign(aim, { id: e.pointerId, kind, el, cx: r.left + r.width / 2, cy: r.top + r.height / 2, t0: performance.now(), dragged: false, shown: false, dx: 0, dy: 0, R: aimRadius(el), power: 0, cancel: false, active: true });
     const md = moveDir(); aim.dir.copy(md || (kind !== 'regate' ? goalCenter(user.team).sub(user.pos).normalize() : user.face));
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
     el.classList.add('pulsado');
   });
+  const up = (e) => { if (instIds.delete(e.pointerId) && !instIds.size && aim.el !== el) el.classList.remove('pulsado'); };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
 }
 window.addEventListener('pointermove', (e) => {
   if (aim.id === null || e.pointerId !== aim.id) return;
@@ -871,8 +933,8 @@ for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo, joyZona])
 bindAim(btnChutar, 'chutar');
 bindAim(btnRegate, 'regate');
 bindAim(btnAlto, 'alto');
-bindHold(btnEntrada, () => { btnEntrada.classList.add('pulsado'); tryDash(user); }, () => btnEntrada.classList.remove('pulsado'));
-bindHold(btnTurbo, () => { input.turboDown = true; btnTurbo.classList.add('pulsado'); }, () => { input.turboDown = false; btnTurbo.classList.remove('pulsado'); });
+bindHold(btnEntrada, (e) => { btnEntrada.classList.add('pulsado'); markAction('entrada', e); if (!doAction('entrada')) bufferAction('entrada'); }, () => btnEntrada.classList.remove('pulsado'));
+bindHold(btnTurbo, (e) => { markAction('turbo', e); input.turboDown = true; btnTurbo.classList.add('pulsado'); turboKick(); }, () => { input.turboDown = false; btnTurbo.classList.remove('pulsado'); });
 
 const keyMap = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
 window.addEventListener('keydown', (e) => {
@@ -912,7 +974,9 @@ function releaseShoot(cancel) {
 function tryDash(a) {
   if (!a || a.dashCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0) return false;
   if (ball.owner === a) return false;
+  if (a === user) { const md = moveDir(); if (md) a.face.copy(md); }
   a.dashT = DASH_T; a.dashCd = a === user ? DASH_CD_USER : DASH_CD_AI;
+  a.vel.copy(a.face).multiplyScalar(DASH_SPEED);   // impulso inmediato
   a.dashHit = false; a.dashEnded = false;
   a.tackleT = a.meta.Tackle.frames / 30 / TACKLE_RATE; a.play('Tackle', 0.05, true);
   sfx.dash(); LOG('entrada', a, {});
@@ -938,6 +1002,7 @@ function tryDribble(a, forceDir) {
   dir.normalize();
   a.face.copy(dir);
   a.dribbleT = DRIBBLE_T; a.dribbleCd = DRIBBLE_CD;
+  a.vel.copy(dir).multiplyScalar(DRIBBLE_SPEED);   // impulso inmediato
   if (a === user) { input.shootDown = false; input.charge = 0; btnChutar.classList.remove('pulsado'); }
   sfx.dribble(); LOG('regate', a, { dir: [+dir.x.toFixed(2), +dir.y.toFixed(2)] });
   return true;
@@ -968,10 +1033,11 @@ function shoot(a, dir, power, assist, loft, hspeed) {
   // Jugador humano: la animación arranca ya avanzada (se salta la preparación) y el balón sale a los ~70 ms
   // en lugar de ~210 ms -> el chut se siente inmediato. La IA mantiene la animación completa.
   const t = a === user ? Math.min(impact, USER_KICK_DELAY) : impact;
-  a.kickPending = { dir, power, assist, loft, hspeed, t };
   a.kickAnimT = a.meta.Kick.frames / 30 / KICK_RATE * 0.8 - (impact - t);
   a.play('Kick', a === user ? 0.03 : 0.06, true);
   if (a === user && impact > t) { const k = a.actions.Kick; if (k) k.time = (impact - t) * KICK_RATE; }
+  if (a === user && t <= 0) { releaseShot(a, dir, power, assist, loft, hspeed); return; }   // update 12: el balón sale en el mismo frame del toque
+  a.kickPending = { dir, power, assist, loft, hspeed, t };
 }
 function updateKick(a, dt) {
   const k = a.kickPending; if (!k) return;
@@ -1017,7 +1083,7 @@ function moveActor(a, wish, speed, dt) {
     if (a.dashT <= 0) a.dashEnded = true;
   } else {
     const target = wish.clone().multiplyScalar(speed);
-    const acc = 1 - Math.exp(-14 * dt);
+    const acc = 1 - Math.exp(-(a === user ? 26 : 14) * dt);   // usuario: menos inercia (~40 ms) para que responda ya
     a.vel.lerp(target, acc);
     if (wish.lengthSq() > 0.01) a.face.copy(wish).normalize();
   }
@@ -1393,6 +1459,17 @@ function fmt(t) { t = Math.max(0, Math.ceil(t)); return Math.floor(t / 60) + ':'
 
 // ===================== BUCLE =====================
 const prevBall = new THREE.Vector3();
+// Turbo: el impulso se nota desde el primer frame (velocidad a tope de sprint en la dirección del joystick)
+function turboKick(w) {
+  if (!user || S.mode !== 'play' || S.paused) return;
+  const wish = w || moveDir(); if (!wish || wish.lengthSq() < 0.04) return;
+  if (user.stun > 0 || user.dashT > 0 || user.dribbleT > 0 || user.diveT > 0) return;
+  if (!(user.energy > TURBO_MIN)) return;
+  user.sprinting = true; user._spr = true;
+  const sp = SPEED_USER * (ball.owner === user ? 0.9 : 1) * TURBO_MULT;
+  const d = wish.clone().normalize();
+  if (user.vel.dot(d) < sp) user.vel.copy(d).multiplyScalar(sp);
+}
 function update(dt) {
   S.t += dt;
   if (S.mode === 'kickoff') { S.pauseT -= dt; if (S.pauseT <= 0) S.mode = 'play'; }
@@ -1409,7 +1486,10 @@ function update(dt) {
   if (input.keys.u) wish.y += 1; if (input.keys.d) wish.y -= 1; if (input.keys.l) wish.x -= 1; if (input.keys.r) wish.x += 1;
   if (wish.length() > 1) wish.normalize();
   const canMove = playing;
+  if (playing) runBuffer();
   if (user) updateEnergy(user, playing && input.turboDown, wish.lengthSq() > 0.04, dt);
+  if (user && user.sprinting && !user._spr && wish.lengthSq() > 0.04) turboKick(wish);
+  if (user) user._spr = user.sprinting;
   const userSp = SPEED_USER * (ball.owner === user ? 0.9 : 1) * (input.shootDown ? 0.55 : 1) * (user && user.sprinting ? TURBO_MULT : 1);
   moveActor(user, canMove ? wish : new THREE.Vector2(), userSp, dt);
   if (input.shootDown) {
@@ -1510,7 +1590,7 @@ function update(dt) {
   }
   const ring = (el, fill) => { if (!el) return; const v = (289 * (1 - Math.max(0, Math.min(1, fill)))).toFixed(1); if (el._v !== v) { el._v = v; el.style.strokeDashoffset = v; } };
   ring(cargaAro, input.shootDown ? input.charge : (aim.active && aim.kind === 'chutar' && aim.dragged && !aim.cancel ? aim.power : 0));
-  ring(cargaAlto, aim.active && aim.kind === 'alto' && aim.dragged && !aim.cancel ? aim.power : 0);
+  ring(cargaAlto, aim.active && aim.kind === 'alto' && !aim.cancel ? (aim.dragged ? aim.power : (performance.now() - aim.t0 > ALTO_TAP_MS ? (altoHoldPower() - 0.15) / 0.85 : 0)) : 0);
   ring(cargaRegate, user ? (user.dribbleCd > 0 ? 1 - user.dribbleCd / DRIBBLE_CD : 1) : 1);
   ring(cargaEntrada, user ? (user.dashCd > 0 ? 1 - user.dashCd / DASH_CD_USER : 1) : 1);
   ring(cargaTurbo, user ? user.energy : 1);
@@ -1561,7 +1641,7 @@ function updateLobPreview(on) {
   if (!lobArc) return;
   lobArc.visible = lobGround.visible = lobLand.visible = !!on;
   if (!on) return;
-  if (!aim.dragged) { const q = quickLobAim(); aim.dir.copy(q.dir); aim.lobP = q.power; } else aim.lobP = aim.power;
+  if (!aim.dragged) { const q = quickLobAim(); aim.dir.copy(q.dir); aim.lobP = performance.now() - aim.t0 > ALTO_TAP_MS ? altoHoldPower() : q.power; } else aim.lobP = aim.power;
   const lp = lobParams(aim.lobP);
   const start = new THREE.Vector3(ball.pos.x + aim.dir.x * 0.4, ball.pos.y + aim.dir.y * 0.4, BR + 0.02);
   const land = predictFlight(start, new THREE.Vector3(aim.dir.x * lp.h, aim.dir.y * lp.h, lp.vz), _lobPts);
@@ -1628,6 +1708,7 @@ function render(dt) {
   if (HORIZONTAL) updateHorizCam(false);
   if (renderer.shadowMap.enabled && (++render.n % shadowEvery) === 0) renderer.shadowMap.needsUpdate = true;
   renderer.render(scene, camera);
+  checkLatency();
 }
 
 render.n = 0;
@@ -1981,7 +2062,9 @@ function setShowFps(on) {
 }
 function updateFpsMeter() {
   if (!AJ.showFps || !fpsMeter) return;
-  const f = window.__game.fps || 0, t = `${f} FPS · ${f ? (1000 / f).toFixed(0) : '–'} ms · ×${renderer.getPixelRatio().toFixed(2).replace(/\.?0+$/, '')}`;
+  const la = window.__game.lastAction;
+  const f = window.__game.fps || 0, t = `${f} FPS · ${f ? (1000 / f).toFixed(0) : '–'} ms · ×${renderer.getPixelRatio().toFixed(2).replace(/\.?0+$/, '')}` +
+    `\nÚltima acción: ${la ? `${LAT_NAMES[la.kind] || la.kind} ${la.ms} ms` : '–'}`;
   if (fpsMeter._t !== t) { fpsMeter._t = t; fpsMeter.textContent = t; }
 }
 function refreshAjustes() {
@@ -2083,6 +2166,13 @@ document.getElementById('edReset').addEventListener('click', () => { editor.draf
 document.getElementById('ajEditar').addEventListener('click', openEditor);
 document.getElementById('ajCerrar').addEventListener('click', closeAjustes);
 btnAjFps.addEventListener('click', () => setShowFps(!AJ.showFps));
+const btnAjApunt = document.getElementById('ajApuntado');
+function setAimManual(on) {
+  AJ.aimManual = !!on; saveAjustes();
+  btnAjApunt.textContent = 'APUNTADO MANUAL (MANTENER): ' + (AJ.aimManual ? 'SÍ' : 'NO'); btnAjApunt.classList.toggle('on', AJ.aimManual);
+}
+btnAjApunt.addEventListener('click', () => setAimManual(!AJ.aimManual));
+setAimManual(AJ.aimManual);
 setShowFps(AJ.showFps);
 for (const b of document.querySelectorAll('#ajCalidad button')) b.addEventListener('click', () => { setQuality(b.dataset.q); refreshAjustes(); });
 const btnAjustes = document.getElementById('btnAjustes');
@@ -2109,7 +2199,7 @@ Object.assign(window.__game, {
   get aim() { return aim; },
   relayout: () => onViewportChange(),
   setupMatch,
-  AJ, QS, setQuality, applyQuality, applyControls, setShowFps, get simplifierReady() { return !!Simplifier; },
+  AJ, QS, setQuality, applyQuality, applyControls, setShowFps, setAimManual: (on) => setAimManual(on), lastAction: null,
   openSettings: (from) => openAjustes(from), closeSettings: () => closeAjustes(),
   openEditor: () => openEditor(), closeEditor: (save) => closeEditor(save),
   get editor() { return editor; }, edSelect: (id) => edSelect(id), edView: (v) => edView(v),
@@ -2117,13 +2207,15 @@ Object.assign(window.__game, {
   ctrlRect: (id) => { const r = CTRL[id].el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; },
 });
 Object.defineProperty(window.__game, 'camMode', { get: () => camMode });
+Object.defineProperty(window.__game, 'inputBuf', { get: () => input.buf });
+Object.defineProperty(window.__game, 'simplifierReady', { get: () => !!Simplifier });
 Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
 (async function init() {
   const cargando = document.getElementById('cargando');
   applyQuality('init');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=11')).json();
+    META = await (await fetch('assets/anim_meta.json?v=12')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
@@ -2133,7 +2225,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=11').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=12').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
