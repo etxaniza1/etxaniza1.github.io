@@ -28,11 +28,16 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
+const ASSET_V = 'v=9';   // cache busting de modelos y tarjetas
 const CHARS = [
-  { key: 'conazo', name: 'CONAZO', file: 'assets/conazo_anim.glb', color: '#F2751A', card: 'assets/cards/conazo.png' },
-  { key: 'calcetrol', name: 'CALCETROL', file: 'assets/calcetrol_anim.glb', color: '#E5343A', card: 'assets/cards/calcetrol.png' },
-  { key: 'buton', name: 'BUTÓN', file: 'assets/buton_anim.glb', color: '#F8B715', card: 'assets/cards/buton.png' },
-];
+  { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
+  { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
+  { key: 'buton', name: 'BUTÓN', color: '#F8B715' },
+  { key: 'lobo', name: 'LOBO', color: '#3B4FA8' },
+  { key: 'zorro', name: 'ZORRO', color: '#E2552D' },
+  { key: 'gecko', name: 'GECKO', color: '#58A83A' },
+  { key: 'rino', name: 'RINO', color: '#7C838B' },
+].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`, ...c }));
 const GLB = {};          // key -> gltf
 let META = {};           // key -> metadatos de animación
 const KICK_RATE = 1.45, TACKLE_RATE = 1.5, DIVE_RATE = 1.35, RUN_MIN = 1.7;
@@ -312,7 +317,8 @@ class Actor {
     this.body = new THREE.Group();
     const model = matte(SkeletonUtils.clone(GLB[charKey].scene));
     model.traverse((o) => { if (o.isSkinnedMesh) o.frustumCulled = false; });
-    model.scale.setScalar(ESCALA);
+    this.charScale = (CHARS.find((c) => c.key === charKey) || {}).scale || 1;   // multiplicador por personaje (todos 1: alturas igualadas en el modelado)
+    model.scale.setScalar(ESCALA * this.charScale);
     this.model = model;
     this.body.add(model);
     this.root.add(this.body);
@@ -1646,7 +1652,7 @@ Object.assign(window.__game, {
   advance: (sec, step = 1 / 60, draw = true) => { for (let t = 0; t < sec - 1e-6; t += step) { if (S.mode !== 'menu' && S.mode !== 'end') update(step); if (draw) render(step); } },
   forceGoal: (team) => goalScored(team),
   selectChar: (i) => selectChar(i), menuPlay: () => menuPlay(), openMenu: () => openMenu(),
-  get menuSel() { return sel; }, get rivalSel() { return rivalSel; }, CHARS,
+  get menuSel() { return sel; }, get rivalSel() { return rivalSel; }, setRival: (i) => { rivalSel = i; }, CHARS,
   HORIZONTAL, VERTICAL, CAMS,
   tryLandscape, updateOrient,
   setCamMode: (m) => setCamMode(m, true),
@@ -1663,7 +1669,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   const cargando = document.getElementById('cargando');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=7')).json();
+    META = await (await fetch('assets/anim_meta.json?v=9')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; });
     buildMenuChars(); buildMenuUI();
@@ -1672,7 +1678,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=7').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=9').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
