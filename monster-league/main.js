@@ -30,7 +30,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=15';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=16';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
@@ -202,7 +202,7 @@ function qualityTick(fps) {
 
 // ---- LOD de personajes (meshopt simplifier, se carga aparte; si no está listo se usa el modelo completo) ----
 let Simplifier = null;
-const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=15')
+const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=16')
   .then((m) => m.MeshoptSimplifier.ready.then(() => { Simplifier = m.MeshoptSimplifier; try { for (const a of actors) applyLOD(a); } catch (_) {} }))
   .catch((e) => { console.info('LOD no disponible', e && e.message); });
 const _lodCache = new Map();
@@ -252,6 +252,7 @@ function toStandard(root) {
   });
 }
 // Campo: todas las mallas estáticas opacas sin textura se fusionan en UNA malla con color por vértice (51 draw calls -> 1)
+const NET_MESHES = [];
 function mergeStatic(root) {
   root.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
@@ -262,6 +263,7 @@ function mergeStatic(root) {
     const m = o.material;
     if (!m.isMeshStandardMaterial || m.transparent || m.map || m.vertexColors || m.alphaTest > 0 || keep(o) || !o.geometry.attributes.normal) return;
     if (m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0) return;
+    if (/^net$/i.test(m.name || '')) { NET_MESHES.push(o); return; }   // update 16: la red se deforma, va aparte
     list.push(o);
   });
   if (list.length < 2) return 0;
@@ -797,8 +799,12 @@ function showAimJoy(on) {
     aimJoy.style.width = aimJoy.style.height = (aim.R * 2) + 'px';
     aimJoy.style.left = (aim.cx - ar.left - aim.R) + 'px';
     aimJoy.style.top = (aim.cy - ar.top - aim.R) + 'px';
-    aimJoy.className = 'on ' + aim.kind;
-  } else { aimJoy.className = ''; aimKnob.style.transform = ''; }
+    aimJoy.className = 'on ' + aim.kind; aimJoy._z = '';
+    if (aim.kind === 'alto') {   // zonas del chut alto en el anillo: suave / perfecta / alta, según la distancia al centro
+      const d0 = aimDeadPx() / aim.R, f = (c) => ((d0 + c * (1 - d0)) * 100).toFixed(1) + '%';
+      aimJoy.style.setProperty('--z0', f(0)); aimJoy.style.setProperty('--z1', f(ALTO_PERFECT[0])); aimJoy.style.setProperty('--z2', f(ALTO_PERFECT[1]));
+    }
+  } else { aimJoy.className = ''; aimJoy._z = ''; aimKnob.style.transform = ''; }
 }
 function aimUpdateFromPointer(x, y) {
   let dx = x - aim.cx, dy = y - aim.cy;
@@ -826,6 +832,10 @@ function aimUpdateFromPointer(x, y) {
   }
   if (aimJoy) aimJoy.classList.toggle('porteria', !!aim.onGoal && !aim.cancel);
   aim.power = THREE.MathUtils.clamp((Math.min(L, aim.R) - aimDeadPx()) / (aim.R - aimDeadPx()), 0, 1);
+  if (aim.kind === 'alto' && aimJoy) {
+    const z = !aim.dragged || aim.cancel ? '' : aim.power < ALTO_PERFECT[0] ? 'zSuave' : aim.power <= ALTO_PERFECT[1] ? 'zPerfecta' : 'zAlta';
+    if (aimJoy._z !== z) { aimJoy.classList.remove('zSuave', 'zPerfecta', 'zAlta'); if (z) aimJoy.classList.add(z); aimJoy._z = z; }
+  }
   if (aimJoy) aimJoy.classList.toggle('cancel', aim.cancel);
 }
 const AIM_FRICTION = 0.45, AIM_MAGNET = 0.1, AIM_GOAL_MARGIN = 0.6;
@@ -920,7 +930,7 @@ function aimEnd(e, cancelAll) {
   if (e && !cancelAll && !aim.cancel) markAction(kind, e);
   if (!cancelAll && !aim.cancel) {
     if (kind === 'chutar') { if (quick) quickShot(); else aimedShot(aim.dir, aim.power); }
-    else if (kind === 'alto') aimedLob(quick ? lobDir() : aim.dir, altoCharge(aim.t0));   // la carga = tiempo pulsado; el joystick solo apunta
+    else if (kind === 'alto') aimedLob(quick ? lobDir() : aim.dir, quick ? 0 : aim.power);   // update 16: carga = distancia del mini-joystick al centro; toque = vaselina mínima
     else { if (quick) tryDribble(user); else tryDribble(user, aim.dir); }
   } else if (aim.cancel) LOG('apuntado_cancelado', user, { kind });
   el.classList.remove('pulsado', 'apuntando');
@@ -1207,6 +1217,78 @@ function shootLob(a, dir, c) {
   shoot(a, dir, 0.3 + 0.7 * lp.c, false, lp.vz, lp.h);
   LOG('chut_alto', a, { c: +lp.c.toFixed(2), v: +lp.v.toFixed(1), ang: Math.round(THREE.MathUtils.radToDeg(lp.ang)) });
 }
+// ---- RED DE GOL CON FÍSICA (update 16) ----
+// La red es un muelle muy amortiguado: el balón la abomba (hasta ~0,7 m), pierde casi toda la velocidad y cae dentro.
+// eje 'x' (laterales), 'y' (fondo), 'z' (techo); sgn = sentido hacia fuera; lim = coordenada del plano (con el radio) en ese eje
+const NET_K = 140, NET_C = 26, NET_MAXPEN = 0.7;
+function netPush(b, ax, sgn, lim, dt, gl, s) {
+  const pen = (b.pos[ax] - lim) * sgn; if (pen <= 0) return;
+  let vn = b.vel[ax] * sgn;
+  vn += (-NET_K * pen - NET_C * vn) * dt;                   // muelle + amortiguación (casi crítica: sin rebote)
+  if (pen > NET_MAXPEN) { b.pos[ax] = lim + sgn * NET_MAXPEN; vn = Math.min(vn, 0); }
+  b.vel[ax] = vn * sgn;
+  const f = Math.exp(-5 * dt);                              // la malla agarra el balón: frena lo tangencial
+  for (const k of ['x', 'y', 'z']) if (k !== ax && !(k === 'z' && b.vel.z < 0)) b.vel[k] *= f;
+  if (ax !== 'z') b.backspin = 0;
+  if (b.fx) b.fx.curve = 0;
+  netImpact(b, ax, sgn, Math.min(pen, NET_MAXPEN));
+}
+// deformación visual: impactos con amplitud que sigue al balón mientras empuja y luego oscila amortiguada hasta 0
+const NET_FX = { mesh: null, base: null, sideOf: null, imps: [], dirty: false };
+function netImpact(b, ax, sgn, pen) {
+  let im = NET_FX.imps.find((i) => i.ax === ax && i.sgn === sgn && Math.sign(i.gy) === Math.sign(b.pos.y) && i.push);
+  if (!im) { im = { ax, sgn, gy: b.pos.y, amp: 0, vel: 0, push: true, p: new THREE.Vector3(), d: new THREE.Vector3() }; NET_FX.imps.push(im); if (NET_FX.imps.length > 4) NET_FX.imps.shift(); if (pen > 0.05) sfx.bounce && sfx.bounce(); }
+  // centro del abombamiento: donde el balón toca el plano de la red (coords three: x, z_juego -> y, -y_juego -> z)
+  const gx = b.pos.x, gy = b.pos.y, gz = b.pos.z;
+  im.p.set(ax === 'x' ? gx - sgn * pen : gx, ax === 'z' ? gz - pen : gz, -(ax === 'y' ? gy - sgn * pen : gy));
+  im.d.set(ax === 'x' ? sgn : 0, ax === 'z' ? 1 : 0, ax === 'y' ? -sgn : 0);
+  im.amp = Math.max(im.amp * 0.6, pen + BR * 0.6); im.vel = 0; im.touched = 2;
+}
+function setupNet() {
+  const o = NET_MESHES[0]; if (!o) return;
+  o.updateWorldMatrix(true, false);
+  const pa = o.geometry.attributes.position, n = pa.count, P = new Float32Array(n * 3), v = new THREE.Vector3();
+  for (let i = 0; i < n; i++) { v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld); P[i * 3] = v.x; P[i * 3 + 1] = v.y; P[i * 3 + 2] = v.z; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(P, 3).setUsage(THREE.DynamicDrawUsage));
+  if (o.geometry.attributes.normal) { const na = o.geometry.attributes.normal, N = new Float32Array(n * 3), nm = new THREE.Matrix3().getNormalMatrix(o.matrixWorld); for (let i = 0; i < n; i++) { v.fromBufferAttribute(na, i).applyMatrix3(nm).normalize(); N.set([v.x, v.y, v.z], i * 3); } g.setAttribute('normal', new THREE.BufferAttribute(N, 3)); }
+  g.setIndex(o.geometry.index.clone()); g.computeBoundingSphere();
+  const mat = o.material.clone(); mat.side = THREE.DoubleSide;
+  const mesh = new THREE.Mesh(g, mat); mesh.name = 'Red_Porterias'; mesh.receiveShadow = true; mesh.frustumCulled = false;
+  o.removeFromParent(); scene.add(mesh);
+  // peso por vértice: la red está fija en el marco (boca de la portería) y en el suelo
+  const W = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const depth = Math.abs(-P[i * 3 + 2]) - HL, gz = P[i * 3 + 1];
+    W[i] = THREE.MathUtils.clamp(depth / 0.7, 0, 1) * THREE.MathUtils.clamp(gz / 0.5, 0, 1);
+  }
+  Object.assign(NET_FX, { mesh, base: P.slice(), W });
+}
+function updateNet(dt) {
+  const F = NET_FX; if (!F.mesh) return;
+  for (const im of F.imps) {
+    if (im.touched > 0) { im.touched--; continue; }     // el balón sigue empujando: la amplitud la marca él
+    im.push = false;
+    im.vel += (-170 * im.amp - 5 * im.vel) * dt; im.amp += im.vel * dt;   // la malla vuelve oscilando
+  }
+  F.imps = F.imps.filter((im) => im.push || Math.abs(im.amp) > 0.004 || Math.abs(im.vel) > 0.02);
+  if (!F.imps.length && !F.dirty) return;
+  const P = F.mesh.geometry.attributes.position.array, B = F.base, W = F.W, n = W.length, R2 = 1 / (1.05 * 1.05);
+  P.set(B);
+  for (const im of F.imps) {
+    const zs = Math.sign(im.p.z);
+    for (let i = 0; i < n; i++) {
+      const w = W[i]; if (!w) continue;
+      const k = i * 3; if (B[k + 2] * zs <= 0) continue;
+      const dx = B[k] - im.p.x, dy = B[k + 1] - im.p.y, dz = B[k + 2] - im.p.z, d2 = (dx * dx + dy * dy + dz * dz) * R2;
+      if (d2 > 6) continue;
+      const a = im.amp * w * Math.exp(-d2);
+      P[k] += im.d.x * a; P[k + 1] += im.d.y * a; P[k + 2] += im.d.z * a;
+    }
+  }
+  F.mesh.geometry.attributes.position.needsUpdate = true;
+  F.dirty = F.imps.length > 0;
+}
 function stepBall(dt, prev) {
   const b = ball;
   airStep(b.pos, b.vel, dt, b.fx);
@@ -1265,7 +1347,10 @@ function stepBall(dt, prev) {
         const vn = b.vel.y * ny + b.vel.z * nz; if (vn < 0) { b.vel.y -= 1.62 * vn * ny; b.vel.z -= 1.62 * vn * nz; b.vel.x *= 0.9; b.backspin = 0; if (-vn > 3) sfx.kick(0.1); }
       }
     }
-    const nearY = inY(b.pos.y) || inY(prev.y);
+    // ¿balón dentro de la portería (incluida la red abombada)? así no se confunde con choques desde fuera
+    const inBox = (b.pos.y - gl) * s > 0 && (b.pos.y - back) * s < 0.8 && Math.abs(b.pos.x) < NET_X + 0.8 && b.pos.z < NET_Z + 0.8;
+    if (inBox && (inY(prev.y) || b.netGoal === s)) b.netGoal = s; else if (b.netGoal === s && !inBox) b.netGoal = 0;
+    const nearY = inY(b.pos.y) || inY(prev.y) || b.netGoal === s;
     if (!nearY) {
       // red trasera desde detrás (balón que vuelve del muro)
       if (Math.abs(b.pos.x) < NET_X && b.pos.z < NET_Z && (prev.y - back) * s >= BR - 0.01 && (b.pos.y - back) * s < BR) {
@@ -1280,19 +1365,22 @@ function stepBall(dt, prev) {
     for (const sx of [1, -1]) {
       if (b.pos.z >= NET_Z + BR) continue;
       const pIn = Math.abs(prev.x) <= NET_X - BR + 0.01, nIn = Math.abs(b.pos.x) <= NET_X - BR;
-      if (wasIn && pIn && !nIn && Math.sign(b.pos.x) === sx) {           // desde dentro: la red amortigua
-        b.pos.x = sx * (NET_X - BR); b.vel.x = -b.vel.x * 0.12; b.vel.y *= 0.6; b.vel.z *= 0.8;
-      } else if (!wasIn && Math.abs(prev.x) >= NET_X + BR - 0.01 && Math.abs(b.pos.x) < NET_X + BR && Math.sign(b.pos.x) === sx) {   // desde fuera
+      if (((wasIn && pIn) || b.netSide === sx) && !nIn && Math.sign(b.pos.x) === sx && Math.abs(b.pos.x) < NET_X + 0.9) {   // desde dentro: la red se abomba y amortigua
+        b.netSide = sx;
+        netPush(b, 'x', sx, NET_X - BR, dt, gl, s);
+      } else if (b.netSide === sx && nIn) { b.netSide = 0; }
+      else if (!wasIn && Math.abs(prev.x) >= NET_X + BR - 0.01 && Math.abs(b.pos.x) < NET_X + BR && Math.sign(b.pos.x) === sx) {   // desde fuera
         b.pos.x = sx * (NET_X + BR); b.vel.x = -b.vel.x * 0.3; b.vel.y *= 0.7;
       }
     }
     if (Math.abs(b.pos.x) < NET_X + 0.05) {
       // red trasera (desde dentro): frena en seco y cae
-      if (b.pos.z < NET_Z && (b.pos.y - back) * s > -BR) { b.pos.y = back - s * BR; b.vel.y = -b.vel.y * 0.05; b.vel.x *= 0.5; b.vel.z *= 0.6; }
+      if (b.pos.z < NET_Z && (b.pos.y - back) * s > -BR) netPush(b, 'y', s, back - s * BR, dt, gl, s);
       // techo desde dentro
-      if (prev.z <= NET_Z - BR + 0.01 && b.pos.z > NET_Z - BR) { b.pos.z = NET_Z - BR; b.vel.z = -Math.abs(b.vel.z) * 0.2; b.vel.x *= 0.8; b.vel.y *= 0.8; }
+      if ((b.pos.y - gl) * s > 0 && b.pos.z > NET_Z - BR && b.pos.z < NET_Z + 0.9 && (prev.z <= NET_Z - BR + 0.01 || b.netRoof)) { b.netRoof = true; netPush(b, 'z', 1, NET_Z - BR, dt, gl, s); }
+      else b.netRoof = false;
       // techo desde fuera (vaselina que cae encima): bota poco y rueda hacia atrás
-      if (prev.z >= NET_Z + BR - 0.02 && b.pos.z < NET_Z + BR) {
+      if (!b.netRoof && prev.z >= NET_Z + BR - 0.02 && b.pos.z < NET_Z + BR) {
         b.pos.z = NET_Z + BR; b.vel.z = Math.abs(b.vel.z) * 0.25; b.vel.x *= 0.7; b.vel.y = b.vel.y * 0.7 + s * 1.2;
         b.onRoof = true;
       }
@@ -1583,6 +1671,7 @@ function practiceLine(ev) {
   else showBanner(ev.type === 'gol' ? '¡EN PROPIA!' : (ev.z > GH - 0.3 ? '¡POR ENCIMA!' : '¡FUERA!'), '', 800);
   LOG(ev.type === 'gol' ? 'practica_gol' : 'practica_fuera', user, { s: ev.s });
   if (aim.active) aimEnd(null, true);
+  if (ev.type === 'gol') { S.mode = 'goal'; S.pauseT = 1.8; ball.owner = null; user.kickPending = null; return; }   // se ve el balón en la red
   practiceBall(false);
 }
 function goalScored(team) {
@@ -1590,7 +1679,7 @@ function goalScored(team) {
   S.score[team]++; S.goals++; LOG('gol', null, { team });
   elA.textContent = S.score[0]; elB.textContent = S.score[1];
   showBanner('¡GOOOL!', team === 0 ? 'bAzul' : 'bRojo', 1800); sfx.goal();
-  S.mode = 'goal'; S.pauseT = 2.4; ball.owner = null;
+  S.mode = 'goal'; S.pauseT = 2.6; ball.owner = null;   // update 16: tiempo para ver el balón en la red
   for (const a of actors) { a.celebrate = a.team === team; a.kickPending = null; a.diveT = 0; a.tackleT = 0; a.kickAnimT = 0; }
 }
 // balón fuera por la línea de fondo (incl. por encima del larguero): saque de puerta del portero de ese lado
@@ -1635,7 +1724,7 @@ function turboKick(w) {
 function update(dt) {
   S.t += dt;
   if (S.mode === 'kickoff') { S.pauseT -= dt; if (S.pauseT <= 0) S.mode = 'play'; }
-  if (S.mode === 'goal') { S.pauseT -= dt; if (S.pauseT <= 0) { if (S.time <= 0) endGame(); else kickoff(); } }
+  if (S.mode === 'goal') { S.pauseT -= dt; if (S.pauseT <= 0) { if (S.practice) practiceBall(false); else if (S.time <= 0) endGame(); else kickoff(); } }
   if (S.mode === 'out' && S.time <= 0) endGame();
   const playing = S.mode === 'play';
   if (playing && !S.practice) {
@@ -1741,7 +1830,6 @@ function update(dt) {
     }
   } else ball.lineEvent = null;
   if (S.mode === 'out') { S.pauseT -= dt; if (S.pauseT <= 0) goalKick(); }
-  if ((S.mode === 'goal' || S.mode === 'out') && !ball.owner) { const n = 4; for (let i = 0; i < n; i++) stepBall(dt / n, ball.pos.clone()); }
 
   // --- apuntado (CHUTAR / REGATE mantenidos) ---
   if (aim.active) {
@@ -1756,9 +1844,10 @@ function update(dt) {
   }
   const ring = (el, fill) => { if (!el) return; const v = (289 * (1 - Math.max(0, Math.min(1, fill)))).toFixed(1); if (el._v !== v) { el._v = v; el.style.strokeDashoffset = v; } };
   ring(cargaAro, input.shootDown ? input.charge : (aim.active && aim.kind === 'chutar' && aim.dragged && !aim.cancel ? aim.power : 0));
-  const altoC = aim.active && aim.kind === 'alto' && !aim.cancel ? altoCharge(aim.t0) : (input.qT0 && hasBall ? altoCharge(input.qT0) : -1);
-  ring(cargaAlto, Math.max(0, altoC));
-  updateChargeBar(altoC);
+  const altoC = aim.active && aim.kind === 'alto' && !aim.cancel ? (aim.dragged ? aim.power : 0) : -1;
+  const qC = input.qT0 && hasBall ? altoCharge(input.qT0) : -1;   // teclado Q: carga por tiempo (solo teclado)
+  ring(cargaAlto, Math.max(0, altoC, qC));
+  updateChargeBar(qC);
   ring(cargaRegate, user ? (user.dribbleCd > 0 ? 1 - user.dribbleCd / DRIBBLE_CD : 1) : 1);
   ring(cargaEntrada, user ? (user.dashCd > 0 ? 1 - user.dashCd / DASH_CD_USER : 1) : 1);
   ring(cargaTurbo, user ? user.energy : 1);
@@ -1847,7 +1936,7 @@ function updateLobPreview(on, shotPrev) {
   if (shotPrev && !on) { updateShotPreview(); return; }
   if (!on) return;
   if (!aim.dragged) aim.dir.copy(lobDir());
-  aim.lobP = altoCharge(aim.t0);
+  aim.lobP = aim.dragged && !aim.cancel ? aim.power : 0;
   const lp = lobParams(aim.lobP);
   const start = new THREE.Vector3(ball.pos.x + aim.dir.x * 0.4, ball.pos.y + aim.dir.y * 0.4, BR + 0.02);
   const bf = bootShot(aim.dir, true, true);
@@ -1897,6 +1986,7 @@ function updateAimLine() {
   aimLine.rotation.y = Math.atan2(-aim.dir.x, aim.dir.y);
 }
 function render(dt) {
+  updateNet(dt);
   if (S.mode === 'menu') { renderMenu(dt); return; }
   for (const a of actors) a.sync(dt, S.t);
   ballMesh.position.copy(g2t(ball.pos.x, ball.pos.y, ball.pos.z));
@@ -2168,6 +2258,7 @@ function setupField(campo) {
   campoRoot = matte(campo.scene);
   shadowFlags(campoRoot, false, true);
   window.__game.campoMerged = mergeStatic(campoRoot);
+  setupNet();
   scene.add(campoRoot);
   // Recorte de la grada derecha: solo en cámaras de LADO (A/B/C). D/E/F ven el estadio entero.
   camClipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), WX + 3.0);
@@ -2461,7 +2552,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   applyQuality('init');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=15')).json();
+    META = await (await fetch('assets/anim_meta.json?v=16')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
@@ -2471,7 +2562,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=15').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=16').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);

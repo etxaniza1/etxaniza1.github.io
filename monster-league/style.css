@@ -318,3 +318,10 @@ body.horizontal #btnMenuTienda{font-size:clamp(13px,4vh,18px);padding:5px 12px 7
 .botaBtn.eq{background:#9fb3d9;cursor:default}
 .botaBtn:active{transform:translateY(2px);box-shadow:0 1px 0 #14193a}
 #tienda .ajVolver{align-self:center}
+
+/* ===== update 16: chut alto por distancia del mini-joystick: zonas en el anillo ===== */
+#aimJoy.alto{background:radial-gradient(circle closest-side,rgba(20,25,58,.25) 0 var(--z0,15%),rgba(255,255,255,.28) var(--z0,15%) var(--z1,53%),rgba(93,255,138,.55) var(--z1,53%) var(--z2,66%),rgba(255,106,79,.45) var(--z2,66%) 100%)}
+#aimJoy.alto.zSuave #aimKnob{background:#ffffff}
+#aimJoy.alto.zPerfecta #aimKnob{background:#5dff8a}
+#aimJoy.alto.zAlta #aimKnob{background:#ff6a4f}
+#aimJoy.alto.cancel{background:rgba(120,20,20,.35)}
