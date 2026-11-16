@@ -28,7 +28,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=12';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=13';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
@@ -64,7 +64,7 @@ sun.position.set(-0.384, 0.743, 0.548).multiplyScalar(50);   // dirección del S
 scene.add(sun);
 
 // ===================== AJUSTES + CALIDAD (update 10, rendimiento update 11) =====================
-const AJ_KEY = 'ml_ajustes_v1', AJ_VER = 11;
+const AJ_KEY = 'ml_ajustes_v1', AJ_VER = 13;
 const IS_TOUCH = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(pointer: coarse)').matches;
 // lod: fracción de triángulos de los personajes en partida (simplificación meshopt en tiempo de carga; el menú usa el modelo completo)
 // shadowEvery: el mapa de sombras se recalcula cada N frames (luz fija, solo se mueven jugadores y balón)
@@ -82,11 +82,14 @@ function loadAjustes() {
   if (!a || typeof a !== 'object') a = {};
   // migración v10 -> v11: en la v10 'alta' era el valor por defecto y no se distinguía si el usuario la había elegido.
   // Baja/Media/Ultra sí eran elecciones explícitas y se respetan; 'alta' sin marca de elección pasa al nuevo defecto.
-  if ((a.ver || 10) < 11) { if (a.quality === 'alta' && !a.qSet) a.quality = DEFAULT_QUALITY; a.ver = AJ_VER; }
+  if ((a.ver || 10) < 11) { if (a.quality === 'alta' && !a.qSet) a.quality = DEFAULT_QUALITY; a.ver = 11; }
   if (!QUALITY[a.quality]) a.quality = DEFAULT_QUALITY;
   a.opacity = Math.max(0.3, Math.min(1, +a.opacity || 1));
   a.showFps = !!a.showFps;
-  a.aimManual = !!a.aimManual;   // update 12: apuntado manual (mantener) apagado por defecto
+  // update 13: el apuntado con mini-joystick vuelve a ser lo normal. Se elimina 'aimManual' (v12) y nadie se queda sin apuntado;
+  // la opción nueva 'instantTap' (disparo instantáneo al tocar, sin apuntar) empieza apagada.
+  if ((a.ver || 0) < 13) { delete a.aimManual; a.instantTap = false; a.ver = 13; }
+  a.instantTap = !!a.instantTap;
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
 }
@@ -194,7 +197,7 @@ function qualityTick(fps) {
 
 // ---- LOD de personajes (meshopt simplifier, se carga aparte; si no está listo se usa el modelo completo) ----
 let Simplifier = null;
-const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=12')
+const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=13')
   .then((m) => m.MeshoptSimplifier.ready.then(() => { Simplifier = m.MeshoptSimplifier; try { for (const a of actors) applyLOD(a); } catch (_) {} }))
   .catch((e) => { console.info('LOD no disponible', e && e.message); });
 const _lodCache = new Map();
@@ -722,7 +725,7 @@ function setJoyDir(jx, jy) {
 function setJoy(x, y) { joyBase.style.left = x + 'px'; joyBase.style.top = y + 'px'; joyCx = x; joyCy = y; }
 
 // Evitar zoom, scroll y gestos del navegador (multitáctil de juego sí está permitido)
-const swallow = (e) => { e.preventDefault(); };
+const swallow = (e) => { if (e.cancelable !== false) e.preventDefault(); };   // sin aviso si el navegador ya no permite cancelar
 document.addEventListener('touchmove', swallow, { passive: false });
 document.addEventListener('gesturestart', swallow);
 document.addEventListener('gesturechange', swallow);
@@ -780,7 +783,7 @@ const AIM_TAP_MS = 180, AIM_SHOW_MS = 110;
 const aimJoy = document.getElementById('aimJoy'), aimKnob = document.getElementById('aimKnob');
 const aim = { id: null, kind: null, el: null, cx: 0, cy: 0, t0: 0, dragged: false, shown: false, dx: 0, dy: 0, R: 60, dir: new THREE.Vector2(0, 1), power: 0, cancel: false, active: false };
 function aimRadius(el) { const r = btnRect(el); return Math.max(46, Math.min(84, r.width * 0.95)); }
-function aimDeadPx() { return Math.max(10, aim.R * 0.22); }
+function aimDeadPx() { return THREE.MathUtils.clamp(aim.R * 0.16, 10, 12); }   // zona muerta ~10-12 px
 function showAimJoy(on) {
   aim.shown = on;
   if (!aimJoy) return;
@@ -835,10 +838,11 @@ function aimedLob(dir, p) {
   if (S.mode !== 'play' || ball.owner !== user) return false;
   shootLob(user, dir.clone(), p); return true;
 }
-// ---- Acciones del jugador (update 12) ----
-// Por defecto CHUTAR y REGATE actúan en el pointerdown (mismo frame) hacia el joystick de mover / portería.
-// Con "Apuntado manual" activo se usa el esquema Brawl (toque·soltar·apuntar). CHUT ALTO: toque < 120 ms = globo medio;
-// mantener = carga potencia (o arrastrar para apuntar). Si la acción no es posible aún (sin balón, enfriamiento),
+// ---- Acciones del jugador (update 13) ----
+// Por defecto (como v10/v11): CHUTAR / REGATE / CHUT ALTO con mini-joystick estilo Brawl. Toque corto = acción rápida al SOLTAR
+// (sin umbral de tiempo) hacia el joystick de mover; al salir de la zona muerta (~11 px) aparece al instante el joystick de
+// apuntar con la flecha; volver al centro cancela. Mantener quieto también lo abre. CHUT ALTO: toque < 120 ms = globo medio,
+// mantener sin arrastrar = carga potencia. Opción 'Disparo instantáneo al tocar': Chutar/Regate en el pointerdown, sin apuntar. Si la acción no es posible aún (sin balón, enfriamiento),
 // se guarda 150 ms en un buffer y se ejecuta en cuanto se pueda.
 const ALTO_TAP_MS = 120, INPUT_BUFFER_MS = 150;
 function altoHoldPower() { return 0.15 + 0.85 * THREE.MathUtils.clamp((performance.now() - aim.t0 - ALTO_TAP_MS) / 900, 0, 1); }
@@ -882,8 +886,8 @@ function aimEnd(e, cancelAll) {
   const el = aim.el, kind = aim.kind;
   if (e) aimUpdateFromPointer(e.clientX, e.clientY);
   const quick = !aim.dragged;
-  // latencia: en modo mantener/apuntar se mide desde que suelta (es una espera elegida); el toque rápido de Chut alto, desde el pointerdown
-  if (e && !cancelAll && !aim.cancel && !(kind === 'alto' && quick && performance.now() - aim.t0 < ALTO_TAP_MS)) markAction(kind, e);
+  // latencia: con mini-joystick la acción sale al SOLTAR, así que se mide desde el pointerup
+  if (e && !cancelAll && !aim.cancel) markAction(kind, e);
   if (!cancelAll && !aim.cancel) {
     if (kind === 'chutar') { if (quick) quickShot(); else aimedShot(aim.dir, aim.power); }
     else if (kind === 'alto') {
@@ -902,9 +906,9 @@ function bindAim(el, kind) {
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault(); e.stopPropagation();
     if (e.pointerId === joyId) return;
-    markAction(kind, e);
-    const instant = !AJ.aimManual && (kind === 'chutar' || kind === 'regate');
+    const instant = AJ.instantTap && (kind === 'chutar' || kind === 'regate');
     if (instant) {
+      markAction(kind, e);
       instIds.add(e.pointerId);
       try { el.setPointerCapture(e.pointerId); } catch (_) {}
       el.classList.add('pulsado');
@@ -2166,13 +2170,13 @@ document.getElementById('edReset').addEventListener('click', () => { editor.draf
 document.getElementById('ajEditar').addEventListener('click', openEditor);
 document.getElementById('ajCerrar').addEventListener('click', closeAjustes);
 btnAjFps.addEventListener('click', () => setShowFps(!AJ.showFps));
-const btnAjApunt = document.getElementById('ajApuntado');
-function setAimManual(on) {
-  AJ.aimManual = !!on; saveAjustes();
-  btnAjApunt.textContent = 'APUNTADO MANUAL (MANTENER): ' + (AJ.aimManual ? 'SÍ' : 'NO'); btnAjApunt.classList.toggle('on', AJ.aimManual);
+const btnAjInst = document.getElementById('ajInstantaneo');
+function setInstantTap(on) {
+  AJ.instantTap = !!on; saveAjustes();
+  btnAjInst.textContent = 'DISPARO INSTANTÁNEO AL TOCAR (SIN APUNTAR): ' + (AJ.instantTap ? 'SÍ' : 'NO'); btnAjInst.classList.toggle('on', AJ.instantTap);
 }
-btnAjApunt.addEventListener('click', () => setAimManual(!AJ.aimManual));
-setAimManual(AJ.aimManual);
+btnAjInst.addEventListener('click', () => setInstantTap(!AJ.instantTap));
+setInstantTap(AJ.instantTap);
 setShowFps(AJ.showFps);
 for (const b of document.querySelectorAll('#ajCalidad button')) b.addEventListener('click', () => { setQuality(b.dataset.q); refreshAjustes(); });
 const btnAjustes = document.getElementById('btnAjustes');
@@ -2199,7 +2203,7 @@ Object.assign(window.__game, {
   get aim() { return aim; },
   relayout: () => onViewportChange(),
   setupMatch,
-  AJ, QS, setQuality, applyQuality, applyControls, setShowFps, setAimManual: (on) => setAimManual(on), lastAction: null,
+  AJ, QS, setQuality, applyQuality, applyControls, setShowFps, setInstantTap: (on) => setInstantTap(on), lastAction: null,
   openSettings: (from) => openAjustes(from), closeSettings: () => closeAjustes(),
   openEditor: () => openEditor(), closeEditor: (save) => closeEditor(save),
   get editor() { return editor; }, edSelect: (id) => edSelect(id), edView: (v) => edView(v),
@@ -2215,7 +2219,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   applyQuality('init');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=12')).json();
+    META = await (await fetch('assets/anim_meta.json?v=13')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
@@ -2225,7 +2229,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=12').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=13').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
