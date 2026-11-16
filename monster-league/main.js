@@ -30,7 +30,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=18';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=19';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
@@ -230,7 +230,7 @@ function qualityTick(fps) {
 
 // ---- LOD de personajes (meshopt simplifier, se carga aparte; si no está listo se usa el modelo completo) ----
 let Simplifier = null;
-const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=18')
+const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=19')
   .then((m) => m.MeshoptSimplifier.ready.then(() => { Simplifier = m.MeshoptSimplifier; try { for (const a of actors) applyLOD(a); } catch (_) {} }))
   .catch((e) => { console.info('LOD no disponible', e && e.message); });
 const _lodCache = new Map();
@@ -2680,7 +2680,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   applyQuality('init');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=18')).json();
+    META = await (await fetch('assets/anim_meta.json?v=19')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
@@ -2690,7 +2690,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=18').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=19').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
