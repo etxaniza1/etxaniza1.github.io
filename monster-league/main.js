@@ -28,7 +28,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=9';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=10';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
@@ -61,6 +61,103 @@ scene.add(new THREE.HemisphereLight(0xffffff, 0x8a9a7a, 1.25));
 const sun = new THREE.DirectionalLight(0xffffff, 2.1);
 sun.position.set(-0.384, 0.743, 0.548).multiplyScalar(50);   // dirección del Sol de Blender (42°,0,-35°)
 scene.add(sun);
+
+// ===================== AJUSTES + CALIDAD (update 10) =====================
+const AJ_KEY = 'ml_ajustes_v1';
+const IS_TOUCH = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(pointer: coarse)').matches;
+const QUALITY = {
+  baja:  { label: 'Baja',  pr: () => Math.min(DPR(), 1),   shadow: 0,    soft: false, aniso: 1 },
+  media: { label: 'Media', pr: () => Math.min(DPR(), 1.5), shadow: 0,    soft: false, aniso: 4 },
+  alta:  { label: 'Alta',  pr: () => Math.min(DPR(), 2),   shadow: 2048, soft: true,  aniso: 16 },
+  ultra: { label: 'Ultra', pr: () => Math.min(DPR(), 3),   shadow: 4096, soft: true,  aniso: 16 },
+};
+function DPR() { return window.devicePixelRatio || 1; }
+function loadAjustes() {
+  let a = null;
+  try { a = JSON.parse(localStorage.getItem(AJ_KEY) || 'null'); } catch (_) { a = null; }
+  if (!a || typeof a !== 'object') a = {};
+  if (!QUALITY[a.quality]) a.quality = 'alta';            // por defecto ALTA (también en móvil)
+  a.opacity = Math.max(0.3, Math.min(1, +a.opacity || 1));
+  if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
+  return a;
+}
+function saveAjustes() { try { localStorage.setItem(AJ_KEY, JSON.stringify(AJ)); } catch (_) {} }
+const AJ = loadAjustes();
+// estado dinámico de calidad (fallback suave si los FPS caen de forma sostenida)
+const editor = { view: 'con', savedCls: null, on: false, from: null, draft: null, opa: 1, sel: null, drag: null };
+const QS = { prScale: 1, shadowCap: Infinity, softOff: false, lowSecs: 0, steps: 0 };
+const _texSeen = new Set();
+function applyTextureQuality(root) {
+  const q = QUALITY[AJ.quality];
+  const maxA = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
+  const an = Math.max(1, Math.min(maxA, q.aniso));
+  const roots = root ? [root] : [scene, ...Object.values(GLB || {}).map((g) => g && g.scene).filter(Boolean)];
+  for (const r of roots) r.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) for (const k of ['map', 'normalMap', 'roughnessMap', 'emissiveMap', 'aoMap', 'metalnessMap']) {
+      const t = m[k]; if (!t || !t.isTexture) continue;
+      if (t.anisotropy !== an || t.minFilter !== THREE.LinearMipmapLinearFilter) {
+        t.anisotropy = an; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+      }
+      _texSeen.add(t);
+    }
+  });
+}
+function shadowFlags(root, cast, receive) {
+  if (!root) return;
+  root.traverse((o) => { if (o.isMesh && !(o.material && o.material.isMeshBasicMaterial)) { o.castShadow = cast; o.receiveShadow = receive; } });
+}
+function applyQuality(reason) {
+  const q = QUALITY[AJ.quality];
+  let pr = q.pr() * QS.prScale;
+  // suelo: nunca por debajo de lo que se veía antes de update 10 (min(dpr,2) en horizontal) salvo que el usuario elija Baja/Media
+  if (AJ.quality === 'alta' || AJ.quality === 'ultra') pr = Math.max(pr, Math.min(DPR(), HORIZONTAL ? 2 : 1.5));
+  if (Math.abs(renderer.getPixelRatio() - pr) > 1e-3) { renderer.setPixelRatio(pr); if (typeof layout === 'function' && reason !== 'init') { try { layout(); } catch (_) {} } }
+  const size = Math.min(q.shadow, QS.shadowCap);
+  const on = size > 0;
+  // r187: PCFSoftShadowMap ya no existe; PCFShadowMap filtra con shadow.radius (suavizado real)
+  const type = THREE.PCFShadowMap, soft = q.soft && !QS.softOff;
+  const changed = renderer.shadowMap.enabled !== on || renderer.shadowMap.type !== type || (on && sun.shadow.mapSize.x !== size);
+  renderer.shadowMap.enabled = on; renderer.shadowMap.type = type;
+  sun.castShadow = on;
+  if (on) {
+    sun.shadow.mapSize.set(size, size);
+    const c = sun.shadow.camera, E = 38;
+    c.left = -E; c.right = E; c.top = E; c.bottom = -E; c.near = 1; c.far = 160; c.updateProjectionMatrix();
+    sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03; sun.shadow.radius = soft ? (AJ.quality === 'ultra' ? 4 : 3) : 1;
+    sun.position.set(-0.384, 0.743, 0.548).multiplyScalar(70);
+  }
+  if (changed) {
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+    scene.traverse((o) => { const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []; for (const m of ms) m.needsUpdate = true; });
+  }
+  // sombras "blob" bajo los personajes: más suaves si hay sombra real (siguen dando contacto con el suelo)
+  let acts = []; try { acts = actors; } catch (_) {}
+  for (const a of acts) if (a.shadow) a.shadow.material.opacity = on ? 0.16 : 0.3;
+  applyTextureQuality();
+  window.__game && (window.__game.quality = { level: AJ.quality, pixelRatio: renderer.getPixelRatio(), shadows: on ? size : 0, soft: on && soft, fallbackSteps: QS.steps });
+}
+function setQuality(level) {
+  if (!QUALITY[level]) return;
+  AJ.quality = level; QS.prScale = 1; QS.shadowCap = Infinity; QS.softOff = false; QS.lowSecs = 0; QS.steps = 0;
+  saveAjustes(); applyQuality();
+}
+// Fallback dinámico (solo Alta/Ultra, solo en partida). Alta: nunca baja el pixelRatio (=lo de antes),
+// solo abarata sombras. Ultra: primero baja la resolución hasta el nivel de Alta, luego sombras.
+function qualityTick(fps) {
+  if (!(AJ.quality === 'alta' || AJ.quality === 'ultra')) return;
+  if (S.mode === 'menu' || S.mode === 'end' || S.paused || document.hidden) { QS.lowSecs = 0; return; }
+  QS.lowSecs = fps < 40 ? QS.lowSecs + 1 : 0;
+  if (QS.lowSecs < 4) return;
+  QS.lowSecs = 0;
+  const floor = Math.min(DPR(), 2), cur = QUALITY[AJ.quality].pr() * QS.prScale;
+  if (AJ.quality === 'ultra' && cur > floor + 0.01) QS.prScale = Math.max(floor / QUALITY.ultra.pr(), QS.prScale - 0.25);
+  else if (!QS.softOff) QS.softOff = true;
+  else if (QS.shadowCap > 1024) QS.shadowCap = 1024;
+  else return;
+  QS.steps++;
+  applyQuality('fallback');
+}
 
 // Cámaras en pantalla apaisada 16:9 (?horizontal=1&camara=A…G2).
 // A/B/C: campo de LADO (porterías izq/der). D/E/F/G: campo VERTICAL tipo Balón Brawl
@@ -232,7 +329,7 @@ function layout() {
     }
     camera.updateProjectionMatrix();
   }
-  placeJoyBase();
+  applyControls();
 }
 function onViewportChange() {
   layout();
@@ -322,7 +419,8 @@ class Actor {
     this.model = model;
     this.body.add(model);
     this.root.add(this.body);
-    this.shadow = blob(0.75 * ESCALA, 0.3); this.shadow.position.y = 0.02; this.root.add(this.shadow);
+    shadowFlags(model, true, false);
+    this.shadow = blob(0.75 * ESCALA, renderer.shadowMap.enabled ? 0.16 : 0.3); this.shadow.position.y = 0.02; this.root.add(this.shadow);
     this.ring = ring(ringColor, keeper ? 0.85 * ESCALA : 1.0 * ESCALA); this.ring.position.y = 0.03; this.root.add(this.ring);
     scene.add(this.root);
     // animación
@@ -452,7 +550,7 @@ const btnChutar = document.getElementById('btnChutar'), btnRegate = document.get
 const btnEntrada = document.getElementById('btnEntrada'), btnTurbo = document.getElementById('btnTurbo');
 const cargaAro = document.getElementById('carga'), cargaRegate = document.getElementById('cargaRegate'), cargaAlto = document.getElementById('cargaAlto');
 const cargaEntrada = document.getElementById('cargaEntrada'), cargaTurbo = document.getElementById('cargaTurbo');
-let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 };
+let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 }, joyScale = 1;
 function cssEnvPx(expr) {
   const el = document.createElement('div');
   el.style.cssText = `position:fixed;visibility:hidden;pointer-events:none;width:${expr};height:0;`;
@@ -474,6 +572,7 @@ function placeJoyBase() {
   } else {
     joyHome = { x: 92, y: zr.height - 104 };
   }
+  joyHome = customJoyHome(joyHome, zr);
   if (joyId === null) setJoy(joyHome.x, joyHome.y);
 }
 function setJoyDir(jx, jy) {
@@ -514,7 +613,7 @@ function bindHold(el, onDown, onUp) {
 }
 
 joyZona.addEventListener('pointerdown', (e) => {
-  if (joyId !== null) return;
+  if (joyId !== null || editor.on) return;
   if (e.target.closest && e.target.closest('.btnAccion')) return;
   joyId = e.pointerId;
   try { joyZona.setPointerCapture(e.pointerId); } catch (_) {}
@@ -525,9 +624,9 @@ joyZona.addEventListener('pointermove', (e) => {
   if (e.pointerId !== joyId) return;
   const r = joyZona.getBoundingClientRect();
   let dx = e.clientX - r.left - joyCx, dy = e.clientY - r.top - joyCy;
-  const L = Math.hypot(dx, dy), M = 52;
+  const L = Math.hypot(dx, dy), M = 52 * joyScale;
   if (L > M) { dx *= M / L; dy *= M / L; }
-  joyPunta.style.transform = `translate(${dx}px,${dy}px)`;
+  joyPunta.style.transform = `translate(${dx / joyScale}px,${dy / joyScale}px)`;
   const n = Math.min(1, L / M);
   input.jx = L > 6 ? dx / M : 0; input.jy = L > 6 ? -dy / M : 0;
   if (n < 0.12) { input.jx = 0; input.jy = 0; }
@@ -1263,8 +1362,10 @@ function update(dt) {
   }
   // --- UI botones ---
   const hasBall = ball.owner === user;
-  acciones.classList.toggle('con-balon', !!hasBall);
-  acciones.classList.toggle('sin-balon', !hasBall);
+  if (!editor.on) {
+    acciones.classList.toggle('con-balon', !!hasBall);
+    acciones.classList.toggle('sin-balon', !hasBall);
+  }
   const ring = (el, fill) => { if (el) el.style.strokeDashoffset = String(289 * (1 - Math.max(0, Math.min(1, fill)))); };
   ring(cargaAro, input.shootDown ? input.charge : (aim.active && aim.kind === 'chutar' && aim.dragged && !aim.cancel ? aim.power : 0));
   ring(cargaAlto, aim.active && aim.kind === 'alto' && aim.dragged && !aim.cancel ? aim.power : 0);
@@ -1394,7 +1495,7 @@ function frame(now) {
   if (HORIZONTAL && (++frame.n % 15) === 0 && vpKey() !== lastVP) onViewportChange();   // tamaño cambiado sin evento
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (window.__game.paused) return;   // solo para pruebas automáticas (avance manual con __game.advance)
-  fpsAcc += dt; fpsN++; if (fpsAcc > 1) { window.__game.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
+  fpsAcc += dt; fpsN++; if (fpsAcc > 1) { window.__game.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; qualityTick(window.__game.fps); }
   if (S.paused) { if (ballMesh) render(0); return; }   // menú de pausa abierto: juego congelado
   if (S.mode !== 'menu' && S.mode !== 'end') update(dt); else { for (const a of actors) a.vel.multiplyScalar(0.8); }
   if (S.mode === 'menu' || ballMesh) render(dt);
@@ -1620,6 +1721,7 @@ if (giraEl) {
 // ===================== INICIO =====================
 function setupField(campo) {
   campoRoot = matte(campo.scene);
+  shadowFlags(campoRoot, false, true);
   scene.add(campoRoot);
   // Recorte de la grada derecha: solo en cámaras de LADO (A/B/C). D/E/F ven el estadio entero.
   camClipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), WX + 3.0);
@@ -1633,7 +1735,7 @@ function setupField(campo) {
   camApron.visible = false;
   scene.add(camApron);
   if (HORIZONTAL) applyCamClip(camCfg().layout === 'side');
-  ballMesh = makeBall(); scene.add(ballMesh);
+  ballMesh = makeBall(); scene.add(ballMesh); shadowFlags(ballMesh, true, false);
   // silueta del balón cuando queda tapado por un jugador (la cámara es alta y el balón va delante del pie)
   ballGhost = new THREE.Mesh(ballMesh.geometry, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthWrite: false, depthFunc: THREE.GreaterDepth }));
   ballGhost.renderOrder = 6; scene.add(ballGhost);
@@ -1645,8 +1747,193 @@ function setupField(campo) {
   aimArrow.add(am); aimArrow.visible = false; scene.add(aimArrow);
   aimLine = makeAimLine(); scene.add(aimLine);
   makeLobPreview();
+  applyQuality('campo');
   am.rotation.set(-Math.PI / 2, 0, 0);   // la flecha apunta a -Z local (frente del personaje)
 }
+
+// ===================== CONTROLES PERSONALIZABLES + EDITOR (update 10) =====================
+const CTRL = {
+  joy: { el: joyBase, name: 'Joystick' },
+  chutar: { el: btnChutar, name: 'Chutar' },
+  regate: { el: btnRegate, name: 'Regate' },
+  turbo: { el: btnTurbo, name: 'Turbo' },
+  entrada: { el: btnEntrada, name: 'Entrada' },
+  alto: { el: btnAlto, name: 'Chut alto' },
+};
+const BTN_IDS = ['chutar', 'regate', 'turbo', 'entrada', 'alto'];
+const S_MIN = 0.6, S_MAX = 1.6, CTRL_MARGIN = 6, TOP_RESERVE = 46;   // TOP_RESERVE: marcador
+const clampS = (v) => Math.max(S_MIN, Math.min(S_MAX, +v || 1));
+let _ins = null, _insKey = '';
+function safeInsets() {
+  const k = vpKey();
+  if (!_ins || _insKey !== k) {
+    _ins = { t: cssEnvPx('env(safe-area-inset-top, 0px)'), r: cssEnvPx('env(safe-area-inset-right, 0px)'), b: cssEnvPx('env(safe-area-inset-bottom, 0px)'), l: cssEnvPx('env(safe-area-inset-left, 0px)') };
+    _insKey = k;
+  }
+  return _ins;
+}
+// centro (coords del #app) limitado para que el control (ya escalado) no salga de pantalla ni entre en la safe-area
+function clampCenter(cx, cy, w, h, W, H, ins, box) {
+  let x0 = ins.l + CTRL_MARGIN + w / 2, x1 = W - ins.r - CTRL_MARGIN - w / 2;
+  let y0 = ins.t + TOP_RESERVE + h / 2, y1 = H - ins.b - CTRL_MARGIN - h / 2;
+  if (box) { x0 = Math.max(x0, box.x0 + w / 2); x1 = Math.min(x1, box.x1 - w / 2); y0 = Math.max(y0, box.y0 + h / 2); y1 = Math.min(y1, box.y1 - h / 2); }
+  const cl = (v, a, b) => (a > b ? (a + b) / 2 : Math.max(a, Math.min(b, v)));
+  return [cl(cx, x0, x1), cl(cy, y0, y1)];
+}
+function liveCtrl() { return editor.on ? editor.draft : AJ.ctrl; }
+function applyControls() {
+  const cfg = liveCtrl(), opa = editor.on ? editor.opa : AJ.opacity;
+  acciones.style.opacity = opa < 0.999 ? opa : '';
+  joyBase.style.opacity = opa < 0.999 ? opa : '';
+  joyScale = HORIZONTAL ? clampS(cfg.joy && cfg.joy.s) : 1;
+  joyBase.style.scale = joyScale !== 1 ? String(joyScale) : '';
+  if (HORIZONTAL) {
+    const ar = app.getBoundingClientRect(), cr = acciones.getBoundingClientRect();
+    const W = ar.width, H = ar.height, ins = safeInsets();
+    for (const id of BTN_IDS) {
+      const el = CTRL[id].el, c = cfg[id];
+      el.style.left = el.style.top = el.style.right = el.style.bottom = ''; el.style.scale = '';
+      if (!c || !W || !H) continue;
+      const sc = clampS(c.s);
+      if (sc !== 1) el.style.scale = String(sc);
+      const bw = el.offsetWidth, bh = el.offsetHeight;
+      let cx, cy;
+      if (c.x == null) {   // tamaño cambiado pero posición por defecto: re-limitar igualmente
+        const r = el.getBoundingClientRect(); cx = (r.left + r.right) / 2 - ar.left; cy = (r.top + r.bottom) / 2 - ar.top;
+      } else { cx = c.x * W; cy = c.y * H; }
+      [cx, cy] = clampCenter(cx, cy, bw * sc, bh * sc, W, H, ins);
+      el.style.left = (cx - (cr.left - ar.left) - bw / 2) + 'px';
+      el.style.top = (cy - (cr.top - ar.top) - bh / 2) + 'px';
+      el.style.right = 'auto'; el.style.bottom = 'auto';
+    }
+  }
+  placeJoyBase();
+}
+function customJoyHome(def, zr) {
+  if (!HORIZONTAL) return def;
+  const ar = app.getBoundingClientRect(), W = ar.width, H = ar.height;
+  if (!W || !H) return def;
+  const ox = zr.left - ar.left, oy = zr.top - ar.top;
+  const c = liveCtrl().joy;
+  const js = joyBase.offsetWidth * joyScale;
+  let cx = def.x + ox, cy = def.y + oy;
+  if (c && c.x != null) { cx = c.x * W; cy = c.y * H; }
+  [cx, cy] = clampCenter(cx, cy, js, js, W, H, safeInsets(), { x0: ox, x1: ox + zr.width, y0: oy, y1: oy + zr.height });
+  return { x: cx - ox, y: cy - oy };
+}
+
+const ajustesEl = document.getElementById('ajustes'), editorEl = document.getElementById('editor');
+const edSel = document.getElementById('edSel'), edTam = document.getElementById('edTam'), edTamV = document.getElementById('edTamV');
+const edOpa = document.getElementById('edOpa'), edOpaV = document.getElementById('edOpaV'), ajInfo = document.getElementById('ajInfo');
+let ajFrom = null;
+function refreshAjustes() {
+  for (const b of document.querySelectorAll('#ajCalidad button')) b.classList.toggle('sel', b.dataset.q === AJ.quality);
+  const q = window.__game.quality || {};
+  const sh = q.shadows ? `sombras ${q.soft ? 'suaves' : 'normales'} ${q.shadows}px` : 'sin sombras reales';
+  ajInfo.textContent = `Resolución ×${(q.pixelRatio || renderer.getPixelRatio()).toFixed(2).replace(/\.?0+$/, '')} · ${sh}` + (q.fallbackSteps ? ' · ajustado por rendimiento' : '');
+}
+function openAjustes(from) {
+  ajFrom = from || (S.paused ? 'pausa' : 'menu');
+  if (ajFrom === 'pausa') pausaEl.classList.remove('visible');
+  refreshAjustes();
+  ajustesEl.classList.add('visible');
+}
+function closeAjustes() {
+  ajustesEl.classList.remove('visible');
+  if (ajFrom === 'pausa' && S.paused) pausaEl.classList.add('visible');
+  ajFrom = null;
+}
+function edSelect(id) {
+  editor.sel = id;
+  for (const k in CTRL) CTRL[k].el.classList.toggle('ctrlSel', k === id);
+  if (!id) { edSel.textContent = 'Arrastra un control para moverlo'; edTam.disabled = true; edTamV.textContent = '–'; return; }
+  const d = editor.draft[id] || (editor.draft[id] = { s: 1 });
+  edSel.textContent = CTRL[id].name;
+  edTam.disabled = false; edTam.value = Math.round(clampS(d.s) * 100); edTamV.textContent = edTam.value + '%';
+}
+function edView(v) {
+  editor.view = v === 'sin' ? 'sin' : 'con';
+  acciones.classList.toggle('con-balon', editor.view === 'con');
+  acciones.classList.toggle('sin-balon', editor.view === 'sin');
+  for (const b of document.querySelectorAll('#edVista button')) b.classList.toggle('sel', b.dataset.v === editor.view);
+  if (editor.sel && editor.sel !== 'joy' && editor.sel !== 'turbo' && getComputedStyle(CTRL[editor.sel].el).visibility === 'hidden') edSelect(null);
+}
+function edSyncOpa() { edOpa.value = Math.round(editor.opa * 100); edOpaV.textContent = edOpa.value + '%'; }
+function openEditor() {
+  ajustesEl.classList.remove('visible');
+  editor.on = true; editor.draft = JSON.parse(JSON.stringify(AJ.ctrl || {})); editor.opa = AJ.opacity; editor.drag = null;
+  resetInputs();
+  editor.savedCls = acciones.className;
+  document.body.classList.add('editando'); editorEl.classList.add('visible');
+  edSelect(null); edView('con'); edSyncOpa(); applyControls();
+}
+function closeEditor(save) {
+  if (!editor.on) return;
+  if (save) {
+    for (const k of Object.keys(editor.draft)) { const d = editor.draft[k]; if (d && d.x == null && clampS(d.s) === 1) delete editor.draft[k]; }
+    AJ.ctrl = editor.draft; AJ.opacity = editor.opa; saveAjustes();
+  }
+  edSelect(null);
+  editor.on = false; editor.draft = null; editor.drag = null;
+  if (editor.savedCls != null) acciones.className = editor.savedCls;
+  document.body.classList.remove('editando'); editorEl.classList.remove('visible');
+  applyControls();
+  openAjustes(ajFrom || (S.paused ? 'pausa' : 'menu'));
+}
+function ctrlIdOf(el) { for (const k in CTRL) if (CTRL[k].el === el) return k; return null; }
+function storeCenterFromDom(id) {
+  const ar = app.getBoundingClientRect(), r = CTRL[id].el.getBoundingClientRect();
+  const d = editor.draft[id] || (editor.draft[id] = { s: 1 });
+  d.x = +(((r.left + r.right) / 2 - ar.left) / ar.width).toFixed(4);
+  d.y = +(((r.top + r.bottom) / 2 - ar.top) / ar.height).toFixed(4);
+}
+window.addEventListener('pointerdown', (e) => {
+  if (!editor.on) return;
+  if (e.target.closest && e.target.closest('.edBarra')) return;
+  e.preventDefault(); e.stopPropagation();
+  const t = e.target.closest && e.target.closest('.btnAccion, #joyBase');
+  const id = t ? ctrlIdOf(t) : null;
+  if (!id) return;
+  edSelect(id);
+  const r = t.getBoundingClientRect();
+  editor.drag = { id, pid: e.pointerId, ox: e.clientX - (r.left + r.right) / 2, oy: e.clientY - (r.top + r.bottom) / 2 };
+}, true);
+window.addEventListener('pointermove', (e) => {
+  if (!editor.on || !editor.drag || e.pointerId !== editor.drag.pid) return;
+  e.preventDefault(); e.stopPropagation();
+  const ar = app.getBoundingClientRect(), d = editor.draft[editor.drag.id];
+  d.x = (e.clientX - editor.drag.ox - ar.left) / ar.width;
+  d.y = (e.clientY - editor.drag.oy - ar.top) / ar.height;
+  applyControls();
+}, true);
+const edUp = (e) => {
+  if (!editor.on) return;
+  if (editor.drag && e.pointerId === editor.drag.pid) { storeCenterFromDom(editor.drag.id); editor.drag = null; }
+  if (!(e.target.closest && e.target.closest('.edBarra'))) e.stopPropagation();
+};
+window.addEventListener('pointerup', edUp, true); window.addEventListener('pointercancel', edUp, true);
+edTam.addEventListener('input', () => {
+  if (!editor.sel) return;
+  const d = editor.draft[editor.sel]; d.s = clampS(edTam.value / 100); edTamV.textContent = edTam.value + '%';
+  applyControls();
+});
+edOpa.addEventListener('input', () => { editor.opa = Math.max(0.3, Math.min(1, edOpa.value / 100)); edSyncOpa(); applyControls(); });
+for (const b of document.querySelectorAll('#edVista button')) b.addEventListener('click', () => edView(b.dataset.v));
+document.getElementById('edGuardar').addEventListener('click', () => closeEditor(true));
+document.getElementById('edCancelar').addEventListener('click', () => closeEditor(false));
+document.getElementById('edReset').addEventListener('click', () => { editor.draft = {}; editor.opa = 1; edSelect(null); edSyncOpa(); applyControls(); });
+document.getElementById('ajEditar').addEventListener('click', openEditor);
+document.getElementById('ajCerrar').addEventListener('click', closeAjustes);
+for (const b of document.querySelectorAll('#ajCalidad button')) b.addEventListener('click', () => { setQuality(b.dataset.q); refreshAjustes(); });
+const btnAjustes = document.getElementById('btnAjustes');
+btnAjustes.addEventListener('pointerdown', (e) => e.stopPropagation());
+btnAjustes.addEventListener('click', (e) => { e.stopPropagation(); openAjustes('menu'); });
+document.getElementById('btnPausaAjustes').addEventListener('click', () => openAjustes('pausa'));
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (editor.on) { closeEditor(false); e.stopPropagation(); } else if (ajustesEl.classList.contains('visible')) { closeAjustes(); e.stopPropagation(); }
+}, true);
+
 Object.assign(window.__game, {
   paused: false,
   advance: (sec, step = 1 / 60, draw = true) => { for (let t = 0; t < sec - 1e-6; t += step) { if (S.mode !== 'menu' && S.mode !== 'end') update(step); if (draw) render(step); } },
@@ -1662,23 +1949,31 @@ Object.assign(window.__game, {
   get aim() { return aim; },
   relayout: () => onViewportChange(),
   setupMatch,
+  AJ, QS, setQuality, applyQuality, applyControls,
+  openSettings: (from) => openAjustes(from), closeSettings: () => closeAjustes(),
+  openEditor: () => openEditor(), closeEditor: (save) => closeEditor(save),
+  get editor() { return editor; }, edSelect: (id) => edSelect(id), edView: (v) => edView(v),
+  setCtrl: (id, v) => { const t = editor.on ? editor.draft : AJ.ctrl; t[id] = Object.assign(t[id] || { s: 1 }, v); applyControls(); },
+  ctrlRect: (id) => { const r = CTRL[id].el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; },
 });
 Object.defineProperty(window.__game, 'camMode', { get: () => camMode });
 Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
 (async function init() {
   const cargando = document.getElementById('cargando');
+  applyQuality('init');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=9')).json();
+    META = await (await fetch('assets/anim_meta.json?v=10')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; });
+    applyTextureQuality();
     buildMenuChars(); buildMenuUI();
     layout(); layoutMenu(); updateOrient();
     cargando.classList.add('oculto');
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=9').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=10').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);

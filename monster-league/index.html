@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -68,6 +68,7 @@
   <div id="aimJoy" aria-hidden="true"><div id="aimCancel">✕</div><div id="aimKnob"></div></div>
   <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: chutar (mantén para cargar) · SHIFT: turbo · E: regate / entrada · Q: chut alto · ESC: pausa</div>
   <div id="menu">
+    <button id="btnAjustes" class="mEngranaje" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"/></svg></button>
     <div class="mTitulo"><h1>MONSTER<br> LEAGUE</h1></div>
     <div id="menuStage" aria-label="Personaje (arrastra para girar)"></div>
     <button id="mPrev" class="mFlecha izq" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button>
@@ -82,7 +83,36 @@
     <div class="pausaCaja">
       <div class="pausaTit">PAUSA</div>
       <button id="btnReanudar">REANUDAR</button>
+      <button id="btnPausaAjustes">AJUSTES</button>
       <button id="btnSalir">SALIR DE LA PARTIDA</button>
+    </div>
+  </div>
+  <div id="ajustes" aria-label="Ajustes">
+    <div class="ajCaja">
+      <div class="ajTit">AJUSTES</div>
+      <button id="ajEditar" class="ajBtn">EDITAR CONTROLES</button>
+      <div class="ajLab">CALIDAD GRÁFICA</div>
+      <div id="ajCalidad" class="ajSeg">
+        <button data-q="baja">BAJA</button><button data-q="media">MEDIA</button><button data-q="alta">ALTA</button><button data-q="ultra">ULTRA</button>
+      </div>
+      <div id="ajInfo" class="ajInfo"></div>
+      <button id="ajCerrar" class="ajBtn ajVolver">VOLVER</button>
+    </div>
+  </div>
+  <div id="editor" aria-label="Editor de controles">
+    <div class="edBarra">
+      <div class="edFila">
+        <div class="edTit">EDITAR CONTROLES</div>
+        <div id="edSel" class="edSel">Arrastra un control para moverlo</div>
+        <div id="edVista" class="ajSeg edVista"><button data-v="con" class="sel">CON BALÓN</button><button data-v="sin">SIN BALÓN</button></div>
+      </div>
+      <div class="edFila">
+        <label class="edSl">TAMAÑO <input type="range" id="edTam" min="60" max="160" step="5" value="100" disabled><span id="edTamV">–</span></label>
+        <label class="edSl">OPACIDAD <input type="range" id="edOpa" min="30" max="100" step="5" value="100"><span id="edOpaV">100%</span></label>
+      </div>
+      <div class="edFila edBtns">
+        <button id="edGuardar" class="edOk">GUARDAR</button><button id="edReset">RESTABLECER</button><button id="edCancelar" class="edNo">CANCELAR</button>
+      </div>
     </div>
   </div>
   <div id="pantalla">
@@ -102,6 +132,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=9"></script>
+<script type="module" src="main.js?v=10"></script>
 </body>
 </html>
