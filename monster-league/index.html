@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -77,15 +77,23 @@
     <div class="mDerecha">
       <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div></div>
       <div id="mCartas"></div>
-      <div class="mAbajo"><div id="mVs"></div><button id="btnMenuJugar">JUGAR</button></div>
+      <div class="mAbajo"><div id="mVs"></div><button id="btnMenuTienda">TIENDA</button><button id="btnMenuPractica">PRÁCTICA</button><button id="btnMenuJugar">JUGAR</button></div>
     </div>
   </div>
   <div id="pausa">
     <div class="pausaCaja">
       <div class="pausaTit">PAUSA</div>
       <button id="btnReanudar">REANUDAR</button>
+      <button id="btnReiniciarBalon">REINICIAR BALÓN</button>
       <button id="btnPausaAjustes">AJUSTES</button>
       <button id="btnSalir">SALIR DE LA PARTIDA</button>
+    </div>
+  </div>
+  <div id="tienda" aria-label="Tienda">
+    <div class="tiCaja">
+      <div class="tiTit">TIENDA · BOTAS <span>TODO GRATIS</span></div>
+      <div id="tiendaLista"></div>
+      <button id="tiendaCerrar" class="ajBtn ajVolver">VOLVER</button>
     </div>
   </div>
   <div id="fpsMeter"></div>
@@ -98,6 +106,7 @@
         <button data-q="baja">BAJA</button><button data-q="media">MEDIA</button><button data-q="alta">ALTA</button><button data-q="ultra">ULTRA</button>
       </div>
       <div id="ajInfo" class="ajInfo"></div>
+      <button id="ajAsistencia" class="ajBtn ajToggle">ASISTENCIA DE APUNTADO: SÍ</button>
       <button id="ajInstantaneo" class="ajBtn ajToggle">DISPARO INSTANTÁNEO AL TOCAR (SIN APUNTAR): NO</button>
       <button id="ajFps" class="ajBtn ajToggle">CONTADOR FPS: NO</button>
       <button id="ajCerrar" class="ajBtn ajVolver">VOLVER</button>
@@ -136,6 +145,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=14"></script>
+<script type="module" src="main.js?v=15"></script>
 </body>
 </html>
