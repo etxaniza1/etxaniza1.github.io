@@ -30,7 +30,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=20';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=21';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
@@ -266,6 +266,7 @@ function applyLOD(a) {
     const src = o.userData.srcGeom || (o.userData.srcGeom = o.geometry);
     const g = lodGeometry(src, q.lod, q.lodErr || 0.006);
     if (o.geometry !== g) o.geometry = g;
+    if (o.material && (o.material.userData?.toon || o.material.userData?.outline || (Array.isArray(o.material) && o.material[0]?.userData?.toon))) ensureSmoothN(g);
   });
 }
 // MeshPhysicalMaterial (KHR_materials_specular) -> MeshStandardMaterial: con rugosidad 1 se ve igual y el shader es más barato
@@ -526,55 +527,88 @@ if (window.visualViewport) {
 }
 if (window.ResizeObserver) new ResizeObserver(() => { if (vpKey() !== lastVP) onViewportChange(); }).observe(document.documentElement);
 
-// ===================== ESTILO CARICATURA (update 20) =====================
-// Personajes Tripo (toon:true): textura casi a plena luz (sin oscurecer por la iluminación del campo) con un sombreado
-// muy suave en espacio de vista + contorno negro fino (casco invertido, con skinning: sigue las animaciones).
-// No se tocan los modelos: solo materiales en three.js. El contorno se apaga en calidad Baja.
-const TOON = { min: 0.8, px: 1.5, outline: { value: new THREE.Vector2(0.004, 0.008) } };
+// ===================== ESTILO CARICATURA (update 20, rehecho en update 21) =====================
+// Personajes Tripo (toon:true): textura a plena luz (sin la iluminación del campo) + sombreado cel de 2 tonos suave
+// (conserva el volumen) + contorno negro limpio. Las normales del sombreado y del contorno son normales SUAVIZADAS
+// (promedio por posición, ignorando costuras UV/aristas duras), con skinning: sin grietas ni manchas en las costuras.
+// Contorno: casco invertido desplazado en espacio de pantalla -> grosor constante (~2 px), más fino de lejos.
+// No se tocan los modelos: solo materiales/atributos en three.js. El contorno se apaga en calidad Baja.
+const TOON = { shadow: 0.74, px: 2.0, near: 16, minK: 0.55, outline: { value: new THREE.Vector4(0.004, 0.008, 16, 0.55) } };
+// normales suavizadas por posición (atributo 'oNormal'); se calcula una vez por geometría (también en las de LOD)
+function ensureSmoothN(g) {
+  if (!g || g.attributes.oNormal || !g.attributes.normal) return g;
+  const P = g.attributes.position, N = g.attributes.normal, n = P.count, map = new Map(), out = new Float32Array(n * 3);
+  const key = (i) => `${Math.round(P.getX(i) * 2e3)},${Math.round(P.getY(i) * 2e3)},${Math.round(P.getZ(i) * 2e3)}`;
+  const acc = []; const id = new Int32Array(n);
+  for (let i = 0; i < n; i++) {
+    const k = key(i); let a = map.get(k);
+    if (a === undefined) { a = acc.length; map.set(k, a); acc.push([0, 0, 0]); }
+    id[i] = a; const v = acc[a]; v[0] += N.getX(i); v[1] += N.getY(i); v[2] += N.getZ(i);
+  }
+  for (let i = 0; i < n; i++) {
+    const v = acc[id[i]], l = Math.hypot(v[0], v[1], v[2]) || 1;
+    out[i * 3] = v[0] / l; out[i * 3 + 1] = v[1] / l; out[i * 3 + 2] = v[2] / l;
+  }
+  g.setAttribute('oNormal', new THREE.BufferAttribute(out, 3));
+  return g;
+}
+const SMOOTH_NORMAL_VS = 'vec3 objectNormal = oNormal;\n#ifdef USE_TANGENT\n\tvec3 objectTangent = vec3( tangent.xyz );\n#endif';
 function toonPatch(m) {
   m.toneMapped = false; m.userData.toon = true;
-  const u = m.userData.toonU = { uToonMin: { value: TOON.min }, uDye: { value: new THREE.Color(1, 1, 1) }, uDyeAmt: { value: 0 } };
+  const u = m.userData.toonU = { uToonShadow: { value: TOON.shadow }, uDye: { value: new THREE.Color(1, 1, 1) }, uDyeAmt: { value: 0 } };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
-    sh.vertexShader = sh.vertexShader.replace('void main() {', 'varying vec3 vToonN;\nvoid main() {')
-      .replace('#include <fog_vertex>', '#include <fog_vertex>\n#ifdef USE_SKINNING\n\tvToonN = normalize( transformedNormal );\n#else\n\tvToonN = normalize( normalMatrix * normal );\n#endif');
-    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'varying vec3 vToonN;\nuniform float uToonMin;\nuniform float uDyeAmt;\nuniform vec3 uDye;\nvoid main() {')
+    sh.vertexShader = sh.vertexShader.replace('void main() {', 'attribute vec3 oNormal;\nvarying vec3 vToonN;\nvoid main() {')
+      .replace('#include <beginnormal_vertex>', SMOOTH_NORMAL_VS)
+      .replace('#include <fog_vertex>', '#include <fog_vertex>\n#ifdef USE_SKINNING\n\tvToonN = normalize( transformedNormal );\n#else\n\tvToonN = normalize( normalMatrix * oNormal );\n#endif');
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'varying vec3 vToonN;\nuniform float uToonShadow;\nuniform float uDyeAmt;\nuniform vec3 uDye;\nvoid main() {')
       .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', `vec3 outgoingLight = reflectedLight.indirectDiffuse;
-	float tl = dot( normalize( vToonN ), vec3( -0.36, 0.6, 0.71 ) ) * 0.5 + 0.5;
-	outgoingLight *= mix( uToonMin, 1.0, smoothstep( 0.2, 0.7, tl ) );
+	vec3 tn = normalize( vToonN );
+	float nl = dot( tn, normalize( vec3( -0.45, 0.62, 0.64 ) ) );
+	float fw = max( fwidth( nl ), 0.02 );
+	float lit = smoothstep( 0.08 - fw, 0.08 + fw, nl );           // 2 tonos con borde nítido pero antialias
+	float rim = smoothstep( 0.0, 0.35, tn.z );                    // los bordes que se curvan se oscurecen un poco (volumen)
+	outgoingLight *= mix( uToonShadow, 1.0, lit ) * mix( 0.9, 1.0, rim );
 	float lumT = dot( outgoingLight, vec3( 0.299, 0.587, 0.114 ) );
 	outgoingLight = mix( outgoingLight, uDye * ( 0.3 + 1.1 * lumT ), uDyeAmt );`);
   };
-  m.customProgramCacheKey = () => 'mlToon';
+  m.customProgramCacheKey = () => 'mlToon21';
   return m;
 }
 function makeToonMat(src) {
   const m = new THREE.MeshBasicMaterial({ map: src.map || null, color: 0xffffff, side: src.side, transparent: false });
   m.name = src.name; return toonPatch(m);
 }
-const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x15161c, side: THREE.BackSide, toneMapped: false });
+const OUTLINE_MAT = new THREE.MeshBasicMaterial({ color: 0x101116, side: THREE.BackSide, toneMapped: false });
 OUTLINE_MAT.userData.outline = true;
 OUTLINE_MAT.onBeforeCompile = (sh) => {
   sh.uniforms.uOutline = TOON.outline;
-  sh.vertexShader = sh.vertexShader.replace('void main() {', 'uniform vec2 uOutline;\nvoid main() {')
+  sh.vertexShader = sh.vertexShader.replace('void main() {', 'attribute vec3 oNormal;\nuniform vec4 uOutline;\nvoid main() {')
+    .replace('#include <beginnormal_vertex>', SMOOTH_NORMAL_VS)
     .replace('#include <project_vertex>', `#include <project_vertex>
 	#ifdef USE_SKINNING
 		vec3 onrm = normalize( transformedNormal );
 	#else
-		vec3 onrm = normalize( normalMatrix * normal );
+		vec3 onrm = normalize( normalMatrix * oNormal );
+	#endif
+	#ifdef FLIP_SIDED
+		onrm = - onrm;   // BackSide invierte transformedNormal: el casco debe salir HACIA FUERA (en v20 iba hacia dentro -> manchas)
 	#endif
 	vec2 cn = ( projectionMatrix * vec4( onrm, 0.0 ) ).xy; float cl = length( cn );
-	if ( cl > 1e-5 ) gl_Position.xy += cn / cl * uOutline * gl_Position.w;`);
+	float kd = clamp( uOutline.z / max( gl_Position.w, 0.01 ), uOutline.w, 1.0 );   // más fino de lejos
+	if ( cl > 1e-5 ) gl_Position.xy += cn / cl * uOutline.xy * kd * gl_Position.w;
+	gl_Position.z += 0.0004 * gl_Position.w;`);
 };
-OUTLINE_MAT.customProgramCacheKey = () => 'mlOutline';
+OUTLINE_MAT.customProgramCacheKey = () => 'mlOutline21';
 // grosor del contorno en píxeles del destino (pantalla o render target de los retratos)
-function setOutlinePx(w, h, px = TOON.px) { TOON.outline.value.set((2 * px) / Math.max(1, w), (2 * px) / Math.max(1, h)); }
+function setOutlinePx(w, h, px = TOON.px) { TOON.outline.value.set((2 * px) / Math.max(1, w), (2 * px) / Math.max(1, h), TOON.near, TOON.minK); }
 const _dbs = new THREE.Vector2();
 function syncOutline() { renderer.getDrawingBufferSize(_dbs); setOutlinePx(_dbs.x, _dbs.y, TOON.px * Math.max(1, renderer.getPixelRatio() * 0.85)); }
 function applyToon(model, key) {
   const c = CHARS.find((x) => x.key === key); if (!c || !c.toon) return model;
   const skinned = []; model.traverse((o) => { if (o.isSkinnedMesh && !o.userData.outline) skinned.push(o); });
   for (const o of skinned) {
+    ensureSmoothN(o.geometry);
     o.material = Array.isArray(o.material) ? o.material.map(makeToonMat) : makeToonMat(o.material);
     const ol = new THREE.SkinnedMesh(o.geometry, OUTLINE_MAT);
     ol.bind(o.skeleton, o.bindMatrix); ol.bindMode = o.bindMode; ol.frustumCulled = false; ol.castShadow = false; ol.receiveShadow = false;
@@ -665,7 +699,7 @@ class Actor {
     this.dribbleT = 0; this.dribbleCd = 0; this.dashHit = false; this.dashEnded = false;
     this.sf = actorStats(this); this.dashSp = DASH_SPEED; this.dribSp = DRIBBLE_SPEED;
     this.energy = 1; this.sprinting = false;
-    this.kickPending = null; this.kickAnimT = 0; this.tackleT = 0; this.diveT = 0; this.diveClip = null; this.celebrate = false;
+    this.kickPending = null; this.kickAnimT = 0; this.tackleT = 0; this.diveT = 0; this.diveClip = null; this.celebrate = false; this.introT = 0;
   }
   dispose() { this.mixer.stopAllAction(); scene.remove(this.root); }
   place(x, y) {
@@ -694,6 +728,7 @@ class Actor {
     const sp = this.vel.length(), E = ESCALA, M = this.meta;
     let want, ts = 1;
     if (this.celebrate) want = 'Celebrate';
+    else if (this.introT > 0 && !this.keeper && sp < 0.35 && this.actions.Intro) want = 'Intro';   // update 21: presentación antes del saque
     else if (this.keeper && this.diveT > 0) { want = this.diveClip; ts = DIVE_RATE; }
     else if (this.tackleT > 0) { want = 'Tackle'; ts = TACKLE_RATE; }
     else if (this.kickAnimT > 0) { want = 'Kick'; ts = KICK_RATE; }
@@ -722,6 +757,7 @@ class Actor {
     this.root.rotation.y = this.yaw;
     this.kickAnimT = Math.max(0, this.kickAnimT - dt);
     this.tackleT = Math.max(0, this.tackleT - dt);
+    if (this.introT > 0) this.introT = this.vel.lengthSq() > 0.12 ? 0 : Math.max(0, this.introT - dt);
     this.chooseAnim();
     this.mixer.update(dt);
     // aturdido: tambaleo (encima de la animación)
@@ -1651,6 +1687,7 @@ function kickoff(first) {
   if (first) { S.vsT = 1.5; showVsCards(true); }   // update 17: cartas enfrentadas 1,5 s antes del saque
   user.place(0, -3.2); rival.place(0, 3.2);
   gkA.place(0, -HL + 0.9); gkB.place(0, HL - 0.9);
+  if (first) for (const a of [user, rival]) a.introT = a.actions.Intro ? a.actions.Intro.getClip().duration - 0.15 : 0;   // update 21
   ball.pos.set(0, 0, BR); ball.vel.set(0, 0, 0); ball.owner = null; ball.noCatch = null;
   input.shootDown = false; input.charge = 0;
   S.mode = 'kickoff'; S.pauseT = 1.1 + (first ? 1.5 : 0); if (!first) showBanner('¡YA!', '', 900);
@@ -2209,9 +2246,11 @@ function buildMenuChars() {
     const mixer = new THREE.AnimationMixer(model); const actions = {};
     for (const clip of GLB[c.key].animations) actions[clip.name] = mixer.clipAction(clip);
     const cel = actions.Celebrate; cel.setLoop(THREE.LoopOnce, 1); cel.clampWhenFinished = true;
+    const intro = actions.Intro;   // update 21: presentación propia de los personajes Tripo
+    if (intro) { intro.setLoop(THREE.LoopOnce, 1); intro.clampWhenFinished = true; }
     actions.Idle.play();
     mixer.addEventListener('finished', (e) => {
-      if (e.action === cel) { actions.Idle.reset().play(); cel.crossFadeTo(actions.Idle, 0.3, false); }
+      if (e.action === cel || (intro && e.action === intro)) { actions.Idle.reset().play(); e.action.crossFadeTo(actions.Idle, 0.35, false); }
     });
     menuChars.push({ root, model, mixer, actions });
   }
@@ -2327,8 +2366,8 @@ function selectChar(i, celebrate = true) {
   const m = menuChars[sel];
   popT = 0; userYaw = 0;
   if (celebrate) {
-    const cel = m.actions.Celebrate, idle = m.actions.Idle;
-    cel.reset().setEffectiveWeight(1).play(); idle.crossFadeTo(cel, 0.12, false);
+    const cel = m.actions.Intro || m.actions.Celebrate, idle = m.actions.Idle;
+    cel.reset().setEffectiveWeight(1).play(); idle.crossFadeTo(cel, m.actions.Intro ? 0.2 : 0.12, false);
   }
   const c = CHARS[sel];
   mNombre.textContent = c.name; mNombre.style.setProperty('--c', c.color);
