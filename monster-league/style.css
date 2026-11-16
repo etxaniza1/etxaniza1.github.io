@@ -400,3 +400,117 @@ body.horizontal #marcador{top:calc(var(--safe-t) + 6px);left:calc(var(--safe-l) 
 body.horizontal #mCartas.muchas{--cw:min(calc((43vw - 60px) / 6),13vh,120px);gap:clamp(5px,1.6vh,10px) 8px;max-width:calc(6 * var(--cw) + 48px)}
 body.horizontal #mCartas.muchas .carta{border-radius:9px}
 body.horizontal #mCartas.muchas .cartaNom{font-size:clamp(7px,2vh,11px);letter-spacing:0;line-height:1.05;padding:2px 1px 3px;min-height:2.1em;display:flex;align-items:center;justify-content:center}
+
+/* ---------- update 24: chut por deslizamiento ---------- */
+#swipeZona{position:absolute;right:0;bottom:0;width:52%;height:78%;display:none;touch-action:none;z-index:3}
+body.horizontal #swipeZona{z-index:19}
+body.desliz #swipeZona{display:block}
+body.desliz #btnAlto{visibility:hidden !important;pointer-events:none !important}
+body.editando #swipeZona{display:none}
+#swipeTrail{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:23}
+.ajNota{max-width:clamp(220px,62vmin,340px);font:400 clamp(11px,3.2vmin,14px)/1.25 "Lilita One",system-ui,sans-serif;color:#cfe0ff;text-align:center;margin-top:-4px;text-shadow:0 1px 0 #14193a}
+.ajNota b{font-weight:400;color:#fff}
+
+/* ---------- update 24: menú TORNEO / JUGAR / LIGA ---------- */
+.mFila{display:flex;align-items:center;justify-content:center;gap:clamp(6px,1.4vw,12px);margin-top:10px}
+.mModo{display:inline-flex;align-items:center;gap:5px;font:400 18px "Lilita One",system-ui,sans-serif;color:#fff;border:3px solid #14193a;border-radius:14px;padding:8px 12px 10px;box-shadow:0 6px 0 #14193a;cursor:pointer;touch-action:manipulation;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a;letter-spacing:.5px}
+.mModo svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 2px 0 #14193a)}
+#btnMenuTorneo{background:#ff8a2a}
+#btnMenuLiga{background:#8a5fd1}
+.mModo:active{transform:translateY(4px);box-shadow:0 2px 0 #14193a}
+.mFila #btnMenuJugar{margin:0}
+body.horizontal .mFila{margin-top:clamp(6px,2vh,10px)}
+body.horizontal .mModo{font-size:clamp(13px,4.2vh,19px);padding:6px 10px 8px;border-radius:13px}
+body.horizontal .mModo svg{width:clamp(14px,4.4vh,20px);height:clamp(14px,4.4vh,20px)}
+body.horizontal .mFila #btnMenuJugar{padding:8px 28px 10px}
+
+/* ---------- update 24: pantalla de TORNEO / LIGA ---------- */
+#comp{position:absolute;inset:0;z-index:30;display:none;align-items:center;justify-content:center;font-family:"Lilita One",system-ui,sans-serif;color:#fff;touch-action:none;overflow:hidden;
+  background:repeating-conic-gradient(from 0deg at 50% 120%,#2459c9 0deg 9deg,#2d6ae0 9deg 18deg)}
+#comp.visible{display:flex}
+.coCaja{position:relative;width:min(96%,1100px);height:min(96%,640px);display:flex;flex-direction:column;gap:clamp(4px,1.4vh,10px);padding:calc(env(safe-area-inset-top) + clamp(6px,1.6vh,12px)) clamp(10px,2vw,22px) calc(env(safe-area-inset-bottom) + clamp(6px,1.6vh,12px))}
+.coCab{display:flex;align-items:center;justify-content:center;gap:12px}
+.coTit{font-size:clamp(20px,6.4vh,40px);line-height:1;color:#ffd23f;-webkit-text-stroke:2px #14193a;text-shadow:0 4px 0 #14193a;letter-spacing:1px;transform:rotate(-2deg);white-space:nowrap}
+.coTit small{display:inline-block;margin-left:10px;font-size:.5em;vertical-align:middle;color:#fff;background:#14193a;-webkit-text-stroke:0;text-shadow:none;padding:3px 10px 4px;border-radius:9px;letter-spacing:.5px;transform:rotate(2deg)}
+#coCuerpo{flex:1;min-height:0;display:flex;align-items:stretch;justify-content:center}
+.coBotones{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+.coBotones .ajBtn{min-width:0;padding:clamp(4px,1.4vh,9px) clamp(14px,3vw,26px)}
+.coJugar{background:#3ccf5a;font-size:clamp(16px,5vh,24px) !important}
+.coJugar small{font-size:.66em;opacity:.95;margin-left:4px}
+.coNuevo{background:#ff8a2a}
+/* chip de equipo */
+.coEq{--c:#888;display:flex;align-items:center;gap:6px;min-width:0}
+.coEq i{flex:none;width:clamp(20px,6.4vh,32px);height:clamp(20px,6.4vh,32px);border-radius:8px;border:2px solid #14193a;background:var(--c) radial-gradient(circle at 50% 75%,rgba(255,255,255,.4),rgba(255,255,255,0) 70%);overflow:hidden;display:flex;align-items:flex-end;justify-content:center}
+.coEq img{width:118%;height:118%;object-fit:contain;margin-bottom:-6%}
+.coEq span{font-size:clamp(10px,3.1vh,15px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;-webkit-text-stroke:.6px #14193a;text-shadow:0 1px 0 #14193a}
+.coEq.tu span{color:#ffd23f}
+/* cuadro del torneo */
+.coCuadro{flex:1;display:grid;grid-template-columns:1.15fr 1.15fr 1.15fr .9fr;gap:clamp(6px,1.4vw,16px);min-height:0}
+.coRonda{display:flex;flex-direction:column;min-height:0}
+.coRTit{text-align:center;font-size:clamp(11px,3.2vh,16px);letter-spacing:1px;background:#14193a;border-radius:9px;padding:3px 0 4px;margin-bottom:clamp(3px,1vh,8px);color:#cfe0ff}
+.coRTit.act{background:#ffd23f;color:#14193a}
+.coRPars{flex:1;display:flex;flex-direction:column;justify-content:space-around;gap:clamp(3px,1vh,8px);position:relative}
+.coPar{position:relative;background:#1f2a4d;border:3px solid #14193a;border-radius:12px;box-shadow:0 4px 0 #14193a;padding:clamp(2px,.7vh,5px) clamp(4px,.8vw,8px);display:flex;flex-direction:column;gap:2px;animation:coIn .35s cubic-bezier(.2,1.4,.4,1) both;animation-delay:calc(var(--d,0) * 40ms)}
+.coPar.tuyo{border-color:#ffd23f;box-shadow:0 0 0 2px #14193a,0 4px 0 #14193a}
+.coPar.pend.tuyo{background:#2b3a6e}
+.coPar.vacio{opacity:.45}
+.coPar.nuevo{animation:coPop .6s cubic-bezier(.2,1.6,.4,1) both}
+.coFila{display:flex;align-items:center;justify-content:space-between;gap:6px;border-radius:7px;padding:0 4px}
+.coFila b{font-weight:400;font-size:clamp(13px,4vh,20px);min-width:1.3em;text-align:right;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a}
+.coFila b small{font-size:.6em;margin-left:2px;color:#cfe0ff}
+.coFila.gana{background:rgba(60,207,90,.35)}
+.coFila.pierde{opacity:.55}
+.coPar em{position:absolute;right:6px;top:-9px;font-style:normal;font-size:9px;background:#ff8a2a;border:2px solid #14193a;border-radius:6px;padding:0 4px;letter-spacing:.5px}
+.coCopa .coRPars{justify-content:center}
+.coTrofeo{display:flex;flex-direction:column;align-items:center;gap:6px;background:#1f2a4d;border:3px solid #14193a;border-radius:16px;box-shadow:0 5px 0 #14193a;padding:10px 6px}
+.coTrofeo .copaSvg{width:clamp(48px,20vh,96px);height:auto;filter:drop-shadow(0 4px 0 #14193a);opacity:.5}
+.coTrofeo.lleno{background:#2b3a6e;border-color:#ffd23f}
+.coTrofeo.lleno .copaSvg{opacity:1;animation:copaBrillo 1.6s ease-in-out infinite}
+@keyframes copaBrillo{50%{transform:translateY(-4px) rotate(-4deg)}}
+@keyframes coIn{from{opacity:0;transform:translateY(10px) scale(.9)}to{opacity:1;transform:none}}
+@keyframes coPop{0%{transform:scale(.7)}60%{transform:scale(1.08)}100%{transform:none}}
+/* liga */
+.coLiga{flex:1;display:grid;grid-template-columns:1.45fr 1fr;gap:clamp(8px,1.6vw,18px);min-height:0}
+.coTabla{background:#1f2a4d;border:3px solid #14193a;border-radius:14px;box-shadow:0 5px 0 #14193a;overflow:hidden;min-height:0;display:flex}
+.coTabla table{width:100%;border-collapse:collapse;font-size:clamp(10px,3.2vh,16px);height:100%}
+.coTabla th{background:#14193a;color:#cfe0ff;font-weight:400;padding:clamp(2px,.8vh,6px) 3px;letter-spacing:.5px;font-size:.85em}
+.coTabla td{text-align:center;padding:0 3px;border-top:1px solid rgba(255,255,255,.07);-webkit-text-stroke:.5px #14193a;text-shadow:0 1px 0 #14193a}
+.coTabla td.eq,.coTabla th.eq{text-align:left;max-width:34vw}
+.coTabla td.pos{width:1.6em;color:#cfe0ff}
+.coTabla .pts{color:#ffd23f;font-size:1.12em}
+.coTabla tr.tu td{background:rgba(255,210,63,.18)}
+.coTabla tr.lider td.pos{color:#14193a;background:#ffd23f;-webkit-text-stroke:0;text-shadow:none}
+.coTabla tbody tr{animation:coIn .3s ease both;animation-delay:calc(var(--d,0) * 30ms)}
+.coLado{display:flex;flex-direction:column;gap:clamp(3px,1vh,7px);min-height:0;overflow:auto}
+.coSub{font-size:clamp(11px,3vh,15px);letter-spacing:1px;background:#14193a;border-radius:9px;padding:3px 10px 4px;text-align:center;color:#cfe0ff}
+.coRes{display:flex;flex-direction:column;gap:clamp(2px,.8vh,5px)}
+.coResF{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:6px;background:#1f2a4d;border:2px solid #14193a;border-radius:10px;padding:2px 6px;box-shadow:0 3px 0 #14193a}
+.coResF b{font-weight:400;font-size:clamp(12px,3.6vh,18px);-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a;white-space:nowrap}
+.coResF .coEq.der{flex-direction:row-reverse;text-align:right}
+.coResF.tuyo{border-color:#ffd23f}
+.coRes.prox b{font-size:clamp(10px,2.8vh,13px);color:#cfe0ff}
+.coResF.nuevo{animation:coPop .6s cubic-bezier(.2,1.6,.4,1) both}
+/* campeón */
+.coFin{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(2px,1vh,8px)}
+.coRayos{position:absolute;left:50%;top:50%;width:150vmax;height:150vmax;margin:-75vmax 0 0 -75vmax;border-radius:50%;will-change:transform;background:repeating-conic-gradient(rgba(255,210,63,.18) 0 10deg,rgba(255,210,63,0) 10deg 20deg);animation:rayosGira 18s linear infinite;pointer-events:none}
+@keyframes rayosGira{to{transform:rotate(360deg)}}
+.coFinCopa{position:relative;z-index:1}
+.coFinCopa .copaSvg{width:clamp(56px,20vh,120px);height:auto;filter:drop-shadow(0 5px 0 #14193a);animation:copaBrillo 1.6s ease-in-out infinite}
+.coFinFoto{position:relative;z-index:1;width:clamp(90px,34vh,200px);height:clamp(90px,34vh,200px);border-radius:24px;border:4px solid #14193a;background:var(--c) radial-gradient(circle at 50% 70%,rgba(255,255,255,.45),rgba(255,255,255,0) 70%);box-shadow:0 6px 0 #14193a;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;animation:coPop .7s cubic-bezier(.2,1.6,.4,1) both}
+.coFinFoto img{width:100%;height:100%;object-fit:contain}
+.coFin.gana .coFinFoto{border-color:#ffd23f;box-shadow:0 0 0 4px #14193a,0 8px 0 #14193a}
+.coFinSub{position:relative;z-index:1;font-size:clamp(14px,4.6vh,24px);color:#fff;-webkit-text-stroke:1.2px #14193a;text-shadow:0 3px 0 #14193a;letter-spacing:1px}
+.coFinNom{position:relative;z-index:1;font-size:clamp(22px,8vh,46px);line-height:1;color:#fff;background:var(--c);border:3px solid #14193a;border-radius:14px;padding:3px 18px 7px;box-shadow:0 5px 0 #14193a;-webkit-text-stroke:2px #14193a;text-shadow:0 4px 0 #14193a}
+.coFin.gana .coFinSub{color:#ffd23f}
+.coFinTxt{position:relative;z-index:1;font-size:clamp(11px,3.2vh,16px);color:#cfe0ff;text-shadow:0 2px 0 #14193a}
+.coConfeti{position:absolute;inset:0;pointer-events:none;z-index:2}
+.coConfeti i{position:absolute;top:-6%;left:calc(var(--i) * 3.9%);width:9px;height:14px;border:2px solid #14193a;border-radius:2px;background:hsl(calc(var(--i) * 47deg),90%,60%);animation:confeti calc(2.2s + var(--i) * 0.07s) linear infinite;animation-delay:calc(var(--i) * -0.23s)}
+@keyframes confeti{to{transform:translateY(115vh) rotate(720deg)}}
+#comp.fin .coCab{display:none}
+/* vertical (?vertical=1 o pantallas estrechas) */
+@media (max-aspect-ratio:1/1){
+  .coCuadro{grid-template-columns:1fr 1fr;grid-auto-rows:minmax(0,auto);overflow:auto}
+  .coLiga{grid-template-columns:1fr;overflow:auto}
+}
+.coTu{display:flex;align-items:center;gap:6px;background:#14193a;border-radius:12px;padding:3px 10px 3px 8px}
+.coTu small{font-size:clamp(9px,2.4vh,12px);color:#cfe0ff;letter-spacing:.5px}

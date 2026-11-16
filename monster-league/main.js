@@ -30,7 +30,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=23';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=24';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
@@ -131,6 +131,7 @@ function loadAjustes() {
   // update 15: asistencia de apuntado (fricción de mira sobre la portería) activada por defecto
   if ((a.ver || 0) < 15) { a.aimAssist = true; a.ver = 15; }
   a.aimAssist = a.aimAssist !== false;
+  a.swipeShot = !!a.swipeShot;   // update 24: chut por deslizamiento (apagado por defecto)
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
 }
@@ -1017,8 +1018,9 @@ function aimedLob(dir, p) {
 // se guarda 150 ms en un buffer y se ejecuta en cuanto se pueda.
 const INPUT_BUFFER_MS = 150;
 function altoCharge(t0) { return THREE.MathUtils.clamp((performance.now() - t0 - 60) / 1000 / ALTO_CHARGE_S, 0, 1); }   // 60 ms de margen: un toque = vaselina mínima
-function doAction(kind) {
+function doAction(kind, b) {
   if (S.mode !== 'play' || !user || S.paused) return false;
+  if (kind === 'swipe') return swipeShoot(b.m);
   if (kind === 'chutar') return quickShot();
   if (kind === 'regate') return ball.owner === user && !user.kickPending ? tryDribble(user) : false;
   if (kind === 'alto') return quickLob();
@@ -1029,7 +1031,7 @@ function bufferAction(kind) { input.buf = { kind, until: performance.now() + INP
 function runBuffer() {
   const b = input.buf; if (!b) return;
   if (performance.now() > b.until) { input.buf = null; return; }
-  if (doAction(b.kind)) input.buf = null;
+  if (doAction(b.kind, b)) input.buf = null;
 }
 // ---- medidor de latencia (del pointerdown al cambio de velocidad del balón o del jugador) ----
 const LAT = { pending: false, kind: '', t0: 0, sp0: 0, bv0: 0, until: 0 };
@@ -1073,6 +1075,7 @@ function bindAim(el, kind) {
   el.addEventListener('pointerdown', (e) => {
     e.preventDefault(); e.stopPropagation();
     if (e.pointerId === joyId) return;
+    if (AJ.swipeShot && kind === 'chutar') { swipeStart(e, el); return; }   // update 24: chut por deslizamiento
     const instant = AJ.instantTap && (kind === 'chutar' || kind === 'regate');
     if (instant) {
       markAction(kind, e);
@@ -1106,6 +1109,122 @@ bindAim(btnRegate, 'regate');
 bindAim(btnAlto, 'alto');
 bindHold(btnEntrada, (e) => { btnEntrada.classList.add('pulsado'); markAction('entrada', e); if (!doAction('entrada')) bufferAction('entrada'); }, () => btnEntrada.classList.remove('pulsado'));
 bindHold(btnTurbo, (e) => { markAction('turbo', e); input.turboDown = true; btnTurbo.classList.add('pulsado'); turboKick(); }, () => { input.turboDown = false; btnTurbo.classList.remove('pulsado'); });
+
+// ---- CHUT POR DESLIZAMIENTO (update 24, opción de AJUSTES; apagado por defecto) ----
+// Un solo gesto sustituye a CHUTAR + CHUT ALTO: se desliza el dedo desde el botón CHUTAR o desde la zona derecha libre.
+//  · dirección del desliz = dirección del tiro (pantalla arriba = portería rival). Con la asistencia de apuntado activada,
+//    un leve imán hacia el centro de la portería cuando el desliz ya pasa entre los postes.
+//  · VELOCIDAD del desliz (pico en una ventana de 70 ms) = potencia.
+//  · LONGITUD del desliz = altura: corto = tiro raso/tenso, medio = chut a media altura, largo = vaselina/globo.
+//  · un toque sin deslizar (< zona muerta) = tiro rápido como hasta ahora. Rastro blanco como respuesta (sin colores de acierto).
+// Las longitudes y velocidades se miden en fracciones del lado corto de la pantalla -> mismo gesto en móvil grande o pequeño.
+const SW = { DEAD: 0.045, LEN0: 0.10, LEN1: 0.62, V0: 0.7, V1: 3.6, WIN: 70, RAS: 0.18, MAG: 0.25 };
+const swipe = { id: null, el: null, pts: [], last: null };
+const trailCv = document.getElementById('swipeTrail'), trailCx = trailCv ? trailCv.getContext('2d') : null;
+const trail = { pts: [], rel: 0, live: false, dpr: 1 };
+function swipeRef() { const r = appRect(); return Math.max(240, Math.min(r.width || 390, r.height || 390)); }
+// mapeo puro (lo usan las pruebas): pts = [{x, y, t}] en px de pantalla y ms; ref = lado corto en px
+function swipeMap(pts, ref = swipeRef()) {
+  const a = pts[0], b = pts[pts.length - 1];
+  const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) / ref;
+  let v = 0, j = 0;
+  for (let i = 1; i < pts.length; i++) {
+    while (j < i - 1 && pts[i].t - pts[j + 1].t >= SW.WIN) j++;
+    const dt = Math.max(35, pts[i].t - pts[j].t);   // ventana mínima: un par de eventos casi simultáneos no dan un pico falso
+    v = Math.max(v, Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y) / ref / (dt / 1000));
+  }
+  if (pts.length === 2) v = len / (Math.max(35, b.t - a.t) / 1000);
+  const tap = len < SW.DEAD;
+  const power = THREE.MathUtils.clamp((v - SW.V0) / (SW.V1 - SW.V0), 0, 1);
+  const height = THREE.MathUtils.clamp((len - SW.LEN0) / (SW.LEN1 - SW.LEN0), 0, 1);
+  return { tap, len: +len.toFixed(3), v: +v.toFixed(2), power: +power.toFixed(3), height: +height.toFixed(3), ang: Math.atan2(-dy, dx), ...swipeShotParams(power, height) };
+}
+// potencia (0-1) y altura (0-1) -> tiro. Raso: chut normal con poca elevación. Alto: velocidad horizontal y vertical directas.
+function swipeShotParams(power, height) {
+  if (height < SW.RAS) return { kind: 'raso', pw: 0.22 + 0.78 * power, vz: 0.4 + 2.0 * power * power + 3.0 * height };
+  const e = (height - SW.RAS) / (1 - SW.RAS);
+  return { kind: e < 0.45 ? 'medio' : 'alto', pw: 0.3 + 0.7 * power, hs: (12 + 19 * power) * (1 - 0.32 * e), vz: 2.6 + 9.4 * e };
+}
+function swipeDir(m) {
+  let ang = m.ang;
+  const w = AJ.aimAssist ? goalWindow() : null;
+  if (w && angIn(ang, w)) ang += wrapAng(w.c - ang) * SW.MAG;
+  return new THREE.Vector2(Math.cos(ang), Math.sin(ang));
+}
+function swipeShoot(m) {
+  if (S.mode !== 'play' || ball.owner !== user || user.kickPending) return false;
+  if (m.tap) return quickShot();
+  const dir = swipeDir(m);
+  if (m.kind === 'raso') shoot(user, dir, m.pw, false, m.vz);
+  else shoot(user, dir, m.pw, false, m.vz, m.hs);
+  window.__game.lastSwipe = m;
+  LOG('chut_desliz', user, { k: m.kind, p: m.power, h: m.height, len: m.len, v: m.v });
+  return true;
+}
+function swipeStart(e, el) {
+  if (swipe.id !== null || e.pointerId === joyId) return false;
+  if (S.mode !== 'play' && S.mode !== 'kickoff') return false;
+  swipe.id = e.pointerId; swipe.el = el;
+  swipe.pts = [{ x: e.clientX, y: e.clientY, t: e.timeStamp || performance.now() }];
+  try { el.setPointerCapture(e.pointerId); } catch (_) {}
+  if (el === btnChutar) el.classList.add('pulsado');
+  const ar = appRect(); trail.pts = [{ x: e.clientX - ar.left, y: e.clientY - ar.top, t: performance.now() }]; trail.live = true; trail.rel = 0;
+  return true;
+}
+function swipeMove(e) {
+  if (e.pointerId !== swipe.id) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null, list = evs && evs.length ? evs : [e];
+  const ar = appRect();
+  for (const q of list) {
+    swipe.pts.push({ x: q.clientX, y: q.clientY, t: q.timeStamp || e.timeStamp || performance.now() });
+    trail.pts.push({ x: q.clientX - ar.left, y: q.clientY - ar.top, t: performance.now() });
+  }
+  if (swipe.pts.length > 240) swipe.pts.splice(1, swipe.pts.length - 240);
+}
+function swipeEnd(e, cancel) {
+  if (swipe.id === null || (e && e.pointerId !== swipe.id)) return;
+  if (e && !cancel) swipeMove(e);
+  const el = swipe.el; if (el) el.classList.remove('pulsado');
+  const pts = swipe.pts; swipe.id = null; swipe.el = null; swipe.pts = [];
+  trail.live = false; trail.rel = performance.now();
+  if (cancel || !pts.length) return;
+  const m = swipeMap(pts.length > 1 ? pts : [pts[0], pts[0]]);
+  swipe.last = m; window.__game.lastSwipeMap = m;
+  if (e) markAction('chutar', e);
+  if (!swipeShoot(m)) input.buf = { kind: 'swipe', m, until: performance.now() + INPUT_BUFFER_MS };
+}
+window.addEventListener('pointermove', swipeMove, { passive: true });
+window.addEventListener('pointerup', (e) => swipeEnd(e));
+window.addEventListener('pointercancel', (e) => swipeEnd(e, true));
+const swipeZona = document.getElementById('swipeZona');
+if (swipeZona) {
+  swipeZona.addEventListener('pointerdown', (e) => { if (!AJ.swipeShot || editor.on) return; e.preventDefault(); swipeStart(e, swipeZona); });
+  swipeZona.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+}
+// rastro blanco del dedo (se dibuja en cada frame; se desvanece en ~0,35 s al soltar)
+function drawTrail() {
+  if (!trailCx) return;
+  const now = performance.now();
+  const W = app.clientWidth, H = app.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+  if (trailCv.width !== Math.round(W * dpr) || trailCv.height !== Math.round(H * dpr)) { trailCv.width = Math.round(W * dpr); trailCv.height = Math.round(H * dpr); }
+  if (!trail.pts.length) { if (trail.drawn) { trailCx.clearRect(0, 0, trailCv.width, trailCv.height); trail.drawn = false; } return; }
+  const fade = trail.live ? 1 : 1 - (now - trail.rel) / 350;
+  trailCx.setTransform(dpr, 0, 0, dpr, 0, 0); trailCx.clearRect(0, 0, W, H);
+  if (fade <= 0) { trail.pts = []; trail.drawn = false; return; }
+  const pts = trail.live ? trail.pts.filter((p) => now - p.t < 260) : trail.pts.slice(-28);
+  if (trail.live && pts.length < 2 && trail.pts.length) pts.unshift(trail.pts[trail.pts.length - 1]);
+  trailCx.lineCap = 'round'; trailCx.lineJoin = 'round';
+  for (let i = 1; i < pts.length; i++) {
+    const k = i / (pts.length - 1);
+    trailCx.strokeStyle = `rgba(255,255,255,${(0.15 + 0.8 * k) * fade})`;
+    trailCx.lineWidth = 3 + 11 * k;
+    trailCx.shadowColor = 'rgba(255,255,255,0.6)'; trailCx.shadowBlur = 10 * k * fade;
+    trailCx.beginPath(); trailCx.moveTo(pts[i - 1].x, pts[i - 1].y); trailCx.lineTo(pts[i].x, pts[i].y); trailCx.stroke();
+  }
+  const h = pts[pts.length - 1];
+  if (h) { trailCx.shadowBlur = 14 * fade; trailCx.fillStyle = `rgba(255,255,255,${0.9 * fade})`; trailCx.beginPath(); trailCx.arc(h.x, h.y, 8, 0, Math.PI * 2); trailCx.fill(); }
+  trail.drawn = true;
+}
 
 const keyMap = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
 window.addEventListener('keydown', (e) => {
@@ -1915,6 +2034,11 @@ function endGame() {
   for (const x of actors) x.celebrate = (a > b && x.team === 0) || (b > a && x.team === 1);
   resultado.innerHTML = `<div style="font-size:18px;opacity:.85">¡FINAL DEL PARTIDO!</div><div style="font-size:44px;margin:6px 0"><span style="color:#5ea0ff">${a}</span> - <span style="color:#ff6262">${b}</span></div>` +
     (a > b ? '<div style="color:#ffd23f">¡HAS GANADO! 🏆</div>' : a < b ? '<div>Has perdido… ¡revancha!</div>' : '<div>¡Empate!</div>');
+  if (S.comp) {   // update 24: partido de torneo / liga -> se guarda y se vuelve al cuadro / tabla
+    showBanner(`FINAL ${a} - ${b}`, a > b ? 'bAzul' : a < b ? 'bRojo' : '', 1700);
+    clearTimeout(endGame.t); endGame.t = setTimeout(() => { if (S.mode === 'end' && S.comp) compAfterMatch(a, b); }, 1800);
+    return;
+  }
   document.getElementById('btnJugar').textContent = 'JUGAR OTRA VEZ';
   pantalla.classList.add('visible');
 }
@@ -2230,6 +2354,7 @@ function render(dt) {
   if (HORIZONTAL) updateHorizCam(false);
   if (renderer.shadowMap.enabled && (++render.n % shadowEvery) === 0) renderer.shadowMap.needsUpdate = true;
   syncOutline(); renderer.render(scene, camera);
+  drawTrail();
   checkLatency();
 }
 
@@ -2253,6 +2378,7 @@ const pausaEl = document.getElementById('pausa'), marcadorEl = document.getEleme
 function resetInputs() {
   input.keys = {}; input.turboDown = false; releaseShoot(true);
   if (typeof aimEnd === 'function') aimEnd(null, true);
+  if (typeof swipeEnd === 'function') swipeEnd(null, true);
   joyId = null; input.jx = input.jy = 0; joyPunta.style.transform = ''; setJoy(joyHome.x, joyHome.y);
 }
 function openPause() {
@@ -2270,7 +2396,9 @@ function quitMatch() {
   if (S.practice) { S.practice = false; applyPracticeHud(); }
   if (ballMesh) { ball.owner = null; ball.vel.set(0, 0, 0); }
   LOG('salir_partido', null, {});
+  const sc = S.comp; S.comp = null;
   openMenu();
+  if (sc) openComp(sc.type);   // update 24: de vuelta al cuadro / tabla (el partido queda pendiente)
 }
 marcadorEl.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); openPause(); });
 document.getElementById('btnReanudar').addEventListener('click', resumeGame);
@@ -2485,6 +2613,248 @@ function setupMatch(uk, rk) {
   document.querySelector('#marcador .rojo .nom').textContent = CHARS.find((c) => c.key === rk).name;
   matchKeys = [uk, rk];
 }
+// ===================== TORNEO Y LIGA (update 24) =====================
+// TORNEO: eliminatoria de 8 (cuartos, semis, final). LIGA: 8 equipos a una vuelta (7 jornadas, 4 partidos por jornada).
+// Tus partidos se juegan; los demás se simulan con la MEDIA/ATQ/DEF de las cartas y algo de azar (Poisson).
+// Empate en eliminatoria = tanda de penaltis simulada (TIRO del lanzador contra REFLEJOS del rival). Progreso en localStorage.
+const COMP_KEY = 'ml_competicion_v1', COMP_N = 8;
+function compRng(seed) { let s = (seed >>> 0) || 1; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
+function poisson(l, r) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= r(); } while (p > L && k < 12); return k - 1; }
+function simLambda(a, b) {
+  const A = STATS[a], B = STATS[b];
+  return THREE.MathUtils.clamp(1.35 * Math.exp((A.atq - B.def) / 28 + (A.media - B.media) / 22), 0.35, 3.8);
+}
+function simScore(a, b, r) { return [poisson(simLambda(a, b), r), poisson(simLambda(b, a), r)]; }
+function simPens(a, b, r) {
+  const pa = THREE.MathUtils.clamp(0.74 + (STATS[a].tir - STATS[b].ref) / 300, 0.55, 0.92);
+  const pb = THREE.MathUtils.clamp(0.74 + (STATS[b].tir - STATS[a].ref) / 300, 0.55, 0.92);
+  let ga = 0, gb = 0;
+  for (let i = 0; i < 5; i++) { ga += r() < pa ? 1 : 0; gb += r() < pb ? 1 : 0; }
+  for (let n = 0; ga === gb && n < 30; n++) { ga += r() < pa ? 1 : 0; gb += r() < pb ? 1 : 0; }
+  if (ga === gb) ga++;
+  return [ga, gb];
+}
+function shuffled(arr, r) { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function compTeams(user, r) { return shuffled([user, ...shuffled(CHARS.map((c) => c.key).filter((k) => k !== user), r).slice(0, COMP_N - 1)], r); }
+// calendario de liga: método del círculo (cada equipo juega una vez contra todos)
+function roundRobin(teams) {
+  const n = teams.length, t = [...teams], rounds = [];
+  for (let r = 0; r < n - 1; r++) {
+    const ms = [];
+    for (let i = 0; i < n / 2; i++) { const a = t[i], b = t[n - 1 - i]; ms.push(r % 2 === 0 ? { a, b } : { a: b, b: a }); }
+    rounds.push(ms);
+    t.splice(1, 0, t.pop());
+  }
+  return rounds;
+}
+function newTorneo(user, seed = (Date.now() & 0x7fffffff)) {
+  const r = compRng(seed), teams = compTeams(user, r);
+  const qf = []; for (let i = 0; i < COMP_N; i += 2) qf.push({ a: teams[i], b: teams[i + 1] });
+  return { type: 'torneo', user, seed, step: 1, teams, rounds: [qf, [], []], round: 0, done: false, champion: null, last: null };
+}
+function newLiga(user, seed = (Date.now() & 0x7fffffff)) {
+  const r = compRng(seed), teams = compTeams(user, r);
+  return { type: 'liga', user, seed, step: 1, teams, fixtures: roundRobin(teams), jornada: 0, done: false, champion: null, last: null };
+}
+function compR(c) { return compRng((c.seed + c.step++ * 7919) >>> 0); }
+function playKO(m, ga, gb, r) {
+  m.ga = ga; m.gb = gb; m.played = true;
+  if (ga === gb) { const p = simPens(m.a, m.b, r); m.pa = p[0]; m.pb = p[1]; }
+  m.w = ga > gb || (ga === gb && m.pa > m.pb) ? m.a : m.b;
+}
+// registra TU resultado (goles tuyos, goles del rival) y simula el resto de la ronda / jornada
+function compRecord(c, gu, gr) {
+  const r = compR(c);
+  if (c.type === 'torneo') {
+    const ms = c.rounds[c.round];
+    for (const m of ms) {
+      if (m.played) continue;
+      if (m.a === c.user) playKO(m, gu, gr, r);
+      else if (m.b === c.user) playKO(m, gr, gu, r);
+      else { const s = simScore(m.a, m.b, r); playKO(m, s[0], s[1], r); }
+    }
+    c.last = { round: c.round, user: ms.find((m) => m.a === c.user || m.b === c.user) || null };
+    compAdvanceKO(c, r);
+  } else {
+    const ms = c.fixtures[c.jornada];
+    for (const m of ms) {
+      if (m.played) continue;
+      if (m.a === c.user) { m.ga = gu; m.gb = gr; } else if (m.b === c.user) { m.ga = gr; m.gb = gu; }
+      else { const s = simScore(m.a, m.b, r); m.ga = s[0]; m.gb = s[1]; }
+      m.played = true;
+    }
+    c.last = { jornada: c.jornada };
+    c.jornada++;
+    if (c.jornada >= c.fixtures.length) { c.done = true; c.champion = standings(c)[0].k; }
+  }
+  return c;
+}
+function compAdvanceKO(c, r) {
+  // ronda terminada -> siguiente ronda con los ganadores (si te eliminan se simula hasta la final)
+  while (!c.done) {
+    const ms = c.rounds[c.round];
+    if (ms.some((m) => !m.played)) {
+      if (ms.some((m) => m.a === c.user || m.b === c.user)) return;
+      for (const m of ms) if (!m.played) { const s = simScore(m.a, m.b, r); playKO(m, s[0], s[1], r); }
+    }
+    const win = ms.map((m) => m.w);
+    if (win.length === 1) { c.done = true; c.champion = win[0]; return; }
+    c.round++;
+    c.rounds[c.round] = []; for (let i = 0; i < win.length; i += 2) c.rounds[c.round].push({ a: win[i], b: win[i + 1] });
+    if (c.rounds[c.round].some((m) => m.a === c.user || m.b === c.user)) return;
+  }
+}
+function compUserAlive(c) { return c.type !== 'torneo' || c.rounds[c.round].some((m) => m.a === c.user || m.b === c.user); }
+function compNextOpp(c) {
+  if (c.done) return null;
+  const ms = c.type === 'torneo' ? c.rounds[c.round] : c.fixtures[c.jornada];
+  const m = ms.find((x) => !x.played && (x.a === c.user || x.b === c.user));
+  return m ? (m.a === c.user ? m.b : m.a) : null;
+}
+// clasificación: 3 puntos victoria, 1 empate. Desempate: PTS, DG, GF, nombre
+function standings(c) {
+  const T = {}; for (const k of c.teams) T[k] = { k, pj: 0, g: 0, e: 0, p: 0, gf: 0, gc: 0, dg: 0, pts: 0 };
+  for (const j of c.fixtures) for (const m of j) {
+    if (!m.played) continue;
+    const A = T[m.a], B = T[m.b];
+    A.pj++; B.pj++; A.gf += m.ga; A.gc += m.gb; B.gf += m.gb; B.gc += m.ga;
+    if (m.ga > m.gb) { A.g++; B.p++; A.pts += 3; } else if (m.ga < m.gb) { B.g++; A.p++; B.pts += 3; } else { A.e++; B.e++; A.pts++; B.pts++; }
+  }
+  const nm = (k) => (CHARS.find((x) => x.key === k) || { name: k }).name;
+  return Object.values(T).map((t) => (t.dg = t.gf - t.gc, t)).sort((x, y) => y.pts - x.pts || y.dg - x.dg || y.gf - x.gf || nm(x.k).localeCompare(nm(y.k)));
+}
+function compLoad() {
+  try { const c = JSON.parse(localStorage.getItem(COMP_KEY) || 'null'); return c && typeof c === 'object' ? c : {}; } catch (_) { return {}; }
+}
+function compSave(all) { try { localStorage.setItem(COMP_KEY, JSON.stringify(all)); } catch (_) {} }
+function compValid(c) { return c && c.teams && c.teams.every((k) => STATS[k] && CHARS.some((x) => x.key === k)); }
+// ---- interfaz ----
+const compEl = document.getElementById('comp'), coCuerpo = document.getElementById('coCuerpo'), coTit = document.getElementById('coTit');
+const coJugar = document.getElementById('coJugar'), coNuevo = document.getElementById('coNuevo');
+let COMP = null;      // competición abierta en pantalla
+const RONDAS = ['CUARTOS', 'SEMIFINALES', 'FINAL'];
+const cName = (k) => (CHARS.find((x) => x.key === k) || { name: k }).name;
+const cCol = (k) => (CHARS.find((x) => x.key === k) || { color: '#888' }).color;
+const cImg = (k) => { const c = CHARS.find((x) => x.key === k); return c ? c.card : ''; };
+function teamChip(k, c, extra = '') {
+  return `<div class="coEq${k === c.user ? ' tu' : ''}${extra}" style="--c:${cCol(k)}"><i><img src="${cImg(k)}" alt="" draggable="false"></i><span>${cName(k)}</span></div>`;
+}
+function koMatchHTML(m, c, ri) {
+  if (!m) return `<div class="coPar vacio"><div class="coFila"><div class="coEq"><i></i><span>¿?</span></div><b>-</b></div><div class="coFila"><div class="coEq"><i></i><span>¿?</span></div><b>-</b></div></div>`;
+  const row = (k, g, p) => `<div class="coFila${m.played && m.w === k ? ' gana' : m.played ? ' pierde' : ''}">${teamChip(k, c)}<b>${m.played ? g : '-'}${m.played && m.pa !== undefined ? `<small>(${p})</small>` : ''}</b></div>`;
+  const yours = m.a === c.user || m.b === c.user;
+  return `<div class="coPar${yours ? ' tuyo' : ''}${m.played ? '' : ' pend'}">${row(m.a, m.ga, m.pa)}${row(m.b, m.gb, m.pb)}${m.played && m.pa !== undefined ? '<em>PENALTIS</em>' : ''}</div>`;
+}
+function torneoHTML(c) {
+  let h = '<div class="coCuadro">';
+  for (let r = 0; r < 3; r++) {
+    const n = 4 >> r, ms = c.rounds[r] || [];
+    h += `<div class="coRonda r${r}"><div class="coRTit${r === c.round && !c.done ? ' act' : ''}">${RONDAS[r]}</div><div class="coRPars">`;
+    for (let i = 0; i < n; i++) h += koMatchHTML(ms[i], c, r);
+    h += '</div></div>';
+  }
+  const ch = c.done ? c.champion : null;
+  h += `<div class="coRonda coCopa"><div class="coRTit">CAMPEÓN</div><div class="coRPars"><div class="coTrofeo${ch ? ' lleno' : ''}">${trophySVG()}${ch ? teamChip(ch, c, ' campeon') : '<div class="coEq"><i></i><span>¿?</span></div>'}</div></div></div>`;
+  return h + '</div>';
+}
+function ligaHTML(c) {
+  const st = standings(c), J = c.fixtures.length;
+  let h = '<div class="coLiga"><div class="coTabla"><table><thead><tr><th>#</th><th class="eq">EQUIPO</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>DG</th><th class="pts">PTS</th></tr></thead><tbody>';
+  st.forEach((t, i) => {
+    h += `<tr class="${t.k === c.user ? 'tu' : ''}${i === 0 && t.pj ? ' lider' : ''}"><td class="pos">${i + 1}</td><td class="eq">${teamChip(t.k, c)}</td><td>${t.pj}</td><td>${t.g}</td><td>${t.e}</td><td>${t.p}</td><td>${t.gf}</td><td>${t.gc}</td><td>${t.dg > 0 ? '+' : ''}${t.dg}</td><td class="pts">${t.pts}</td></tr>`;
+  });
+  h += '</tbody></table></div><div class="coLado">';
+  const lj = c.last ? c.last.jornada : null;
+  if (lj !== null && lj !== undefined) {
+    h += `<div class="coSub">RESULTADOS · JORNADA ${lj + 1}</div><div class="coRes">`;
+    for (const m of c.fixtures[lj]) h += `<div class="coResF${m.a === c.user || m.b === c.user ? ' tuyo' : ''}">${teamChip(m.a, c)}<b>${m.ga} - ${m.gb}</b>${teamChip(m.b, c, ' der')}</div>`;
+    h += '</div>';
+  }
+  if (!c.done) {
+    h += `<div class="coSub">JORNADA ${c.jornada + 1} DE ${J}</div><div class="coRes prox">`;
+    for (const m of c.fixtures[c.jornada]) h += `<div class="coResF${m.a === c.user || m.b === c.user ? ' tuyo' : ''}">${teamChip(m.a, c)}<b>vs</b>${teamChip(m.b, c, ' der')}</div>`;
+    h += '</div>';
+  }
+  return h + '</div></div>';
+}
+function trophySVG() {
+  return '<svg class="copaSvg" viewBox="0 0 64 64" aria-hidden="true"><path d="M18 6h28v14c0 9-6 16-14 16s-14-7-14-16z" fill="#ffd23f" stroke="#14193a" stroke-width="3"/><path d="M18 11H8c0 8 4 13 11 14M46 11h10c0 8-4 13-11 14" fill="none" stroke="#14193a" stroke-width="3"/><path d="M27 36h10v8H27z" fill="#e6a915" stroke="#14193a" stroke-width="3"/><path d="M20 44h24l3 10H17z" fill="#8a5fd1" stroke="#14193a" stroke-width="3"/><path d="M25 12c0 6 2 10 5 12" fill="none" stroke="#fff6c4" stroke-width="3" stroke-linecap="round"/></svg>';
+}
+function finalHTML(c) {
+  const won = c.champion === c.user;
+  const sub = c.type === 'torneo' ? (won ? '¡CAMPEÓN DEL TORNEO!' : 'CAMPEÓN DEL TORNEO') : (won ? '¡CAMPEÓN DE LIGA!' : 'CAMPEÓN DE LIGA');
+  let extra = '';
+  if (c.type === 'liga') { const st = standings(c), pos = st.findIndex((t) => t.k === c.user) + 1; extra = `<div class="coFinTxt">${won ? `${st[0].pts} puntos · ${st[0].g} G · ${st[0].e} E · ${st[0].p} P` : `Has terminado ${pos}º con ${st[pos - 1].pts} puntos`}</div>`; }
+  else if (!won) extra = `<div class="coFinTxt">Has caído en ${RONDAS[c.rounds.findIndex((rs) => rs.some((m) => (m.a === c.user || m.b === c.user) && m.w !== c.user))] || 'el torneo'}</div>`;
+  else extra = '<div class="coFinTxt">Cuartos, semis y final: ¡imbatible!</div>';
+  return `<div class="coFin${won ? ' gana' : ''}"><div class="coRayos"></div>${won ? '<div class="coConfeti">' + Array.from({ length: 26 }, (_, i) => `<i style="--i:${i}"></i>`).join('') + '</div>' : ''}` +
+    `<div class="coFinCopa">${trophySVG()}</div><div class="coFinFoto" style="--c:${cCol(c.champion)}"><img src="${PORTRAITS[c.champion] || cImg(c.champion)}" alt=""></div>` +
+    `<div class="coFinSub">${sub}</div><div class="coFinNom" style="--c:${cCol(c.champion)}">${cName(c.champion)}</div>${extra}</div>`;
+}
+function renderComp(view) {
+  const c = COMP; if (!c) return;
+  compEl.className = 'visible ' + c.type + (view === 'fin' ? ' fin' : '');
+  const opp = compNextOpp(c);
+  const coTu = document.getElementById('coTu'); if (coTu) coTu.innerHTML = `<small>TU EQUIPO</small>${teamChip(c.user, c)}`;
+  if (view === 'fin') {
+    coTit.textContent = c.type === 'torneo' ? 'TORNEO MONSTER' : 'LIGA MONSTER';
+    coCuerpo.innerHTML = finalHTML(c);
+    coJugar.textContent = c.type === 'torneo' ? (c.done ? 'VER CUADRO' : '') : 'VER TABLA';
+    coJugar.dataset.act = 'tabla'; coNuevo.style.display = '';
+    coNuevo.textContent = c.type === 'torneo' ? 'NUEVO TORNEO' : 'NUEVA LIGA';
+    return;
+  }
+  if (c.type === 'torneo') {
+    coTit.innerHTML = `TORNEO MONSTER <small>${c.done ? 'TERMINADO' : RONDAS[c.round]}</small>`;
+    coCuerpo.innerHTML = torneoHTML(c);
+  } else {
+    coTit.innerHTML = `LIGA MONSTER <small>${c.done ? 'TERMINADA' : 'JORNADA ' + (c.jornada + 1) + '/' + c.fixtures.length}</small>`;
+    coCuerpo.innerHTML = ligaHTML(c);
+  }
+  if (opp) { coJugar.innerHTML = `JUGAR <small>vs ${cName(opp)}</small>`; coJugar.dataset.act = 'jugar'; }
+  else if (c.done) { coJugar.textContent = c.type === 'torneo' ? 'VER CAMPEÓN' : 'VER CAMPEÓN'; coJugar.dataset.act = 'fin'; }
+  coNuevo.style.display = c.done || (c.type === 'torneo' && !compUserAlive(c)) ? '' : 'none';
+  coNuevo.textContent = c.type === 'torneo' ? 'NUEVO TORNEO' : 'NUEVA LIGA';
+}
+function openComp(type, fresh) {
+  if (S.mode !== 'menu' && S.mode !== 'end') return;
+  const all = compLoad(), uk = CHARS[sel].key;
+  let c = all[type];
+  if (fresh || !compValid(c) || c.done) c = type === 'torneo' ? newTorneo(uk) : newLiga(uk);
+  all[type] = c; compSave(all); COMP = c;
+  menuEl.classList.remove('visible'); pantalla.classList.remove('visible');
+  renderComp(c.done ? 'fin' : null);
+  compEl.querySelectorAll('.coPar, .coTabla tr, .coResF').forEach((el, i) => el.style.setProperty('--d', i));
+}
+function closeComp() { compEl.className = ''; COMP = null; openMenu(); }
+async function compPlay() {
+  const c = COMP, opp = c && compNextOpp(c); if (!opp) return;
+  if (!window.__game.ready) { coJugar.textContent = 'CARGANDO…'; await campoReady; }
+  S.practice = false; S.comp = { type: c.type, opp };
+  compEl.className = '';
+  setupMatch(c.user, opp);
+  tryLandscape();
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  S.mode = 'menu'; startGame();
+}
+// al terminar tu partido de competición: se guarda, se simula el resto y se vuelve al cuadro / tabla
+function compAfterMatch(gu, gr) {
+  const sc = S.comp; S.comp = null;
+  const all = compLoad(), c = all[sc.type]; if (!compValid(c)) return false;
+  compRecord(c, gu, gr); all[sc.type] = c; compSave(all); COMP = c;
+  hudSet(false);
+  renderComp(c.done && c.champion === c.user ? 'fin' : null);
+  const yours = compEl.querySelector('.coPar.tuyo, .coResF.tuyo'); if (yours) yours.classList.add('nuevo');
+  return true;
+}
+coJugar.addEventListener('click', () => {
+  const a = coJugar.dataset.act;
+  if (a === 'jugar') compPlay(); else if (a === 'fin') renderComp('fin'); else if (a === 'tabla') renderComp(null);
+});
+coNuevo.addEventListener('click', () => { if (COMP) { const t = COMP.type; S.mode = 'menu'; openComp(t, true); } });
+document.getElementById('coSalir').addEventListener('click', closeComp);
+document.getElementById('btnMenuTorneo').addEventListener('click', () => openComp('torneo'));
+document.getElementById('btnMenuLiga').addEventListener('click', () => openComp('liga'));
 function layoutMenu() {
   const W = app.clientWidth, H = app.clientHeight;
   if (!W || !H) return;
@@ -2784,6 +3154,17 @@ function setInstantTap(on) {
 }
 btnAjInst.addEventListener('click', () => setInstantTap(!AJ.instantTap));
 setInstantTap(AJ.instantTap);
+const btnAjDesliz = document.getElementById('ajDesliz'), ajDeslizNota = document.getElementById('ajDeslizNota');
+function setSwipeShot(on) {
+  AJ.swipeShot = !!on; saveAjustes();
+  btnAjDesliz.textContent = 'CHUT POR DESLIZAMIENTO: ' + (AJ.swipeShot ? 'SÍ' : 'NO'); btnAjDesliz.classList.toggle('on', AJ.swipeShot);
+  if (ajDeslizNota) ajDeslizNota.style.display = AJ.swipeShot ? '' : 'none';
+  document.body.classList.toggle('desliz', AJ.swipeShot);
+  const t = btnChutar.querySelector('.btnTxt'); if (t) t.textContent = AJ.swipeShot ? 'DESLIZA' : 'CHUTAR';
+  if (!AJ.swipeShot) swipeEnd(null, true);
+}
+btnAjDesliz.addEventListener('click', () => setSwipeShot(!AJ.swipeShot));
+setSwipeShot(AJ.swipeShot);
 const btnAjAsist = document.getElementById('ajAsistencia');
 function setAimAssist(on) {
   AJ.aimAssist = !!on; saveAjustes();
@@ -2835,6 +3216,9 @@ Object.assign(window.__game, {
   giveBall: (who) => giveBall(who === 'gkA' ? gkA : who === 'gkB' ? gkB : who === 'rival' ? rival : user), AI,   // update 22 (pruebas IA)
   lobParams, predictFlight, shootLob: (p, dx, dy) => shootLob(user, new THREE.Vector2(dx, dy), p),
   get aim() { return aim; },
+  get menuChars() { return menuChars; }, get PORTRAITS() { return PORTRAITS; },
+  comp: { newTorneo, newLiga, compRecord, standings, simScore, simPens, roundRobin, compRng, compNextOpp, compUserAlive, openComp: (t, f) => openComp(t, f), compPlay: () => compPlay(), compAfterMatch: (a, b) => compAfterMatch(a, b), get COMP() { return COMP; }, KEY: COMP_KEY },
+  swipeMap, swipeShotParams, SW, setSwipeShot: (on) => setSwipeShot(on), get swipe() { return swipe; }, get trail() { return trail; },
   relayout: () => onViewportChange(),
   setupMatch,
   AJ, QS, setQuality, applyQuality, setOutlinePx, TOON, applyControls, setShowFps, setInstantTap: (on) => setInstantTap(on), lastAction: null,
