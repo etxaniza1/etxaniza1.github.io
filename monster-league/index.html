@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=16">
+<link rel="stylesheet" href="style.css?v=18">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -71,13 +71,14 @@
   <div id="menu">
     <button id="btnAjustes" class="mEngranaje" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"/></svg></button>
     <div class="mTitulo"><h1>MONSTER<br> LEAGUE</h1></div>
+    <div id="mCartaGrande"></div>
     <div id="menuStage" aria-label="Personaje (arrastra para girar)"></div>
     <button id="mPrev" class="mFlecha izq" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button>
     <button id="mNext" class="mFlecha der" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
     <div class="mDerecha">
       <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div></div>
       <div id="mCartas"></div>
-      <div class="mAbajo"><div id="mVs"></div><button id="btnMenuTienda">TIENDA</button><button id="btnMenuPractica">PRÁCTICA</button><button id="btnMenuJugar">JUGAR</button></div>
+      <div class="mAbajo"><div id="mVs"></div><button id="btnMenuCartas">CARTAS</button><button id="btnMenuTienda">TIENDA</button><button id="btnMenuPractica">PRÁCTICA</button><button id="btnMenuJugar">JUGAR</button></div>
     </div>
   </div>
   <div id="pausa">
@@ -96,6 +97,14 @@
       <button id="tiendaCerrar" class="ajBtn ajVolver">VOLVER</button>
     </div>
   </div>
+  <div id="coleccion" aria-label="Colección de cartas">
+    <div class="colTit">COLECCIÓN DE CARTAS</div>
+    <div id="colLista"></div>
+    <button id="colPrev" class="mFlecha izq" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button>
+    <button id="colNext" class="mFlecha der" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
+    <div class="colAbajo"><button id="colCerrar" class="ajBtn ajVolver">VOLVER</button><button id="colElegir" class="ajBtn">ELEGIR</button></div>
+  </div>
+  <div id="vsCartas"></div>
   <div id="fpsMeter"></div>
   <div id="ajustes" aria-label="Ajustes">
     <div class="ajCaja">
@@ -145,6 +154,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=16"></script>
+<script type="module" src="main.js?v=18"></script>
 </body>
 </html>
