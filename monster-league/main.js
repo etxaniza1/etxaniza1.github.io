@@ -28,7 +28,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=10';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=11';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
@@ -40,6 +40,7 @@ const CHARS = [
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`, ...c }));
 const GLB = {};          // key -> gltf
 let META = {};           // key -> metadatos de animación
+const USER_KICK_DELAY = 0.07;
 const KICK_RATE = 1.45, TACKLE_RATE = 1.5, DIVE_RATE = 1.35, RUN_MIN = 1.7;
 const DRIBBLE_PUSH = 0.55;   // cuánto se adelanta el balón tras cada toque (m)
 
@@ -62,30 +63,37 @@ const sun = new THREE.DirectionalLight(0xffffff, 2.1);
 sun.position.set(-0.384, 0.743, 0.548).multiplyScalar(50);   // dirección del Sol de Blender (42°,0,-35°)
 scene.add(sun);
 
-// ===================== AJUSTES + CALIDAD (update 10) =====================
-const AJ_KEY = 'ml_ajustes_v1';
+// ===================== AJUSTES + CALIDAD (update 10, rendimiento update 11) =====================
+const AJ_KEY = 'ml_ajustes_v1', AJ_VER = 11;
 const IS_TOUCH = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(pointer: coarse)').matches;
+// lod: fracción de triángulos de los personajes en partida (simplificación meshopt en tiempo de carga; el menú usa el modelo completo)
+// shadowEvery: el mapa de sombras se recalcula cada N frames (luz fija, solo se mueven jugadores y balón)
 const QUALITY = {
-  baja:  { label: 'Baja',  pr: () => Math.min(DPR(), 1),   shadow: 0,    soft: false, aniso: 1 },
-  media: { label: 'Media', pr: () => Math.min(DPR(), 1.5), shadow: 0,    soft: false, aniso: 4 },
-  alta:  { label: 'Alta',  pr: () => Math.min(DPR(), 2),   shadow: 2048, soft: true,  aniso: 16 },
-  ultra: { label: 'Ultra', pr: () => Math.min(DPR(), 3),   shadow: 4096, soft: true,  aniso: 16 },
+  baja:  { label: 'Baja',  pr: () => Math.min(DPR(), 1),   prFloor: 0.75, shadow: 0,    soft: false, aniso: 1,  lod: 0.2,  lodErr: 0.012 },
+  media: { label: 'Media', pr: () => Math.min(DPR(), 1.5), prFloor: 1,    shadow: 0,    soft: false, aniso: 4,  lod: 0.35, lodErr: 0.006 },
+  alta:  { label: 'Alta',  pr: () => Math.min(DPR(), 2),   prFloor: 1,    shadow: 2048, soft: true,  aniso: 16, lod: 1,    shadowEvery: 2 },
+  ultra: { label: 'Ultra', pr: () => Math.min(DPR(), 3),   prFloor: 1,    shadow: 4096, soft: true,  aniso: 16, lod: 1,    shadowEvery: 1 },
 };
+const DEFAULT_QUALITY = IS_TOUCH ? 'media' : 'alta';
 function DPR() { return window.devicePixelRatio || 1; }
 function loadAjustes() {
   let a = null;
   try { a = JSON.parse(localStorage.getItem(AJ_KEY) || 'null'); } catch (_) { a = null; }
   if (!a || typeof a !== 'object') a = {};
-  if (!QUALITY[a.quality]) a.quality = 'alta';            // por defecto ALTA (también en móvil)
+  // migración v10 -> v11: en la v10 'alta' era el valor por defecto y no se distinguía si el usuario la había elegido.
+  // Baja/Media/Ultra sí eran elecciones explícitas y se respetan; 'alta' sin marca de elección pasa al nuevo defecto.
+  if ((a.ver || 10) < 11) { if (a.quality === 'alta' && !a.qSet) a.quality = DEFAULT_QUALITY; a.ver = AJ_VER; }
+  if (!QUALITY[a.quality]) a.quality = DEFAULT_QUALITY;
   a.opacity = Math.max(0.3, Math.min(1, +a.opacity || 1));
+  a.showFps = !!a.showFps;
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
 }
 function saveAjustes() { try { localStorage.setItem(AJ_KEY, JSON.stringify(AJ)); } catch (_) {} }
 const AJ = loadAjustes();
-// estado dinámico de calidad (fallback suave si los FPS caen de forma sostenida)
 const editor = { view: 'con', savedCls: null, on: false, from: null, draft: null, opa: 1, sel: null, drag: null };
-const QS = { prScale: 1, shadowCap: Infinity, softOff: false, lowSecs: 0, steps: 0 };
+// estado del ajuste automático: pila de pasos aplicados (para poder deshacerlos si sobra rendimiento)
+const QS = { prStep: 0, shadowLevel: 0, lowSecs: 0, highSecs: 0, steps: 0, hist: [], upLocked: false, disabled: false };
 const _texSeen = new Set();
 function applyTextureQuality(root) {
   const q = QUALITY[AJ.quality];
@@ -107,25 +115,37 @@ function shadowFlags(root, cast, receive) {
   if (!root) return;
   root.traverse((o) => { if (o.isMesh && !(o.material && o.material.isMeshBasicMaterial)) { o.castShadow = cast; o.receiveShadow = receive; } });
 }
+// sombras: nivel 0 = las de la calidad; 1 = sin suavizado; 2 = 1024 px; 3 = solo sombra "blob"
+function shadowSize() {
+  const q = QUALITY[AJ.quality];
+  if (!q.shadow || QS.shadowLevel >= 3) return 0;
+  return QS.shadowLevel >= 2 ? Math.min(q.shadow, 1024) : q.shadow;
+}
+function targetPixelRatio() {
+  const q = QUALITY[AJ.quality], top = q.pr();
+  return Math.max(Math.min(top, q.prFloor), top - 0.25 * QS.prStep);
+}
+renderer.shadowMap.autoUpdate = false;   // se marca needsUpdate desde render() cada shadowEvery frames
+let shadowEvery = 1;
 function applyQuality(reason) {
   const q = QUALITY[AJ.quality];
-  let pr = q.pr() * QS.prScale;
-  // suelo: nunca por debajo de lo que se veía antes de update 10 (min(dpr,2) en horizontal) salvo que el usuario elija Baja/Media
-  if (AJ.quality === 'alta' || AJ.quality === 'ultra') pr = Math.max(pr, Math.min(DPR(), HORIZONTAL ? 2 : 1.5));
+  const pr = targetPixelRatio();
   if (Math.abs(renderer.getPixelRatio() - pr) > 1e-3) { renderer.setPixelRatio(pr); if (typeof layout === 'function' && reason !== 'init') { try { layout(); } catch (_) {} } }
-  const size = Math.min(q.shadow, QS.shadowCap);
+  const size = shadowSize();
   const on = size > 0;
   // r187: PCFSoftShadowMap ya no existe; PCFShadowMap filtra con shadow.radius (suavizado real)
-  const type = THREE.PCFShadowMap, soft = q.soft && !QS.softOff;
+  const type = THREE.PCFShadowMap, soft = q.soft && QS.shadowLevel < 1;
   const changed = renderer.shadowMap.enabled !== on || renderer.shadowMap.type !== type || (on && sun.shadow.mapSize.x !== size);
   renderer.shadowMap.enabled = on; renderer.shadowMap.type = type;
   sun.castShadow = on;
+  shadowEvery = Math.max(1, (q.shadowEvery || 1) + (QS.shadowLevel >= 2 ? 1 : 0));
   if (on) {
     sun.shadow.mapSize.set(size, size);
     const c = sun.shadow.camera, E = 38;
     c.left = -E; c.right = E; c.top = E; c.bottom = -E; c.near = 1; c.far = 160; c.updateProjectionMatrix();
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03; sun.shadow.radius = soft ? (AJ.quality === 'ultra' ? 4 : 3) : 1;
     sun.position.set(-0.384, 0.743, 0.548).multiplyScalar(70);
+    renderer.shadowMap.needsUpdate = true;
   }
   if (changed) {
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
@@ -133,30 +153,137 @@ function applyQuality(reason) {
   }
   // sombras "blob" bajo los personajes: más suaves si hay sombra real (siguen dando contacto con el suelo)
   let acts = []; try { acts = actors; } catch (_) {}
-  for (const a of acts) if (a.shadow) a.shadow.material.opacity = on ? 0.16 : 0.3;
+  for (const a of acts) { if (a.shadow) a.shadow.material.opacity = on ? 0.16 : 0.3; applyLOD(a); }
   applyTextureQuality();
-  window.__game && (window.__game.quality = { level: AJ.quality, pixelRatio: renderer.getPixelRatio(), shadows: on ? size : 0, soft: on && soft, fallbackSteps: QS.steps });
+  window.__game && (window.__game.quality = { level: AJ.quality, pixelRatio: renderer.getPixelRatio(), shadows: on ? size : 0, soft: on && soft, shadowEvery: on ? shadowEvery : 0, lod: q.lod, fallbackSteps: QS.steps, prStep: QS.prStep, shadowLevel: QS.shadowLevel });
+  try { updateFpsMeter(); } catch (_) {}
 }
-function setQuality(level) {
+function setQuality(level, explicit = true) {
   if (!QUALITY[level]) return;
-  AJ.quality = level; QS.prScale = 1; QS.shadowCap = Infinity; QS.softOff = false; QS.lowSecs = 0; QS.steps = 0;
+  AJ.quality = level; if (explicit) AJ.qSet = true;
+  Object.assign(QS, { prStep: 0, shadowLevel: 0, lowSecs: 0, highSecs: 0, steps: 0, hist: [], upLocked: false });
   saveAjustes(); applyQuality();
 }
-// Fallback dinámico (solo Alta/Ultra, solo en partida). Alta: nunca baja el pixelRatio (=lo de antes),
-// solo abarata sombras. Ultra: primero baja la resolución hasta el nivel de Alta, luego sombras.
+// Ajuste automático (todas las calidades, solo en partida): FPS < 45 durante 3 s seguidos -> un paso abajo
+// (primero sombras: suavizado -> 1024 -> solo blob; luego resolución en pasos de 0.25 hasta 1.0, 0.75 en Baja).
+// Si después va sobrado (>= 58 FPS durante 10 s) deshace un paso; si vuelve a caer, ya no sube más (sin oscilar).
+function qualityStepDown() {
+  const q = QUALITY[AJ.quality];
+  if (q.shadow && QS.shadowLevel < 3) { QS.shadowLevel++; QS.hist.push('s'); return true; }
+  if (renderer.getPixelRatio() > Math.min(q.pr(), q.prFloor) + 0.01) { QS.prStep++; QS.hist.push('p'); return true; }
+  return false;
+}
 function qualityTick(fps) {
-  if (!(AJ.quality === 'alta' || AJ.quality === 'ultra')) return;
-  if (S.mode === 'menu' || S.mode === 'end' || S.paused || document.hidden) { QS.lowSecs = 0; return; }
-  QS.lowSecs = fps < 40 ? QS.lowSecs + 1 : 0;
-  if (QS.lowSecs < 4) return;
-  QS.lowSecs = 0;
-  const floor = Math.min(DPR(), 2), cur = QUALITY[AJ.quality].pr() * QS.prScale;
-  if (AJ.quality === 'ultra' && cur > floor + 0.01) QS.prScale = Math.max(floor / QUALITY.ultra.pr(), QS.prScale - 0.25);
-  else if (!QS.softOff) QS.softOff = true;
-  else if (QS.shadowCap > 1024) QS.shadowCap = 1024;
-  else return;
-  QS.steps++;
-  applyQuality('fallback');
+  if (QS.disabled) return;
+  if (S.mode === 'menu' || S.mode === 'end' || S.paused || document.hidden) { QS.lowSecs = QS.highSecs = 0; return; }
+  QS.lowSecs = fps < 45 ? QS.lowSecs + 1 : 0;
+  QS.highSecs = fps >= 58 ? QS.highSecs + 1 : 0;
+  if (QS.lowSecs >= 3) {
+    QS.lowSecs = 0;
+    if (QS.hist.wasUp) QS.upLocked = true;
+    QS.hist.wasUp = false;
+    if (qualityStepDown()) { QS.steps++; applyQuality('fallback'); }
+  } else if (QS.highSecs >= 10 && QS.hist.length && !QS.upLocked) {
+    QS.highSecs = 0;
+    const k = QS.hist.pop(); if (k === 's') QS.shadowLevel--; else QS.prStep--;
+    QS.hist.wasUp = true; QS.steps++;
+    applyQuality('fallback-up');
+  }
+}
+
+// ---- LOD de personajes (meshopt simplifier, se carga aparte; si no está listo se usa el modelo completo) ----
+let Simplifier = null;
+const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=11')
+  .then((m) => m.MeshoptSimplifier.ready.then(() => { Simplifier = m.MeshoptSimplifier; try { for (const a of actors) applyLOD(a); } catch (_) {} }))
+  .catch((e) => { console.info('LOD no disponible', e && e.message); });
+const _lodCache = new Map();
+function lodGeometry(src, ratio, err) {
+  if (!Simplifier || ratio >= 0.999 || !src.index) return src;
+  const key = src.uuid + '|' + ratio;
+  let g = _lodCache.get(key);
+  if (g) return g;
+  const P = src.attributes.position, n = P.count, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) { pos[i * 3] = P.getX(i); pos[i * 3 + 1] = P.getY(i); pos[i * 3 + 2] = P.getZ(i); }
+  const idx = new Uint32Array(src.index.count);
+  for (let i = 0; i < idx.length; i++) idx[i] = src.index.getX(i);
+  const target = Math.max(3, Math.floor(idx.length * ratio / 3) * 3);
+  const [out] = Simplifier.simplify(idx, pos, 3, target, err, []);
+  if (out.length >= idx.length * 0.95) { _lodCache.set(key, src); return src; }
+  g = new THREE.BufferGeometry();
+  for (const k in src.attributes) g.setAttribute(k, src.attributes[k]);   // atributos compartidos (misma subida a GPU)
+  g.setIndex(new THREE.BufferAttribute(n < 65536 ? new Uint16Array(out) : out, 1));
+  if (src.boundingBox) g.boundingBox = src.boundingBox.clone();
+  if (src.boundingSphere) g.boundingSphere = src.boundingSphere.clone();
+  g.userData.lodOf = src.uuid;
+  _lodCache.set(key, g);
+  return g;
+}
+function applyLOD(a) {
+  if (!a || !a.model) return;
+  const q = QUALITY[AJ.quality];
+  a.model.traverse((o) => {
+    if (!o.isMesh) return;
+    const src = o.userData.srcGeom || (o.userData.srcGeom = o.geometry);
+    const g = lodGeometry(src, q.lod, q.lodErr || 0.006);
+    if (o.geometry !== g) o.geometry = g;
+  });
+}
+// MeshPhysicalMaterial (KHR_materials_specular) -> MeshStandardMaterial: con rugosidad 1 se ve igual y el shader es más barato
+function toStandard(root) {
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const conv = (m) => {
+      if (!m || !m.isMeshPhysicalMaterial) return m;
+      const n = new THREE.MeshStandardMaterial();
+      THREE.MeshStandardMaterial.prototype.copy.call(n, m);
+      n.roughness = 1; n.metalness = 0;
+      return n;
+    };
+    o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
+  });
+}
+// Campo: todas las mallas estáticas opacas sin textura se fusionan en UNA malla con color por vértice (51 draw calls -> 1)
+function mergeStatic(root) {
+  root.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const keep = (o) => { for (let p = o; p && p !== root; p = p.parent) if (/^(Marcador|Texto_Marcador)/.test(p.name)) return true; return false; };
+  const list = [];
+  root.traverse((o) => {
+    if (!o.isMesh || o.isSkinnedMesh || Array.isArray(o.material)) return;
+    const m = o.material;
+    if (!m.isMeshStandardMaterial || m.transparent || m.map || m.vertexColors || m.alphaTest > 0 || keep(o) || !o.geometry.attributes.normal) return;
+    if (m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0) return;
+    list.push(o);
+  });
+  if (list.length < 2) return 0;
+  let nv = 0, ni = 0;
+  for (const o of list) { const g = o.geometry; nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+  const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), C = new Float32Array(nv * 3), I = new Uint32Array(ni);
+  const v = new THREE.Vector3(), mtx = new THREE.Matrix4(), nm = new THREE.Matrix3();
+  let vo = 0, io = 0;
+  for (const o of list) {
+    const g = o.geometry, pa = g.attributes.position, na = g.attributes.normal, c = o.material.color;
+    mtx.multiplyMatrices(inv, o.matrixWorld); nm.getNormalMatrix(mtx);
+    for (let i = 0; i < pa.count; i++) {
+      v.fromBufferAttribute(pa, i).applyMatrix4(mtx); P.set([v.x, v.y, v.z], (vo + i) * 3);
+      v.fromBufferAttribute(na, i).applyMatrix3(nm).normalize(); N.set([v.x, v.y, v.z], (vo + i) * 3);
+      C[(vo + i) * 3] = c.r; C[(vo + i) * 3 + 1] = c.g; C[(vo + i) * 3 + 2] = c.b;
+    }
+    if (g.index) for (let i = 0; i < g.index.count; i++) I[io++] = g.index.getX(i) + vo;
+    else for (let i = 0; i < pa.count; i++) I[io++] = i + vo;
+    vo += pa.count;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(P, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(C, 3));
+  geo.setIndex(new THREE.BufferAttribute(I, 1));
+  geo.computeBoundingSphere(); geo.computeBoundingBox();
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat); mesh.name = 'Campo_Fusionado'; mesh.receiveShadow = true;
+  for (const o of list) { o.removeFromParent(); o.geometry.dispose(); }
+  root.add(mesh);
+  return list.length;
 }
 
 // Cámaras en pantalla apaisada 16:9 (?horizontal=1&camara=A…G2).
@@ -417,6 +544,7 @@ class Actor {
     this.charScale = (CHARS.find((c) => c.key === charKey) || {}).scale || 1;   // multiplicador por personaje (todos 1: alturas igualadas en el modelado)
     model.scale.setScalar(ESCALA * this.charScale);
     this.model = model;
+    applyLOD(this);   // menos triángulos en partida según calidad (el menú usa el modelo completo)
     this.body.add(model);
     this.root.add(this.body);
     shadowFlags(model, true, false);
@@ -551,6 +679,15 @@ const btnEntrada = document.getElementById('btnEntrada'), btnTurbo = document.ge
 const cargaAro = document.getElementById('carga'), cargaRegate = document.getElementById('cargaRegate'), cargaAlto = document.getElementById('cargaAlto');
 const cargaEntrada = document.getElementById('cargaEntrada'), cargaTurbo = document.getElementById('cargaTurbo');
 let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 }, joyScale = 1;
+// Caché de geometría de los controles: se mide SOLO al recolocar (layout/resize/editor), nunca en cada toque ni en cada frame
+const RC = { app: null, zona: null, btn: new Map() };
+function cacheCtrlRects() {
+  RC.app = app.getBoundingClientRect(); RC.zona = joyZona.getBoundingClientRect(); RC.btn.clear();
+  for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo]) RC.btn.set(el, el.getBoundingClientRect());
+}
+const appRect = () => RC.app || (RC.app = app.getBoundingClientRect());
+const zonaRect = () => RC.zona || (RC.zona = joyZona.getBoundingClientRect());
+const btnRect = (el) => RC.btn.get(el) || el.getBoundingClientRect();
 function cssEnvPx(expr) {
   const el = document.createElement('div');
   el.style.cssText = `position:fixed;visibility:hidden;pointer-events:none;width:${expr};height:0;`;
@@ -617,12 +754,12 @@ joyZona.addEventListener('pointerdown', (e) => {
   if (e.target.closest && e.target.closest('.btnAccion')) return;
   joyId = e.pointerId;
   try { joyZona.setPointerCapture(e.pointerId); } catch (_) {}
-  const r = joyZona.getBoundingClientRect(); setJoy(e.clientX - r.left, e.clientY - r.top);
+  const r = zonaRect(); setJoy(e.clientX - r.left, e.clientY - r.top);
   e.preventDefault();
 });
 joyZona.addEventListener('pointermove', (e) => {
   if (e.pointerId !== joyId) return;
-  const r = joyZona.getBoundingClientRect();
+  const r = zonaRect();
   let dx = e.clientX - r.left - joyCx, dy = e.clientY - r.top - joyCy;
   const L = Math.hypot(dx, dy), M = 52 * joyScale;
   if (L > M) { dx *= M / L; dy *= M / L; }
@@ -641,13 +778,13 @@ joyZona.addEventListener('pointerup', joyEnd); joyZona.addEventListener('pointer
 const AIM_TAP_MS = 180, AIM_SHOW_MS = 110;
 const aimJoy = document.getElementById('aimJoy'), aimKnob = document.getElementById('aimKnob');
 const aim = { id: null, kind: null, el: null, cx: 0, cy: 0, t0: 0, dragged: false, shown: false, dx: 0, dy: 0, R: 60, dir: new THREE.Vector2(0, 1), power: 0, cancel: false, active: false };
-function aimRadius(el) { const r = el.getBoundingClientRect(); return Math.max(46, Math.min(84, r.width * 0.95)); }
+function aimRadius(el) { const r = btnRect(el); return Math.max(46, Math.min(84, r.width * 0.95)); }
 function aimDeadPx() { return Math.max(10, aim.R * 0.22); }
 function showAimJoy(on) {
   aim.shown = on;
   if (!aimJoy) return;
   if (on) {
-    const ar = app.getBoundingClientRect();
+    const ar = appRect();
     aimJoy.style.width = aimJoy.style.height = (aim.R * 2) + 'px';
     aimJoy.style.left = (aim.cx - ar.left - aim.R) + 'px';
     aimJoy.style.top = (aim.cy - ar.top - aim.R) + 'px';
@@ -716,7 +853,7 @@ function bindAim(el, kind) {
     e.preventDefault(); e.stopPropagation();
     if (aim.id !== null || e.pointerId === joyId) return;
     if (S.mode !== 'play' || !user || ball.owner !== user) return;
-    const r = el.getBoundingClientRect();
+    const r = btnRect(el);
     Object.assign(aim, { id: e.pointerId, kind, el, cx: r.left + r.width / 2, cy: r.top + r.height / 2, t0: performance.now(), dragged: false, shown: false, dx: 0, dy: 0, R: aimRadius(el), power: 0, cancel: false, active: true });
     const md = moveDir(); aim.dir.copy(md || (kind !== 'regate' ? goalCenter(user.team).sub(user.pos).normalize() : user.face));
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
@@ -730,11 +867,12 @@ window.addEventListener('pointermove', (e) => {
 }, { passive: true });
 window.addEventListener('pointerup', (e) => aimEnd(e));
 window.addEventListener('pointercancel', (e) => aimEnd(e, true));
+for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo, joyZona]) el.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
 bindAim(btnChutar, 'chutar');
 bindAim(btnRegate, 'regate');
 bindAim(btnAlto, 'alto');
 bindHold(btnEntrada, () => { btnEntrada.classList.add('pulsado'); tryDash(user); }, () => btnEntrada.classList.remove('pulsado'));
-bindHold(btnTurbo, () => { input.turboDown = true; }, () => { input.turboDown = false; });
+bindHold(btnTurbo, () => { input.turboDown = true; btnTurbo.classList.add('pulsado'); }, () => { input.turboDown = false; btnTurbo.classList.remove('pulsado'); });
 
 const keyMap = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
 window.addEventListener('keydown', (e) => {
@@ -827,9 +965,13 @@ function shoot(a, dir, power, assist, loft, hspeed) {
   dir.normalize();
   a.face.copy(dir);
   const impact = a.meta.Kick.impact / 30 / KICK_RATE;
-  a.kickPending = { dir, power, assist, loft, hspeed, t: impact };
-  a.kickAnimT = a.meta.Kick.frames / 30 / KICK_RATE * 0.8;
-  a.play('Kick', 0.06, true);
+  // Jugador humano: la animación arranca ya avanzada (se salta la preparación) y el balón sale a los ~70 ms
+  // en lugar de ~210 ms -> el chut se siente inmediato. La IA mantiene la animación completa.
+  const t = a === user ? Math.min(impact, USER_KICK_DELAY) : impact;
+  a.kickPending = { dir, power, assist, loft, hspeed, t };
+  a.kickAnimT = a.meta.Kick.frames / 30 / KICK_RATE * 0.8 - (impact - t);
+  a.play('Kick', a === user ? 0.03 : 0.06, true);
+  if (a === user && impact > t) { const k = a.actions.Kick; if (k) k.time = (impact - t) * KICK_RATE; }
 }
 function updateKick(a, dt) {
   const k = a.kickPending; if (!k) return;
@@ -1210,7 +1352,7 @@ function startGame() {
   actx?.resume?.();
   S.score = [0, 0]; S.time = DURACION; S.goals = 0; S.saves = 0; S.shots = 0;
   if (user) user.energy = 1; if (rival) rival.energy = 1;
-  elA.textContent = '0'; elB.textContent = '0';
+  elA.textContent = '0'; elB.textContent = '0'; elReloj._t = null;
   pantalla.classList.remove('visible'); menuEl.classList.remove('visible'); hudSet(true);
   sfx.whistle(); kickoff();
 }
@@ -1260,7 +1402,7 @@ function update(dt) {
   if (playing) {
     S.time -= dt; if (S.time <= 0) { S.time = 0; if (S.score[0] !== S.score[1] || true) { endGame(); } }
   }
-  elReloj.textContent = fmt(S.time); elReloj.classList.toggle('poco', S.time <= 15);
+  const rt = fmt(S.time); if (rt !== elReloj._t) { elReloj._t = rt; elReloj.textContent = rt; elReloj.classList.toggle('poco', S.time <= 15); }
 
   // --- usuario ---
   const wish = new THREE.Vector2(input.jx, input.jy);
@@ -1366,7 +1508,7 @@ function update(dt) {
     acciones.classList.toggle('con-balon', !!hasBall);
     acciones.classList.toggle('sin-balon', !hasBall);
   }
-  const ring = (el, fill) => { if (el) el.style.strokeDashoffset = String(289 * (1 - Math.max(0, Math.min(1, fill)))); };
+  const ring = (el, fill) => { if (!el) return; const v = (289 * (1 - Math.max(0, Math.min(1, fill)))).toFixed(1); if (el._v !== v) { el._v = v; el.style.strokeDashoffset = v; } };
   ring(cargaAro, input.shootDown ? input.charge : (aim.active && aim.kind === 'chutar' && aim.dragged && !aim.cancel ? aim.power : 0));
   ring(cargaAlto, aim.active && aim.kind === 'alto' && aim.dragged && !aim.cancel ? aim.power : 0);
   ring(cargaRegate, user ? (user.dribbleCd > 0 ? 1 - user.dribbleCd / DRIBBLE_CD : 1) : 1);
@@ -1374,7 +1516,7 @@ function update(dt) {
   ring(cargaTurbo, user ? user.energy : 1);
   btnRegate.classList.toggle('cd', !!(user && user.dribbleCd > 0));
   btnEntrada.classList.toggle('cd', !!(user && user.dashCd > 0));
-  btnTurbo.classList.toggle('pulsado', !!(input.turboDown && user && user.sprinting));
+  btnTurbo.classList.toggle('pulsado', !!input.turboDown);
   btnTurbo.classList.toggle('activo', !!(user && user.sprinting));
   btnTurbo.classList.toggle('vacio', !!(user && user.energy <= TURBO_MIN && !user.sprinting));
 }
@@ -1484,18 +1626,20 @@ function render(dt) {
   } else aimArrow.visible = false;
   updateAimLine();
   if (HORIZONTAL) updateHorizCam(false);
+  if (renderer.shadowMap.enabled && (++render.n % shadowEvery) === 0) renderer.shadowMap.needsUpdate = true;
   renderer.render(scene, camera);
 }
 
+render.n = 0;
 let last = performance.now(), fpsAcc = 0, fpsN = 0;
 frame.n = 0;
 window.__game.fps = 0;
 function frame(now) {
   requestAnimationFrame(frame);
-  if (HORIZONTAL && (++frame.n % 15) === 0 && vpKey() !== lastVP) onViewportChange();   // tamaño cambiado sin evento
+  if (HORIZONTAL && (++frame.n % 30) === 0 && vpKey() !== lastVP) onViewportChange();   // tamaño cambiado sin evento
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (window.__game.paused) return;   // solo para pruebas automáticas (avance manual con __game.advance)
-  fpsAcc += dt; fpsN++; if (fpsAcc > 1) { window.__game.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; qualityTick(window.__game.fps); }
+  fpsAcc += dt; fpsN++; if (fpsAcc > 1) { window.__game.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; qualityTick(window.__game.fps); updateFpsMeter(); }
   if (S.paused) { if (ballMesh) render(0); return; }   // menú de pausa abierto: juego congelado
   if (S.mode !== 'menu' && S.mode !== 'end') update(dt); else { for (const a of actors) a.vel.multiplyScalar(0.8); }
   if (S.mode === 'menu' || ballMesh) render(dt);
@@ -1722,6 +1866,7 @@ if (giraEl) {
 function setupField(campo) {
   campoRoot = matte(campo.scene);
   shadowFlags(campoRoot, false, true);
+  window.__game.campoMerged = mergeStatic(campoRoot);
   scene.add(campoRoot);
   // Recorte de la grada derecha: solo en cámaras de LADO (A/B/C). D/E/F ven el estadio entero.
   camClipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), WX + 3.0);
@@ -1808,6 +1953,7 @@ function applyControls() {
     }
   }
   placeJoyBase();
+  cacheCtrlRects();
 }
 function customJoyHome(def, zr) {
   if (!HORIZONTAL) return def;
@@ -1826,11 +1972,23 @@ const ajustesEl = document.getElementById('ajustes'), editorEl = document.getEle
 const edSel = document.getElementById('edSel'), edTam = document.getElementById('edTam'), edTamV = document.getElementById('edTamV');
 const edOpa = document.getElementById('edOpa'), edOpaV = document.getElementById('edOpaV'), ajInfo = document.getElementById('ajInfo');
 let ajFrom = null;
+const fpsMeter = document.getElementById('fpsMeter'), btnAjFps = document.getElementById('ajFps');
+function setShowFps(on) {
+  AJ.showFps = !!on; saveAjustes();
+  document.body.classList.toggle('fps-on', AJ.showFps);
+  if (btnAjFps) { btnAjFps.textContent = 'CONTADOR FPS: ' + (AJ.showFps ? 'SÍ' : 'NO'); btnAjFps.classList.toggle('on', AJ.showFps); }
+  updateFpsMeter();
+}
+function updateFpsMeter() {
+  if (!AJ.showFps || !fpsMeter) return;
+  const f = window.__game.fps || 0, t = `${f} FPS · ${f ? (1000 / f).toFixed(0) : '–'} ms · ×${renderer.getPixelRatio().toFixed(2).replace(/\.?0+$/, '')}`;
+  if (fpsMeter._t !== t) { fpsMeter._t = t; fpsMeter.textContent = t; }
+}
 function refreshAjustes() {
   for (const b of document.querySelectorAll('#ajCalidad button')) b.classList.toggle('sel', b.dataset.q === AJ.quality);
   const q = window.__game.quality || {};
   const sh = q.shadows ? `sombras ${q.soft ? 'suaves' : 'normales'} ${q.shadows}px` : 'sin sombras reales';
-  ajInfo.textContent = `Resolución ×${(q.pixelRatio || renderer.getPixelRatio()).toFixed(2).replace(/\.?0+$/, '')} · ${sh}` + (q.fallbackSteps ? ' · ajustado por rendimiento' : '');
+  ajInfo.textContent = `Resolución ×${(q.pixelRatio || renderer.getPixelRatio()).toFixed(2).replace(/\.?0+$/, '')} · ${sh}` + (q.lod < 1 ? ' · modelos ligeros' : '') + (q.fallbackSteps ? ' · ajustado por rendimiento' : '');
 }
 function openAjustes(from) {
   ajFrom = from || (S.paused ? 'pausa' : 'menu');
@@ -1924,6 +2082,8 @@ document.getElementById('edCancelar').addEventListener('click', () => closeEdito
 document.getElementById('edReset').addEventListener('click', () => { editor.draft = {}; editor.opa = 1; edSelect(null); edSyncOpa(); applyControls(); });
 document.getElementById('ajEditar').addEventListener('click', openEditor);
 document.getElementById('ajCerrar').addEventListener('click', closeAjustes);
+btnAjFps.addEventListener('click', () => setShowFps(!AJ.showFps));
+setShowFps(AJ.showFps);
 for (const b of document.querySelectorAll('#ajCalidad button')) b.addEventListener('click', () => { setQuality(b.dataset.q); refreshAjustes(); });
 const btnAjustes = document.getElementById('btnAjustes');
 btnAjustes.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1949,7 +2109,7 @@ Object.assign(window.__game, {
   get aim() { return aim; },
   relayout: () => onViewportChange(),
   setupMatch,
-  AJ, QS, setQuality, applyQuality, applyControls,
+  AJ, QS, setQuality, applyQuality, applyControls, setShowFps, get simplifierReady() { return !!Simplifier; },
   openSettings: (from) => openAjustes(from), closeSettings: () => closeAjustes(),
   openEditor: () => openEditor(), closeEditor: (save) => closeEditor(save),
   get editor() { return editor; }, edSelect: (id) => edSelect(id), edView: (v) => edView(v),
@@ -1963,9 +2123,9 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   applyQuality('init');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=10')).json();
+    META = await (await fetch('assets/anim_meta.json?v=11')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
-    CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; });
+    CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
     buildMenuChars(); buildMenuUI();
     layout(); layoutMenu(); updateOrient();
@@ -1973,7 +2133,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=10').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=11').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
