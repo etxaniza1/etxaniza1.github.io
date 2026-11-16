@@ -18,8 +18,10 @@ const WX = 21.2, WY = 28.0;                // cara interior de las vallas (RUN_X
 const GW = 5.0, POST_X = 5.28, POST_R = 0.28, GH = 4.0, GD = 2.8;   // v6: portería de caja (techo horizontal)
 const NET_X = POST_X - 0.11, NET_Z = GH - 0.08;   // caras interiores de la red (laterales / techo)
 const BR = 0.35;                           // radio del balón (un pelín mayor que el 0,30 del glb para que se lea en móvil)
-const GRAV = 13;            // gravedad del balón (m/s²), ajustada a la escala del juego (personajes ×1,3)
-const AIR_DRAG = 0.15, ROLL_DRAG = 1.1, ROLL_DECEL = 0.9, BOUNCE_E = 0.55;
+// update 14: física del balón más realista. Gravedad algo por encima de 9,81 (balón y personajes a escala ×1,3) para que pese;
+// rozamiento del aire cuadrático (a = -k·|v|·v), bote con restitución 0,65 y pérdida por fricción en el impacto, rodadura en césped.
+const GRAV = 11;
+const AIR_K = 0.0065, ROLL_DRAG = 0.45, ROLL_DECEL = 1.2, BOUNCE_E = 0.65, BOUNCE_MIN = 0.9;
 const GK_REACH = 2.0, GK_REACH_DIVE = 1.6;   // altura de alcance del portero (×ESCALA): de pie+salto / en estirada
 const PR = 0.6 * ESCALA;                   // radio de colisión del jugador
 const SPEED_USER = 7.6, SPEED_AI = 6.3, SPEED_GK = 5.6;
@@ -28,7 +30,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=13';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=14';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A' },
@@ -197,7 +199,7 @@ function qualityTick(fps) {
 
 // ---- LOD de personajes (meshopt simplifier, se carga aparte; si no está listo se usa el modelo completo) ----
 let Simplifier = null;
-const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=13')
+const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.js?v=14')
   .then((m) => m.MeshoptSimplifier.ready.then(() => { Simplifier = m.MeshoptSimplifier; try { for (const a of actors) applyLOD(a); } catch (_) {} }))
   .catch((e) => { console.info('LOD no disponible', e && e.message); });
 const _lodCache = new Map();
@@ -652,7 +654,7 @@ function makeBall() {
   return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: false }));
 }
 
-const ball = { pos: new THREE.Vector3(0, 0, BR), vel: new THREE.Vector3(), owner: null, noCatch: null, noCatchT: 0, lastTouch: null };
+const ball = { pos: new THREE.Vector3(0, 0, BR), vel: new THREE.Vector3(), owner: null, noCatch: null, noCatchT: 0, lastTouch: null, backspin: 0, w: new THREE.Vector3() };
 let ballMesh, ballShadow, aimArrow, ballGhost, aimLine;
 
 // ===================== ESTADO =====================
@@ -824,15 +826,13 @@ function aimedShot(dir, p) {
   shoot(user, dir.clone(), 0.35 + 0.65 * p, false); LOG('tiro_apuntado', user, { p: +p.toFixed(2) });
   return true;
 }
-function quickLobAim() {   // toque rápido de CHUT ALTO: dirección del joystick de mover o portería rival; globo medio
+function lobDir() {   // CHUT ALTO sin arrastrar: dirección del joystick de mover o portería rival
   const md = moveDir();
-  if (md) return { dir: md, power: 0.5 };
-  const to = goalCenter(user.team).sub(user.pos); const dist = to.length();
-  return { dir: to.normalize(), power: lobPowerForDist(Math.min(dist - 1.0, LOB_MIN_D + (LOB_MAX_D - LOB_MIN_D) * 0.5)) };
+  return md || goalCenter(user.team).sub(user.pos).normalize();
 }
-function quickLob() {
+function quickLob(c = 0) {   // toque = vaselina suave mínima (update 14: ya no hay 'globo medio' por toque rápido)
   if (S.mode !== 'play' || ball.owner !== user || user.kickPending) return false;
-  const q = quickLobAim(); shootLob(user, q.dir, q.power); return true;
+  shootLob(user, lobDir(), c); return true;
 }
 function aimedLob(dir, p) {
   if (S.mode !== 'play' || ball.owner !== user) return false;
@@ -841,11 +841,11 @@ function aimedLob(dir, p) {
 // ---- Acciones del jugador (update 13) ----
 // Por defecto (como v10/v11): CHUTAR / REGATE / CHUT ALTO con mini-joystick estilo Brawl. Toque corto = acción rápida al SOLTAR
 // (sin umbral de tiempo) hacia el joystick de mover; al salir de la zona muerta (~11 px) aparece al instante el joystick de
-// apuntar con la flecha; volver al centro cancela. Mantener quieto también lo abre. CHUT ALTO: toque < 120 ms = globo medio,
-// mantener sin arrastrar = carga potencia. Opción 'Disparo instantáneo al tocar': Chutar/Regate en el pointerdown, sin apuntar. Si la acción no es posible aún (sin balón, enfriamiento),
+// apuntar con la flecha; volver al centro cancela. Mantener quieto también lo abre. CHUT ALTO (update 14): la carga sube desde
+// el toque (~1,1 s al 100 %, zona perfecta 45-60 %) y el mini-joystick solo da la dirección; un toque = vaselina suave. Opción 'Disparo instantáneo al tocar': Chutar/Regate en el pointerdown, sin apuntar. Si la acción no es posible aún (sin balón, enfriamiento),
 // se guarda 150 ms en un buffer y se ejecuta en cuanto se pueda.
-const ALTO_TAP_MS = 120, INPUT_BUFFER_MS = 150;
-function altoHoldPower() { return 0.15 + 0.85 * THREE.MathUtils.clamp((performance.now() - aim.t0 - ALTO_TAP_MS) / 900, 0, 1); }
+const INPUT_BUFFER_MS = 150;
+function altoCharge(t0) { return THREE.MathUtils.clamp((performance.now() - t0 - 60) / 1000 / ALTO_CHARGE_S, 0, 1); }   // 60 ms de margen: un toque = vaselina mínima
 function doAction(kind) {
   if (S.mode !== 'play' || !user || S.paused) return false;
   if (kind === 'chutar') return quickShot();
@@ -890,11 +890,7 @@ function aimEnd(e, cancelAll) {
   if (e && !cancelAll && !aim.cancel) markAction(kind, e);
   if (!cancelAll && !aim.cancel) {
     if (kind === 'chutar') { if (quick) quickShot(); else aimedShot(aim.dir, aim.power); }
-    else if (kind === 'alto') {
-      if (!quick) aimedLob(aim.dir, aim.power);
-      else if (performance.now() - aim.t0 < ALTO_TAP_MS) quickLob();                  // toque rápido: globo medio
-      else { const q = quickLobAim(); aimedLob(q.dir, altoHoldPower()); }               // mantener sin arrastrar: potencia cargada
-    }
+    else if (kind === 'alto') aimedLob(quick ? lobDir() : aim.dir, altoCharge(aim.t0));   // la carga = tiempo pulsado; el joystick solo apunta
     else { if (quick) tryDribble(user); else tryDribble(user, aim.dir); }
   } else if (aim.cancel) LOG('apuntado_cancelado', user, { kind });
   el.classList.remove('pulsado', 'apuntando');
@@ -946,7 +942,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Space' || e.code === 'Enter') { if (!e.repeat) { if (S.mode === 'menu') menuPlay(); else if (S.mode === 'end') startGame(); else if (e.code === 'Space') pressShoot(); } e.preventDefault(); }
   if (S.mode === 'menu' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !e.repeat) menuStep(e.code === 'ArrowLeft' ? -1 : 1);
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { input.turboDown = true; e.preventDefault(); }
-  if (e.code === 'KeyQ' && !e.repeat) { quickLob(); e.preventDefault(); }
+  if (e.code === 'KeyQ' && !e.repeat) { input.qT0 = performance.now(); e.preventDefault(); }
   if (e.code === 'Escape' && !e.repeat) { if (S.paused) resumeGame(); else openPause(); }
   if (e.code === 'KeyE' && !e.repeat) {
     if (S.mode === 'play') { if (ball.owner === user) tryDribble(user); else tryDash(user); }
@@ -956,9 +952,10 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
   if (keyMap[e.code]) input.keys[keyMap[e.code]] = false;
   if (e.code === 'Space') releaseShoot();
+  if (e.code === 'KeyQ' && input.qT0) { const c = altoCharge(input.qT0); input.qT0 = 0; quickLob(c); }
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.turboDown = false;
 });
-window.addEventListener('blur', () => { input.keys = {}; input.jx = input.jy = 0; input.turboDown = false; releaseShoot(true); aimEnd(null, true); });
+window.addEventListener('blur', () => { input.keys = {}; input.jx = input.jy = 0; input.turboDown = false; input.qT0 = 0; releaseShoot(true); aimEnd(null, true); });
 
 function pressShoot() {
   if (S.mode !== 'play' || input.shootDown) return;
@@ -1050,6 +1047,7 @@ function updateKick(a, dt) {
   k.t -= dt;
   if (k.t <= 0) { a.kickPending = null; releaseShot(a, k.dir, k.power, k.assist, k.loft, k.hspeed); }
 }
+const _wv = new THREE.Vector3(), _wa = new THREE.Vector3();
 function releaseShot(a, dir, power, assist, loft, hspeed) {
   dir = dir.clone().normalize();
   if (dir.lengthSq() < 0.01) dir.set(0, a.team === 0 ? 1 : -1);
@@ -1067,6 +1065,9 @@ function releaseShot(a, dir, power, assist, loft, hspeed) {
   ball.pos.z = Math.max(ball.pos.z, BR + 0.05);
   ball.vel.set(dir.x * sp, dir.y * sp, loft !== undefined ? loft : 0.8 + 3.2 * power * power);   // chut normal: raso / poca altura
   if (hspeed !== undefined) ball.pos.z = BR + 0.02;
+  // giro: chut raso = rueda hacia delante; chut alto = efecto de retroceso (más en la vaselina suave)
+  ball.backspin = hspeed !== undefined ? THREE.MathUtils.clamp(1.1 - hspeed / 28, 0.1, 1) : 0;
+  ball.w.set(0, 1, 0).cross(_wv.set(ball.vel.x, 0, -ball.vel.y)).multiplyScalar((ball.backspin > 0 ? -0.6 * ball.backspin : 0.7) / BR);
   a.kickT = 0.35; a.face.copy(dir);
   S.shots++; sfx.kick(power); LOG('tiro', a, { pos: [+a.pos.x.toFixed(1), +a.pos.y.toFixed(1)], vel: [+ball.vel.x.toFixed(1), +ball.vel.y.toFixed(1), +ball.vel.z.toFixed(1)] });
 }
@@ -1129,9 +1130,10 @@ function collideCircle2D(cx, cy, r, restitution) {
 }
 // integración del vuelo (la usa también la predicción de trayectoria, para que coincida con el real)
 function airStep(p, v, dt) {
-  v.z -= GRAV * dt;
+  // rozamiento cuadrático del aire (en las 3 componentes) + gravedad; integración semi-implícita
+  const sp = Math.hypot(v.x, v.y, v.z), f = 1 / (1 + AIR_K * sp * dt);
+  v.x *= f; v.y *= f; v.z = v.z * f - GRAV * dt;
   p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt;
-  if (p.z > BR + 0.02) { const f = Math.exp(-AIR_DRAG * dt); v.x *= f; v.y *= f; }
 }
 // predicción del vuelo hasta el primer bote (misma integración que el balón real; sin colisiones)
 const _pp = new THREE.Vector3(), _pv = new THREE.Vector3();
@@ -1145,28 +1147,22 @@ function predictFlight(pos, vel, out, maxT = 5, h = 1 / 120) {
   }
   return { x: _pp.x, y: _pp.y, t, peak, dist: Math.hypot(_pp.x - pos.x, _pp.y - pos.y) };
 }
-// CHUT ALTO: la potencia (0-1) fija ángulo y alcance: poca = globo corto y bajo; mucha = más alto y más lejos
-const LOB_MIN_D = 7, LOB_MAX_D = 30, LOB_MIN_ANG = 45, LOB_MAX_ANG = 60;
-function lobParams(power, from) {
-  const p = THREE.MathUtils.clamp(power, 0, 1);
-  const D = LOB_MIN_D + (LOB_MAX_D - LOB_MIN_D) * p;
-  const ang = THREE.MathUtils.degToRad(LOB_MIN_ANG + (LOB_MAX_ANG - LOB_MIN_ANG) * p);
-  // resolver la velocidad para caer a D (con el rozamiento del aire): bisección sobre la predicción
-  const start = new THREE.Vector3(0, 0, from ? from.z : BR + 0.02);
-  let lo = 3, hi = 40;
-  for (let i = 0; i < 18; i++) {
-    const v = (lo + hi) / 2;
-    const r = predictFlight(start, new THREE.Vector3(0, v * Math.cos(ang), v * Math.sin(ang)), null, 6, 1 / 60);
-    if (r.dist < D) lo = v; else hi = v;
-  }
-  const v = (lo + hi) / 2;
-  return { D, ang, h: v * Math.cos(ang), vz: v * Math.sin(ang) };
+// CHUT ALTO con carga (update 14), 'trompa de elefante': la carga c (0-1) se acumula desde que se toca el botón (~1,1 s al 100 %).
+// Poca carga = vaselina suave, lenta, alta y corta. ~50 % (zona perfecta 45-60 %) = chut tenso, rápido y más plano que entra a media
+// altura bajo el larguero. Mucha carga = muy rápido y recto pero llega demasiado alto y se va por encima. Al subir la carga sube la
+// velocidad, baja el ángulo de salida y (a partir de la mitad) sube la altura con la que llega a la portería.
+const ALTO_CHARGE_S = 1.1, ALTO_PERFECT = [0.45, 0.6];
+function lobParams(c) {
+  c = THREE.MathUtils.clamp(c, 0, 1);
+  const v = 10 + 23 * c;
+  let s = Math.min(1, c / 0.55); s = s * s * (3 - 2 * s);
+  const ang = THREE.MathUtils.degToRad(62 - 42 * s + 1.5 * Math.max(0, c - 0.55) / 0.45);
+  return { c, v, ang, h: v * Math.cos(ang), vz: v * Math.sin(ang) };
 }
-function lobPowerForDist(dist) { return THREE.MathUtils.clamp((dist - LOB_MIN_D) / (LOB_MAX_D - LOB_MIN_D), 0, 1); }
-function shootLob(a, dir, power) {
-  const lp = lobParams(power);
-  shoot(a, dir, power, false, lp.vz, lp.h);
-  LOG('chut_alto', a, { p: +power.toFixed(2), D: +lp.D.toFixed(1), ang: Math.round(THREE.MathUtils.radToDeg(lp.ang)) });
+function shootLob(a, dir, c) {
+  const lp = lobParams(c);
+  shoot(a, dir, 0.3 + 0.7 * lp.c, false, lp.vz, lp.h);
+  LOG('chut_alto', a, { c: +lp.c.toFixed(2), v: +lp.v.toFixed(1), ang: Math.round(THREE.MathUtils.radToDeg(lp.ang)) });
 }
 function stepBall(dt, prev) {
   const b = ball;
@@ -1174,9 +1170,20 @@ function stepBall(dt, prev) {
   // suelo: bote con restitución y algo de fricción en el impacto; rodadura con rozamiento
   if (b.pos.z < BR) {
     b.pos.z = BR;
-    if (b.vel.z < -1.2) { b.vel.z = -b.vel.z * BOUNCE_E; b.vel.x *= 0.88; b.vel.y *= 0.88; if (b.vel.z > 3) sfx.bounce && sfx.bounce(); }
-    else b.vel.z = 0;
+    if (b.vel.z < -BOUNCE_MIN) {
+      // bote: restitución 0,65 (menos en impactos fuertes) y fricción con el césped proporcional al golpe; el retroceso 'muerde'
+      const vin = -b.vel.z, e = BOUNCE_E - Math.min(0.1, vin * 0.006);
+      b.vel.z = vin * e;
+      const sp = Math.hypot(b.vel.x, b.vel.y);
+      if (sp > 0.01) {
+        const loss = Math.min(0.45, 0.3 * (1 + e) * vin / Math.max(sp, 4) + 0.06 + 0.22 * b.backspin);
+        b.vel.x *= 1 - loss; b.vel.y *= 1 - loss;
+      }
+      b.backspin *= 0.35;
+      if (vin > 4) sfx.bounce && sfx.bounce();
+    } else b.vel.z = 0;
     if (b.vel.z === 0) {
+      b.backspin = 0;
       const sp = Math.hypot(b.vel.x, b.vel.y);
       if (sp > 0) {
         const nsp = Math.max(0, sp * Math.exp(-ROLL_DRAG * dt) - ROLL_DECEL * dt);
@@ -1205,12 +1212,12 @@ function stepBall(dt, prev) {
     const gl = s * HL, back = s * (HL + GD);
     const inY = (y) => (s > 0 ? (y > gl && y < back) : (y < gl && y > back));
     // postes y larguero
-    if (b.pos.z < GH + BR) { collideCircle2D(POST_X, gl, POST_R, 0.6); collideCircle2D(-POST_X, gl, POST_R, 0.6); }
+    if (b.pos.z < GH + BR) { if (collideCircle2D(POST_X, gl, POST_R, 0.62) | collideCircle2D(-POST_X, gl, POST_R, 0.62)) { b.vel.z *= 0.9; b.backspin = 0; } }
     if (Math.abs(b.pos.x) < POST_X) {
       const dy = b.pos.y - gl, dz = b.pos.z - GH, L = Math.hypot(dy, dz), min = POST_R + BR;
       if (L < min && L > 1e-5) {
         const ny = dy / L, nz = dz / L; b.pos.y = gl + ny * min; b.pos.z = GH + nz * min;
-        const vn = b.vel.y * ny + b.vel.z * nz; if (vn < 0) { b.vel.y -= 1.6 * vn * ny; b.vel.z -= 1.6 * vn * nz; sfx.kick(0.1); }
+        const vn = b.vel.y * ny + b.vel.z * nz; if (vn < 0) { b.vel.y -= 1.62 * vn * ny; b.vel.z -= 1.62 * vn * nz; b.vel.x *= 0.9; b.backspin = 0; if (-vn > 3) sfx.kick(0.1); }
       }
     }
     const nearY = inY(b.pos.y) || inY(prev.y);
@@ -1594,7 +1601,9 @@ function update(dt) {
   }
   const ring = (el, fill) => { if (!el) return; const v = (289 * (1 - Math.max(0, Math.min(1, fill)))).toFixed(1); if (el._v !== v) { el._v = v; el.style.strokeDashoffset = v; } };
   ring(cargaAro, input.shootDown ? input.charge : (aim.active && aim.kind === 'chutar' && aim.dragged && !aim.cancel ? aim.power : 0));
-  ring(cargaAlto, aim.active && aim.kind === 'alto' && !aim.cancel ? (aim.dragged ? aim.power : (performance.now() - aim.t0 > ALTO_TAP_MS ? (altoHoldPower() - 0.15) / 0.85 : 0)) : 0);
+  const altoC = aim.active && aim.kind === 'alto' && !aim.cancel ? altoCharge(aim.t0) : (input.qT0 && hasBall ? altoCharge(input.qT0) : -1);
+  ring(cargaAlto, Math.max(0, altoC));
+  updateChargeBar(altoC);
   ring(cargaRegate, user ? (user.dribbleCd > 0 ? 1 - user.dribbleCd / DRIBBLE_CD : 1) : 1);
   ring(cargaEntrada, user ? (user.dashCd > 0 ? 1 - user.dashCd / DASH_CD_USER : 1) : 1);
   ring(cargaTurbo, user ? user.energy : 1);
@@ -1641,11 +1650,34 @@ function makeLobPreview() {
   flightMark.renderOrder = 3;
   for (const o of [lobArc, lobGround, lobLand, flightMark]) { o.visible = false; o.frustumCulled = false; scene.add(o); }
 }
+// barra de carga del CHUT ALTO encima del botón (zona perfecta marcada); c < 0 = oculta
+const cargaBarra = document.getElementById('cargaBarra'), cargaFill = cargaBarra && cargaBarra.querySelector('.fill');
+if (cargaBarra) document.getElementById('app').appendChild(cargaBarra);   // relativo a #app, no al panel de botones
+let _cbOn = false, _cbW = '';
+function updateChargeBar(c) {
+  if (!cargaBarra) return;
+  const on = c >= 0;
+  if (on !== _cbOn) {
+    _cbOn = on; cargaBarra.classList.toggle('on', on);
+    if (on) {   // colocar sobre el botón (el usuario puede haberlo movido en el editor)
+      const r = btnRect(btnAlto), app = document.getElementById('app').getBoundingClientRect();
+      cargaBarra.style.left = (r.left - app.left + r.width / 2) + 'px';
+      cargaBarra.style.top = (r.top - app.top + r.height / 2 - aimRadius(btnAlto) - 8) + 'px';   // por encima del mini-joystick
+    }
+  }
+  if (!on) return;
+  const w = (c * 100).toFixed(1) + '%';
+  if (w !== _cbW) {
+    _cbW = w; cargaFill.style.width = w;
+    cargaBarra.dataset.z = c < ALTO_PERFECT[0] ? 'suave' : c <= ALTO_PERFECT[1] ? 'perfecta' : 'alta';
+  }
+}
 function updateLobPreview(on) {
   if (!lobArc) return;
   lobArc.visible = lobGround.visible = lobLand.visible = !!on;
   if (!on) return;
-  if (!aim.dragged) { const q = quickLobAim(); aim.dir.copy(q.dir); aim.lobP = performance.now() - aim.t0 > ALTO_TAP_MS ? altoHoldPower() : q.power; } else aim.lobP = aim.power;
+  if (!aim.dragged) aim.dir.copy(lobDir());
+  aim.lobP = altoCharge(aim.t0);
   const lp = lobParams(aim.lobP);
   const start = new THREE.Vector3(ball.pos.x + aim.dir.x * 0.4, ball.pos.y + aim.dir.y * 0.4, BR + 0.02);
   const land = predictFlight(start, new THREE.Vector3(aim.dir.x * lp.h, aim.dir.y * lp.h, lp.vz), _lobPts);
@@ -1658,7 +1690,9 @@ function updateLobPreview(on) {
   }
   lobArc.instanceMatrix.needsUpdate = true; lobGround.instanceMatrix.needsUpdate = true;
   lobLand.position.set(land.x, 0, -land.y);
-  aim.lobLand = { x: +land.x.toFixed(2), y: +land.y.toFixed(2), peak: +land.peak.toFixed(2), dist: +land.dist.toFixed(2) };
+  aim.lobLand = { c: +aim.lobP.toFixed(2), x: +land.x.toFixed(2), y: +land.y.toFixed(2), peak: +land.peak.toFixed(2), dist: +land.dist.toFixed(2) };
+  const perf = aim.lobP >= ALTO_PERFECT[0] && aim.lobP <= ALTO_PERFECT[1];
+  lobArc.material.color.setHex(perf ? 0x5dff8a : aim.lobP > ALTO_PERFECT[1] ? 0xff6a4f : 0xffffff);
 }
 function updateFlightMark() {
   if (!flightMark) return;
@@ -1694,10 +1728,14 @@ function render(dt) {
   if (S.mode === 'menu') { renderMenu(dt); return; }
   for (const a of actors) a.sync(dt, S.t);
   ballMesh.position.copy(g2t(ball.pos.x, ball.pos.y, ball.pos.z));
-  const v = new THREE.Vector3(ball.vel.x, 0, -ball.vel.y);
+  // giro del balón: en el suelo rueda sin deslizar (ω = up×v / r, con transición tras el bote); en el aire conserva su giro
+  const v = _wv.set(ball.vel.x, 0, -ball.vel.y);
   if (ball.owner && !ball.owner.keeper) v.set(ball.owner.vel.x, 0, -ball.owner.vel.y);
-  const vs = v.length();
-  if (vs > 0.05) { const axis = new THREE.Vector3(0, 1, 0).cross(v); if (axis.lengthSq() > 0.01) ballMesh.rotateOnWorldAxis(axis.normalize(), vs * dt / BR); }
+  if (ball.owner && ball.owner.keeper) ball.w.multiplyScalar(Math.exp(-6 * dt));
+  else if (ball.owner || ball.pos.z <= BR + 0.03) { _wa.set(0, 1, 0).cross(v).multiplyScalar(1 / BR); ball.w.lerp(_wa, 1 - Math.exp(-(ball.owner ? 30 : 12) * dt)); }
+  else ball.w.multiplyScalar(Math.exp(-0.25 * dt));
+  const wl = ball.w.length();
+  if (wl > 0.05) ballMesh.rotateOnWorldAxis(_wa.copy(ball.w).multiplyScalar(1 / wl), wl * dt);
   ballShadow.position.set(ball.pos.x, 0.025, -ball.pos.y);
   ballGhost.position.copy(ballMesh.position); ballGhost.quaternion.copy(ballMesh.quaternion);
   const h = ball.pos.z - BR; ballShadow.scale.setScalar(Math.max(0.45, 1 + h * 0.05)); ballShadow.material.opacity = Math.max(0.12, 0.42 - h * 0.025);   // sombra: más grande y clara cuanto más alto
@@ -2199,6 +2237,22 @@ Object.assign(window.__game, {
   setCamMode: (m) => setCamMode(m, true),
   setJoyDir,
   openPause: () => openPause(), resumeGame: () => resumeGame(), quitMatch: () => quitMatch(),
+  // pruebas: simula con la física real (stepBall, con postes/larguero/red) un chut alto con carga c desde D m de la línea de gol
+  simAlto: (c, D, dt = 1 / 120) => {
+    const sv = { pos: ball.pos.clone(), vel: ball.vel.clone(), owner: ball.owner, le: ball.lineEvent, bs: ball.backspin };
+    const lp = lobParams(c); ball.owner = null; ball.lineEvent = null; ball.backspin = 0;
+    ball.pos.set(0, HL - D, BR + 0.02); ball.vel.set(0, lp.h, lp.vz);
+    const prev = new THREE.Vector3(); let t = 0, zGoal = null, tGoal = null, tBounce = null, peak = 0;
+    for (; t < 6 && !ball.lineEvent; t += dt) {
+      prev.copy(ball.pos); stepBall(dt, prev); peak = Math.max(peak, ball.pos.z);
+      if (zGoal === null && prev.y < HL && ball.pos.y >= HL) { const k = (HL - prev.y) / (ball.pos.y - prev.y); zGoal = +(prev.z + (ball.pos.z - prev.z) * k).toFixed(2); tGoal = +(t + dt * k).toFixed(2); }
+      if (tBounce === null && ball.pos.z <= BR + 1e-6 && prev.z > BR) tBounce = +(t + dt).toFixed(2);
+    }
+    const ev = ball.lineEvent;
+    const r = { c, D, v: +lp.v.toFixed(1), ang: +THREE.MathUtils.radToDeg(lp.ang).toFixed(1), result: ev ? ev.type : (zGoal === null ? 'no llega' : 'rechazado'), zLinea: zGoal, tLinea: tGoal, tBounce, peak: +peak.toFixed(2) };
+    ball.pos.copy(sv.pos); ball.vel.copy(sv.vel); ball.owner = sv.owner; ball.lineEvent = sv.le; ball.backspin = sv.bs;
+    return r;
+  },
   lobParams, predictFlight, shootLob: (p, dx, dy) => shootLob(user, new THREE.Vector2(dx, dy), p),
   get aim() { return aim; },
   relayout: () => onViewportChange(),
@@ -2219,7 +2273,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   applyQuality('init');
   try {
     cargando.textContent = 'Cargando personajes…';
-    META = await (await fetch('assets/anim_meta.json?v=13')).json();
+    META = await (await fetch('assets/anim_meta.json?v=14')).json();
     const gl = await Promise.all(CHARS.map((c) => load(c.file)));
     CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
@@ -2229,7 +2283,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
-    campoReady = load('assets/campo.glb?v=13').then((campo) => { setupField(campo); window.__game.ready = true; });
+    campoReady = load('assets/campo.glb?v=14').then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
