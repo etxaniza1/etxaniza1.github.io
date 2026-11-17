@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=28';
+  var V = 'v=29';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -24,7 +24,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="style.css?v=29">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -34,14 +34,22 @@
   <canvas id="c"></canvas>
   <div id="hud">
     <div id="marcador">
-      <div class="eq azul"><span class="nom">CONAZO</span><span id="golesA" class="gol">0</span></div>
+      <div class="eq azul"><span class="nom">CONAZO</span><span id="golesA" class="gol">0</span><i class="espMini"><b></b></i></div>
       <div id="reloj">2:00</div><div id="pausaIco" aria-label="Pausa"><i></i><i></i></div>
-      <div class="eq rojo"><span id="golesB" class="gol">0</span><span class="nom">CALCETROL</span></div>
+      <div class="eq rojo"><span id="golesB" class="gol">0</span><span class="nom">CALCETROL</span><i class="espMini"><b></b></i></div>
     </div>
     <div id="banner"></div>
   </div>
+  <div id="espVelo" aria-hidden="true"></div><div id="espRuido" aria-hidden="true"></div>
   <div id="joyZona"><div id="joyBase"><div id="joyPunta"></div></div></div>
   <div id="acciones" class="sin-balon">
+    <div id="btnEspecial" class="btnAccion especial" role="button" aria-label="Especial">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="cargaEspecial" cx="50" cy="50" r="46" class="cargaAro especialAro"/></svg>
+      <div class="btnInner">
+        <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7L12 17.3 5.8 21l1.6-7L2 9.2l7.1-.6z"/></svg>
+        <span class="btnTxt">ESPECIAL</span>
+      </div>
+    </div>
     <div id="btnTurbo" class="btnAccion turbo" role="button" aria-label="Turbo">
       <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="cargaTurbo" cx="50" cy="50" r="46" class="cargaAro energia"/></svg>
       <div class="btnInner">
@@ -91,7 +99,7 @@
     <button id="mPrev" class="mFlecha izq" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button>
     <button id="mNext" class="mFlecha der" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
     <div class="mDerecha">
-      <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div></div>
+      <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div><div id="mEsp"></div></div>
       <div id="mCartas"></div>
       <div class="mAbajo"><div id="mVs"></div><button id="btnMenuCartas">CARTAS</button><button id="btnMenuTienda">TIENDA</button><button id="btnMenuPractica">PRÁCTICA</button><div class="mFila"><button id="btnMenuTorneo" class="mModo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8M10.5 13h3v3h-3zM8 16h8l1 4H7z"/></svg>TORNEO</button><button id="btnMenuJugar">JUGAR</button><button id="btnMenuLiga" class="mModo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h16M4 20h10"/></svg>LIGA</button></div></div>
     </div>
@@ -109,6 +117,8 @@
     <div class="tiCaja">
       <div class="tiTit">TIENDA · BOTAS <span>TODO GRATIS</span></div>
       <div id="tiendaLista"></div>
+      <div class="tiSub">ESPECIALES DE LOS PERSONAJES <span>SE CARGAN JUGANDO</span></div>
+      <div id="tiendaEsp"></div>
       <button id="tiendaCerrar" class="ajBtn ajVolver">VOLVER</button>
     </div>
   </div>
@@ -138,6 +148,7 @@
       </div>
       <div id="ajInfo" class="ajInfo"></div>
       <button id="ajAsistencia" class="ajBtn ajToggle">ASISTENCIA DE APUNTADO: SÍ</button>
+      <button id="ajEspeciales" class="ajBtn ajToggle">ESPECIALES: SÍ</button>
       <button id="ajDesliz" class="ajBtn ajToggle">CHUT POR DESLIZAMIENTO: NO</button>
       <div id="ajDeslizNota" class="ajNota">Desliza desde CHUTAR o la zona derecha · <b>rápido</b> = más potencia · <b>largo</b> = más alto · toque = chut rápido</div>
       <button id="ajInstantaneo" class="ajBtn ajToggle">DISPARO INSTANTÁNEO AL TOCAR (SIN APUNTAR): NO</button>
@@ -178,6 +189,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=28"></script>
+<script type="module" src="main.js?v=29"></script>
 </body>
 </html>
