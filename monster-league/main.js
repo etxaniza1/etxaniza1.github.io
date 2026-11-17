@@ -32,7 +32,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=32';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=33';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi'];
@@ -170,7 +170,7 @@ function loadAjustes() {
   a.discos2v2 = a.discos2v2 !== false;
   a.turboRegate = a.turboRegate !== false;
   a.tiroPase = a.tiroPase !== false;
-  a.largoStat = a.largoStat !== false; a.altoCaida = a.altoCaida === true;   // update 32: chut alto según TIR (SÍ); diana de caída (NO)   // update 32: TIRO/PASE   // update 32: TURBO + REGATE en un botón   // update 31: 2 VS 2 con círculos sólidos azul (tu equipo) / rojo (rivales)   // update 31: BALÓN TRAMPA apuntado (NO = como antes: chut automático + señuelo)   // update 31: cabezazo solo dentro del círculo de caída
+  a.largoStat = a.largoStat !== false; delete a.altoCaida; a.ocultaCaida = a.ocultaCaida === true;   // update 33: indicador del chut alto como en v31 (completo + diana) por defecto; el corto de v32 es opcional; el ajuste antiguo de v32 se descarta   // update 32: chut alto según TIR (SÍ)   // update 32: TIRO/PASE   // update 32: TURBO + REGATE en un botón   // update 31: 2 VS 2 con círculos sólidos azul (tu equipo) / rojo (rivales)   // update 31: BALÓN TRAMPA apuntado (NO = como antes: chut automático + señuelo)   // update 31: cabezazo solo dentro del círculo de caída
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
 }
@@ -1430,7 +1430,7 @@ function effectCurve(a, dir, L, sp, k = 1, toward = null) {
 // update 32: TIRO/PASE (botón de chut normal): tiro / pase controlado, mucho más lento que el antiguo CHUTAR.
 // Opción AJ.tiroPase (SÍ por defecto; NO = CHUTAR con la potencia de antes). CHUT ALTO y chut por deslizamiento no cambian.
 function tpOn() { return AJ.tiroPase !== false; }
-const TP_V0 = 9.5, TP_V1 = 7.5;   // m/s: toque rápido (0.72) ~ 15 m/s; apuntado al máximo ~ 17 m/s (antes 27-32 m/s)
+const TP_V0 = 11.6, TP_V1 = 9.15;   // update 33: +22 % sobre v32 (9.5 / 7.5). Toque rápido (0.72) ~ 18 m/s; apuntado al máximo ~ 21 m/s (v31: 27-32 m/s)
 function shoot(a, dir, power, assist, loft, hspeed, soft) {
   if (a.trampaShot && a !== user) { const gy = goalCenter(a.team).y; dir = new THREE.Vector2(a.trampaShot.x - a.pos.x, gy - a.pos.y); a.trampaShot = null; LOG('trampa_tiro', a, {}); }   // update 31: tras el balón trampa, al otro palo
   if (a.kickPending || a.freezeT > 0 || a.slipT > 0) return;
@@ -2550,8 +2550,8 @@ function espUI() {
   const full = user.esp >= 1, can = full && espCanUse(user);
   btnEspecial.classList.toggle('lleno', full); btnEspecial.classList.toggle('usable', can);
   const pa = Math.round((user.esp || 0) * 100) + '%', pb = Math.round(((rival && rival.esp) || 0) * 100) + '%';
-  if (espMiniA && espMiniA._w !== pa) { espMiniA._w = pa; espMiniA.style.width = pa; espMiniA.parentNode.classList.toggle('lleno', user.esp >= 1); }
-  if (espMiniB && rival && espMiniB._w !== pb) { espMiniB._w = pb; espMiniB.style.width = pb; espMiniB.parentNode.classList.toggle('lleno', rival.esp >= 1); }
+  if (espMiniA && espMiniA._w !== pa) { espMiniA._w = pa; espMiniA.style.transform = 'scaleX(' + (parseInt(pa, 10) / 100) + ')';   /* u33: sin layout */ espMiniA.parentNode.classList.toggle('lleno', user.esp >= 1); }
+  if (espMiniB && rival && espMiniB._w !== pb) { espMiniB._w = pb; espMiniB.style.transform = 'scaleX(' + (parseInt(pb, 10) / 100) + ')';   /* u33: sin layout */ espMiniB.parentNode.classList.toggle('lleno', rival.esp >= 1); }
 }
 function espSetBtnLabel() {
   if (!btnEspecial || !user) return;
@@ -2575,35 +2575,30 @@ const banner = document.getElementById('banner'), pantalla = document.getElement
 const ROT_KIND = (t) => /GO+L/.test(t) ? 'kGol' : /PROPIA/.test(t) ? 'kPropia' : /FUERA|ENCIMA/.test(t) ? 'kFuera' : /PALO|LARGUERO/.test(t) ? 'kPalo'
   : /PARADA|PARAD[ÓO]N/.test(t) ? 'kParada' : /^FINAL/.test(t) ? 'kFinal' : /YA!/.test(t) ? 'kYa' : 'kInfo';
 const ROT_LOG = [];
+// update 33: rótulos ligeros — nodos creados UNA vez y reutilizados; animación solo transform/opacity; reinicio alternando .p1 (sin forzar reflow)
+banner.innerHTML = '<div class="rtB"></div><div class="rt"><span class="rtI"></span></div><div class="rtSub"></div>'; banner.className = 'r33';
+const bnI = banner.querySelector('.rtI'), bnSub = banner.querySelector('.rtSub');
 function showBanner(txt, cls = '', ms = 1400, sub = '') {
   clearTimeout(showBanner.t); clearTimeout(showBanner.t2);
-  if (!txt) { banner.className = ''; banner.innerHTML = ''; return; }
+  if (!txt) { banner.className = 'r33'; return; }
   const kind = cls.includes('esp') ? 'kEsp' : ROT_KIND(txt);
-  const words = txt.split(' ');
-  let i = 0;
-  const html = words.map((w) => '<span class="rtW">' + [...w].map((ch) => `<i data-c="${ch === '"' ? '&quot;' : ch}" style="--i:${i++}"><u>${ch}</u></i>`).join('') + '</span>').join('<span class="rtSp"> </span>');
-  banner.innerHTML = `<div class="rtFx"></div><div class="rt">${html}</div>` + (sub ? `<div class="rtSub">${sub}</div>` : '');
-  banner.className = 'r32 on ' + kind + ' ' + cls + (txt.length > 11 ? ' largo' : '');
-  void banner.offsetWidth;
+  if (bnI.textContent !== txt) { bnI.textContent = txt; bnI.dataset.t = txt; }
+  if (bnSub.textContent !== sub) bnSub.textContent = sub || '';
+  showBanner.p = !showBanner.p;
+  banner.className = 'r33 on ' + kind + ' ' + cls + (txt.length > 11 ? ' largo' : '') + (showBanner.p ? ' p1' : '');
   ROT_LOG.push({ t: S.t, txt, kind, cls, sub }); if (ROT_LOG.length > 30) ROT_LOG.shift();
   if (kind === 'kGol') confeti(cls.includes('bRojo') ? 1 : cls.includes('bAzul') ? 0 : -1);
-  if (ms) showBanner.t = setTimeout(() => { banner.classList.add('off'); showBanner.t2 = setTimeout(() => { banner.className = ''; banner.innerHTML = ''; }, 320); }, ms);
+  if (ms) showBanner.t = setTimeout(() => { banner.classList.add('off'); showBanner.t2 = setTimeout(() => { banner.className = 'r33'; }, 320); }, ms);
 }
-// confeti de gol (DOM, solo transform/opacity): colores del equipo + dorado y blanco
+// confeti de gol: 30 piezas en 3 capas creadas una vez; solo 3 animaciones (transform/opacity de cada capa); colores del equipo por variables
 const confetiEl = document.createElement('div'); confetiEl.id = 'confeti'; confetiEl.setAttribute('aria-hidden', 'true');
 (document.getElementById('app') || document.body).appendChild(confetiEl);
+{ let h = ''; for (let L = 0; L < 3; L++) { h += '<s>'; for (let k = 0; k < 10; k++) { const a = Math.random() * Math.PI * 2, r = 60 + Math.random() * 230; h += `<b style="left:${(Math.cos(a) * r).toFixed(0)}px;top:${(Math.sin(a) * r * 0.6 - 30).toFixed(0)}px;transform:rotate(${(Math.random() * 360).toFixed(0)}deg)"></b>`; } h += '</s>'; } confetiEl.innerHTML = h; }   // u33: 3 capas estáticas de 10 piezas; solo se animan las 3 capas
+const CONF_COL = [['#2f7dff', '#8fd0ff', '#ffffff', '#ffd23f'], ['#ff3434', '#ffb0a6', '#ffffff', '#ffd23f'], ['#ffd23f', '#ffffff', '#5dff8a', '#ff6ee0']];
 function confeti(team) {
-  const cols = team === 0 ? ['#2f7dff', '#8fd0ff', '#ffffff', '#ffd23f'] : team === 1 ? ['#ff3434', '#ffb0a6', '#ffffff', '#ffd23f'] : ['#ffd23f', '#ffffff', '#5dff8a', '#ff6ee0'];
-  confetiEl.innerHTML = '';
-  const N = 64; let h = '';
-  for (let k = 0; k < N; k++) {
-    const a = Math.random() * Math.PI * 2, r = 120 + Math.random() * 260;
-    const bx = Math.cos(a) * r, by = Math.sin(a) * r * 0.55 - 60, dx = (Math.random() - 0.5) * 160, rot = (Math.random() * 2 - 1) * 900;
-    const w = 6 + Math.random() * 7, hh = 9 + Math.random() * 9, d = 1.5 + Math.random() * 1.1, dl = Math.random() * 0.12;
-    h += `<b style="--bx:${bx.toFixed(0)}px;--by:${by.toFixed(0)}px;--dx:${dx.toFixed(0)}px;--r:${rot.toFixed(0)}deg;--d:${d.toFixed(2)}s;--dl:${dl.toFixed(2)}s;width:${w.toFixed(0)}px;height:${hh.toFixed(0)}px;background:${cols[k % cols.length]}${k % 5 === 0 ? ';border-radius:50%' : ''}"></b>`;
-  }
-  confetiEl.innerHTML = h; confetiEl.className = 'on';
-  clearTimeout(confeti.t); confeti.t = setTimeout(() => { confetiEl.className = ''; confetiEl.innerHTML = ''; }, 2900);
+  const c = CONF_COL[team === 0 ? 0 : team === 1 ? 1 : 2]; for (let i = 0; i < 4; i++) confetiEl.style.setProperty('--c' + i, c[i]);
+  confeti.p = !confeti.p; confetiEl.className = 'on' + (confeti.p ? ' p1' : '');
+  clearTimeout(confeti.t); confeti.t = setTimeout(() => { confetiEl.className = ''; }, 2000);
 }
 function kickoff(first) {
   for (const a of actors) a.celebrate = false;
@@ -3156,7 +3151,7 @@ function updateShotPreview() {   // update 15: con botas de efecto, el chut con 
 }
 function updateLobPreview(on, shotPrev) {
   if (!lobArc) return;
-  lobArc.visible = lobGround.visible = !!(on || shotPrev); lobLand.visible = !!on && AJ.altoCaida === true;   // update 32: sin diana de caída (opción)
+  lobArc.visible = lobGround.visible = !!(on || shotPrev); lobLand.visible = !!on && AJ.ocultaCaida !== true;   // update 33: diana de caída visible (como v31) salvo opción
   if (shotPrev && !on) { updateShotPreview(); return; }
   if (!on) return;
   if (!aim.dragged) aim.dir.copy(lobDir());
@@ -3166,12 +3161,12 @@ function updateLobPreview(on, shotPrev) {
   const bf = bootShot(aim.dir, true, true);
   const land = predictFlight(start, new THREE.Vector3(aim.dir.x * lp.h * bf.speed, aim.dir.y * lp.h * bf.speed, lp.vz * bf.speed), _lobPts, 5, 1 / 120, bf);
   let n = _lobPts.length / 3;
-  if (AJ.altoCaida !== true) {   // update 32: indicador corto = solo la salida (~30 % del vuelo, máx. 6 m): da la dirección, NO dónde cae
+  if (AJ.ocultaCaida === true) {   // update 32 (opcional desde v33): indicador corto = solo la salida (~30 % del vuelo, máx. 6 m): da la dirección, NO dónde cae
     let m = Math.max(2, Math.round(n * 0.4));
     for (let i = 1; i < m; i++) if (Math.hypot(_lobPts[i * 3] - start.x, _lobPts[i * 3 + 1] - start.y) > 6) { m = i; break; }
     n = m;
   }
-  aim.lobDots = n; lobArc.count = lobGround.count = AJ.altoCaida === true ? LOB_DOTS : 9;   // corto: pocos puntos
+  aim.lobDots = n; lobArc.count = lobGround.count = AJ.ocultaCaida === true ? 9 : LOB_DOTS;   // corto: pocos puntos
   for (let i = 0; i < LOB_DOTS; i++) {
     const k = Math.min(n - 1, Math.round((i + 0.5) / LOB_DOTS * (n - 1))) * 3;
     const x = _lobPts[k], y = _lobPts[k + 1], z = _lobPts[k + 2];
@@ -4101,7 +4096,7 @@ btnAjAsist.addEventListener('click', () => setAimAssist(!AJ.aimAssist));
 setAimAssist(AJ.aimAssist);
 // update 30: cabezazos, salto automático, porteros mejorados y cambio de jugador (2 VS 2)
 const AJ30 = [['ajCabezazos', 'cabezazos', 'CABEZAZOS (SALTAR A BALONES ALTOS)'], ['ajSaltoAuto', 'saltoAuto', 'SALTO AUTOMÁTICO A BALONES ALTOS'],
-  ['ajPorteros', 'porteros', 'PORTEROS: SALTO Y ESTIRADA ALTA'], ['ajCabCirculo', 'cabCirculo', 'CABEZAZO SOLO DENTRO DEL CÍRCULO DE CAÍDA'], ['ajTrampa', 'trampaApunta', 'BALÓN TRAMPA: APUNTAS Y SIGUES CON TU BALÓN'], ['ajDiscos', 'discos2v2', '2 VS 2: CÍRCULOS AZUL (TU EQUIPO) / ROJO (RIVALES)'], ['ajCambio', 'cambio', '2 VS 2: PASE SIN BALÓN = CAMBIAR DE JUGADOR'], ['ajTurboRegate', 'turboRegate', 'TURBO + REGATE EN UN BOTÓN'], ['ajTiroPase', 'tiroPase', 'BOTÓN TIRO/PASE (CHUT SUAVE Y CONTROLADO)'], ['ajLargoStat', 'largoStat', 'CHUT ALTO SEGÚN LA STAT TIR'], ['ajAltoCaida', 'altoCaida', 'CHUT ALTO: MOSTRAR DÓNDE CAE']];
+  ['ajPorteros', 'porteros', 'PORTEROS: SALTO Y ESTIRADA ALTA'], ['ajCabCirculo', 'cabCirculo', 'CABEZAZO SOLO DENTRO DEL CÍRCULO DE CAÍDA'], ['ajTrampa', 'trampaApunta', 'BALÓN TRAMPA: APUNTAS Y SIGUES CON TU BALÓN'], ['ajDiscos', 'discos2v2', '2 VS 2: CÍRCULOS AZUL (TU EQUIPO) / ROJO (RIVALES)'], ['ajCambio', 'cambio', '2 VS 2: PASE SIN BALÓN = CAMBIAR DE JUGADOR'], ['ajTurboRegate', 'turboRegate', 'TURBO + REGATE EN UN BOTÓN'], ['ajTiroPase', 'tiroPase', 'BOTÓN TIRO/PASE (CHUT SUAVE Y CONTROLADO)'], ['ajLargoStat', 'largoStat', 'CHUT ALTO SEGÚN LA STAT TIR'], ['ajOcultaCaida', 'ocultaCaida', 'CHUT ALTO: INDICADOR CORTO (OCULTA DÓNDE CAE)']];
 function setAj30(id, k, txt, on) { AJ[k] = !!on; saveAjustes(); if (k === 'turboRegate') applyComboTR(); if (k === 'tiroPase') applyTiroPase(); if (k === 'discos2v2' && typeof applyTeamDiscs === 'function' && user) applyTeamDiscs(); const b = document.getElementById(id); if (b) { b.textContent = txt + ': ' + (AJ[k] ? 'SÍ' : 'NO'); b.classList.toggle('on', AJ[k]); } }
 for (const [id, k, txt] of AJ30) { const b = document.getElementById(id); if (b) b.addEventListener('click', () => setAj30(id, k, txt, !AJ[k])); setAj30(id, k, txt, AJ[k]); }
 document.getElementById('ajEspeciales').addEventListener('click', () => setEspeciales(!espOn()));

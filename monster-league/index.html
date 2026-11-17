@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=32';
+  var V = 'v=33';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -24,7 +24,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=32">
+<link rel="stylesheet" href="style.css?v=33">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -176,7 +176,7 @@
       <button id="ajTiroPase" class="ajBtn ajToggle">BOTÓN TIRO/PASE (CHUT SUAVE Y CONTROLADO): SÍ</button>
       <div id="ajTiroPaseNota" class="ajNota">TIRO/PASE = balón controlado (≈15 m/s) · NO = CHUTAR potente de antes · CHUT ALTO y deslizamiento no cambian</div>
       <button id="ajLargoStat" class="ajBtn ajToggle">CHUT ALTO SEGÚN LA STAT TIR: SÍ</button>
-      <button id="ajAltoCaida" class="ajBtn ajToggle">CHUT ALTO: MOSTRAR DÓNDE CAE: NO</button>
+      <button id="ajOcultaCaida" class="ajBtn ajToggle">CHUT ALTO: INDICADOR CORTO (OCULTA DÓNDE CAE): NO</button>
       <button id="ajDesliz" class="ajBtn ajToggle">CHUT POR DESLIZAMIENTO: NO</button>
       <div id="ajDeslizNota" class="ajNota">Desliza desde CHUTAR o la zona derecha · <b>rápido</b> = más potencia · <b>largo</b> = más alto · toque = chut rápido</div>
       <button id="ajInstantaneo" class="ajBtn ajToggle">DISPARO INSTANTÁNEO AL TOCAR (SIN APUNTAR): NO</button>
@@ -217,6 +217,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=32"></script>
+<script type="module" src="main.js?v=33"></script>
 </body>
 </html>
