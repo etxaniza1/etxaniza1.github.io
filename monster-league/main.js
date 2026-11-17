@@ -30,15 +30,15 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=28';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=29';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
-const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta'];
+const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri'];
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
   { key: 'buton', name: 'BUTÓN', color: '#F8B715' },
-  { key: 'lobo', name: 'LOBO', color: '#3B4FA8' },
+  { key: 'lobo', name: 'LOBO', color: '#3B4FA8', toon: true },   // update 29: nuevo modelo Tripo (lobo de verdad)
   { key: 'zorro', name: 'ZORRO', color: '#E2552D', toon: true },
   { key: 'gecko', name: 'GECKO', color: '#58A83A', toon: true },
   { key: 'rino', name: 'RINO', color: '#7C838B' },
@@ -47,6 +47,9 @@ const CHARS = [
   { key: 'carnero', name: 'DJ CARNERO', color: '#2E2B3A', toon: true },     // update 22: personaje nuevo (Tripo)
   { key: 'pepi', name: 'PEPI', color: '#5E7D1C', toon: true },              // update 22: Pepi el pepinillo (Tripo)
   { key: 'mofeta', name: 'BADGER MOFETA', color: '#A23CC4', toon: true },  // update 25: Badger Mofeta (Tripo m9)
+  { key: 'pantera', name: 'PANTERA', color: '#1E8FB8', toon: true },       // update 29: Black Panther (Tripo)
+  { key: 'murcielago', name: 'MURCIÉLAGO', color: '#B3263A', toon: true }, // update 29: Vampire Bat (Tripo)
+  { key: 'ladri', name: 'LADRI', color: '#C4502A', toon: true },           // update 29: Ladri el ladrillo (Tripo)
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`,
   badge: BADGES.includes(c.key) ? `assets/badges/${c.key}.webp?${ASSET_V}` : null, ...c }));
 // ===================== STATS DE PERSONAJE (update 17) =====================
@@ -66,6 +69,9 @@ const STATS = {
   pepi: { vel: 92, tir: 72, pre: 74, reg: 92, ent: 80, fis: 58, ref: 88, pos: 'ED', lema: 'Avinagrado: rápido, escurridizo y siempre de mal humor' },
   mofeta: { vel: 66, tir: 78, pre: 72, reg: 62, ent: 94, fis: 96, ref: 88, pos: 'DFC', lema: 'Muro apestoso: nadie quiere acercarse' },
   rino: { vel: 70, tir: 94, pre: 68, reg: 64, ent: 86, fis: 92, ref: 82, pos: 'DC', lema: 'Ariete: el cañón más fuerte' },
+  pantera: { vel: 92, tir: 90, pre: 80, reg: 84, ent: 72, fis: 70, ref: 68, pos: 'DC', lema: 'Sombra letal: aparece de la nada y la clava' },
+  murcielago: { vel: 94, tir: 70, pre: 76, reg: 93, ent: 78, fis: 58, ref: 87, pos: 'EI', lema: 'Cazador nocturno: vuela por la banda y nadie lo toca' },
+  ladri: { vel: 64, tir: 76, pre: 74, reg: 62, ent: 94, fis: 96, ref: 90, pos: 'DFC', lema: 'Muro de ladrillo: por aquí no pasa ni el aire' },
 };
 const STAT_KEYS = ['vel', 'tir', 'pre', 'reg', 'ent', 'fis', 'ref'];
 const STAT_NAMES = { vel: 'VELOCIDAD', tir: 'TIRO', pre: 'PRECISIÓN', reg: 'REGATE', ent: 'ENTRADA', fis: 'FÍSICO', ref: 'REFLEJOS' };
@@ -137,7 +143,8 @@ function loadAjustes() {
   // update 15: asistencia de apuntado (fricción de mira sobre la portería) activada por defecto
   if ((a.ver || 0) < 15) { a.aimAssist = true; a.ver = 15; }
   a.aimAssist = a.aimAssist !== false;
-  a.swipeShot = !!a.swipeShot;   // update 24: chut por deslizamiento (apagado por defecto)
+  a.swipeShot = !!a.swipeShot;
+  a.especiales = a.especiales !== false;   // update 29: especiales activados por defecto   // update 24: chut por deslizamiento (apagado por defecto)
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
 }
@@ -713,6 +720,7 @@ class Actor {
     this.sf = actorStats(this); this.dashSp = DASH_SPEED; this.dribSp = DRIBBLE_SPEED;
     this.energy = 1; this.sprinting = false;
     this.kickPending = null; this.kickAnimT = 0; this.tackleT = 0; this.diveT = 0; this.diveClip = null; this.celebrate = false; this.introT = 0;
+    this.esp = 0; espReset(this);   // update 29: carga del especial (0-1) y estados de los especiales
   }
   dispose() { this.mixer.stopAllAction(); scene.remove(this.root); }
   place(x, y) {
@@ -721,6 +729,7 @@ class Actor {
     this.dashT = 0; this.stun = 0; this.kickT = 0; this.dribbleT = 0; this.dashCd = 0; this.dribbleCd = 0;
     this.dashHit = false; this.dashEnded = false; this.sprinting = false;
     this.kickPending = null; this.kickAnimT = 0; this.tackleT = 0; this.diveT = 0; this.celebrate = false;
+    espReset(this); if (typeof espGhostVis === 'function') espGhostVis(this, false);
   }
   // fase (0-1) del clip actual; los ciclos de marcha empiezan con el pie izquierdo apoyando, así se pueden encadenar
   phase(name) { const a = this.actions[name]; return a ? (a.time / a.getClip().duration) % 1 : 0; }
@@ -825,6 +834,7 @@ const joyZona = document.getElementById('joyZona'), joyBase = document.getElemen
 const acciones = document.getElementById('acciones');
 const btnChutar = document.getElementById('btnChutar'), btnRegate = document.getElementById('btnRegate'), btnAlto = document.getElementById('btnAlto');
 const btnEntrada = document.getElementById('btnEntrada'), btnTurbo = document.getElementById('btnTurbo');
+const btnEspecial = document.getElementById('btnEspecial'), cargaEspecial = document.getElementById('cargaEspecial');   // update 29
 const cargaAro = document.getElementById('carga'), cargaRegate = document.getElementById('cargaRegate'), cargaAlto = document.getElementById('cargaAlto');
 const cargaEntrada = document.getElementById('cargaEntrada'), cargaTurbo = document.getElementById('cargaTurbo');
 let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 }, joyScale = 1;
@@ -832,7 +842,7 @@ let joyId = null, joyCx = 0, joyCy = 0, joyHome = { x: 84, y: 0 }, joyScale = 1;
 const RC = { app: null, zona: null, btn: new Map() };
 function cacheCtrlRects() {
   RC.app = app.getBoundingClientRect(); RC.zona = joyZona.getBoundingClientRect(); RC.btn.clear();
-  for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo]) RC.btn.set(el, el.getBoundingClientRect());
+  for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo, btnEspecial]) RC.btn.set(el, el.getBoundingClientRect());
 }
 const appRect = () => RC.app || (RC.app = app.getBoundingClientRect());
 const zonaRect = () => RC.zona || (RC.zona = joyZona.getBoundingClientRect());
@@ -1117,11 +1127,12 @@ window.addEventListener('pointermove', (e) => {
 }, { passive: true });
 window.addEventListener('pointerup', (e) => aimEnd(e));
 window.addEventListener('pointercancel', (e) => aimEnd(e, true));
-for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo, joyZona]) el.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo, btnEspecial, joyZona]) el.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
 bindAim(btnChutar, 'chutar');
 bindAim(btnRegate, 'regate');
 bindAim(btnAlto, 'alto');
 bindHold(btnEntrada, (e) => { btnEntrada.classList.add('pulsado'); markAction('entrada', e); if (!doAction('entrada')) bufferAction('entrada'); }, () => btnEntrada.classList.remove('pulsado'));
+bindHold(btnEspecial, (e) => { markAction('especial', e); btnEspecial.classList.add('pulsado'); if (S.mode === 'play' && !S.paused) espUse(user); }, () => btnEspecial.classList.remove('pulsado'));   // update 29
 bindHold(btnTurbo, (e) => { markAction('turbo', e); input.turboDown = true; btnTurbo.classList.add('pulsado'); turboKick(); }, () => { input.turboDown = false; btnTurbo.classList.remove('pulsado'); });
 
 // ---- CHUT POR DESLIZAMIENTO (update 24, opción de AJUSTES; apagado por defecto) ----
@@ -1247,6 +1258,7 @@ window.addEventListener('keydown', (e) => {
   if (S.mode === 'menu' && (e.code === 'ArrowLeft' || e.code === 'ArrowRight') && !e.repeat) menuStep(e.code === 'ArrowLeft' ? -1 : 1);
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { input.turboDown = true; e.preventDefault(); }
   if (e.code === 'KeyQ' && !e.repeat) { input.qT0 = performance.now(); e.preventDefault(); }
+  if ((e.code === 'KeyR' || e.code === 'KeyF') && !e.repeat && S.mode === 'play' && !S.paused) { espUse(user); e.preventDefault(); }   // update 29: ESPECIAL
   if (e.code === 'Escape' && !e.repeat) { if (S.paused) resumeGame(); else openPause(); }
   if (e.code === 'KeyE' && !e.repeat) {
     if (S.mode === 'play') { if (ball.owner === user) tryDribble(user); else tryDash(user); }
@@ -1277,7 +1289,7 @@ function releaseShoot(cancel) {
 
 // ===================== MECÁNICAS =====================
 function tryDash(a) {
-  if (!a || a.dashCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0) return false;
+  if (!a || a.dashCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0) return false;
   if (ball.owner === a) return false;
   if (a === user) { const md = moveDir(); if (md) a.face.copy(md); }
   a.dashT = DASH_T; a.dashCd = (a === user ? DASH_CD_USER : DASH_CD_AI) / a.sf.ent;
@@ -1290,7 +1302,7 @@ function tryDash(a) {
 }
 function tryDribble(a, forceDir) {
   if (!a || ball.owner !== a || a.keeper) return false;
-  if (a.dribbleCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0) return false;
+  if (a.dribbleCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0) return false;
   const dir = new THREE.Vector2();
   const md = a === user ? moveDir() : null;
   if (forceDir && forceDir.lengthSq() > 0.01) dir.copy(forceDir);
@@ -1332,7 +1344,7 @@ function kickLocal(a) {   // posición del balón en el impacto (m, relativo al 
   return { fwd: -t[1] * ESCALA + BR * 0.85, right: -t[0] * ESCALA };
 }
 function shoot(a, dir, power, assist, loft, hspeed) {
-  if (a.kickPending) return;
+  if (a.kickPending || a.freezeT > 0 || a.slipT > 0) return;
   dir = dir.clone(); if (dir.lengthSq() < 0.01) dir.set(0, a.team === 0 ? 1 : -1);
   dir.normalize();
   a.face.copy(dir);
@@ -1384,6 +1396,7 @@ function releaseShot(a, dir, power, assist, loft, hspeed) {
   ball.w.set(0, 1, 0).cross(_wv.set(ball.vel.x, 0, -ball.vel.y)).multiplyScalar((ball.backspin > 0 ? -0.6 * ball.backspin : bfx && bfx.dip ? 0.05 : 0.7) / BR);
   if (ball.fx.curve) ball.w.y += ball.fx.curve * 60;   // giro vertical visible en la rosca
   a.kickT = 0.35; a.face.copy(dir);
+  if (a.espDecoy) { espSpawnDecoy(a, a.espDecoy); a.espDecoy = null; }   // update 29: BALÓN TRAMPA
   S.shots++; sfx.kick(power); LOG('tiro', a, { pos: [+a.pos.x.toFixed(1), +a.pos.y.toFixed(1)], vel: [+ball.vel.x.toFixed(1), +ball.vel.y.toFixed(1), +ball.vel.z.toFixed(1)] });
 }
 function giveBall(a) {
@@ -1393,7 +1406,11 @@ function giveBall(a) {
 }
 
 function moveActor(a, wish, speed, dt) {
-  if (a.diveT > 0) {
+  if (a.freezeT > 0) { a.freezeT = Math.max(0, a.freezeT - dt); a.vel.set(0, 0); a.dashCd = Math.max(0, a.dashCd - dt); a.dribbleCd = Math.max(0, a.dribbleCd - dt); return; }   // update 29: BOTÓN DE PAUSA
+  if (a.slipT > 0) { a.slipT -= dt; a.vel.copy(a.slipV).multiplyScalar(Math.max(0.25, a.slipT / 1.1)); }   // RESBALÓN: desliza sin control
+  else if (a.chargeT > 0) { a.chargeT -= dt; a.vel.copy(a.face).multiplyScalar(17); }   // EMBESTIDA
+  else if (a.scaredT > 0 && a.stun <= 0) { a.vel.lerp(a.scaredDir.clone().multiplyScalar(5.5), 1 - Math.exp(-10 * dt)); a.face.copy(a.scaredDir).multiplyScalar(-1); }   // AULLIDO: recula asustado
+  else if (a.diveT > 0) {
     a.diveT -= dt; const el = a.diveDur - a.diveT;
     if (el < 0.38) a.vel.copy(a.diveDir).multiplyScalar(7.5 * a.sf.ref * (1 - el / 0.5)); else a.vel.multiplyScalar(Math.exp(-8 * dt));
   } else if (a.stun > 0) { a.stun -= dt; a.vel.multiplyScalar(Math.exp(-6 * dt)); }
@@ -1411,6 +1428,7 @@ function moveActor(a, wish, speed, dt) {
   a.dribbleCd = Math.max(0, a.dribbleCd - dt);
   a.kickT = Math.max(0, a.kickT - dt);
   a.pos.addScaledVector(a.vel, dt);
+  if (a.slipT > 0 || a.chargeT > 0) { const m0 = PR; if (Math.abs(a.pos.x) > WX - m0 - 0.05 || Math.abs(a.pos.y) > WY - m0 - 0.05) { a.chargeT = 0; if (a.slipV) a.slipV.multiplyScalar(-0.4); } }
   // límites: vallas y porterías
   const m = PR;
   a.pos.x = THREE.MathUtils.clamp(a.pos.x, -WX + m, WX - m);
@@ -1802,18 +1820,20 @@ function aiKeeper(k, dt) {
     return new THREE.Vector2(0, 0);
   }
   k.holdT = 0;
-  let tx = ball.pos.x * 0.55;
-  const comingIn = ball.vel.y * s > 4 && !ball.owner;
+  // update 29: BALÓN TRAMPA -> el portero sigue al señuelo mientras exista
+  const B = k.decoy && k.decoy.alive ? k.decoy : ball, bOwner = B === ball ? ball.owner : null;
+  let tx = B.pos.x * 0.55;
+  const comingIn = B.vel.y * s > 4 && !bOwner;
   if (comingIn) {
-    const tt = (lineY - ball.pos.y) / ball.vel.y;
-    if (tt > 0 && tt < 2) tx = ball.pos.x + ball.vel.x * tt;
+    const tt = (lineY - B.pos.y) / B.vel.y;
+    if (tt > 0 && tt < 2) tx = B.pos.x + B.vel.x * tt;
   }
   k.react = (k.react || 0) - dt;
-  if (k.react > 0) tx = k.lastTx ?? tx; else { k.lastTx = tx; if (comingIn && !k.wasComing) k.react = 0.15 + Math.random() * 0.15; }
+  if (k.react > 0) tx = k.lastTx ?? tx; else { k.lastTx = tx; if (comingIn && !k.wasComing) { k.react = 0.15 + Math.random() * 0.15; if (k.fetidaT > 0 && B === ball) { k.react = 0.6 + Math.random() * 0.15; k.fetidaT = 0; LOG('fetida_reaccion_tarde', k, {}); } } }   // BOMBA FÉTIDA: reacciona tarde
   k.wasComing = comingIn;
-  if (comingIn && k.diveT <= 0 && k.react <= 0 && !ball.owner) {
-    const tt = (lineY - ball.pos.y) / ball.vel.y;
-    const bx = ball.pos.x + ball.vel.x * tt;
+  if (comingIn && k.diveT <= 0 && k.react <= 0 && !bOwner) {
+    const tt = (lineY - B.pos.y) / B.vel.y;
+    const bx = B.pos.x + B.vel.x * tt;
     if (tt > 0.05 && tt < 0.5 && Math.abs(bx - k.pos.x) > 1.0 * ESCALA && Math.abs(bx) < GW + 0.6) startDive(k, bx);
   }
   tx = THREE.MathUtils.clamp(tx, -GW + 0.6, GW - 0.6);
@@ -1878,6 +1898,525 @@ function keeperContact(k) {
   }
 }
 
+// ===================== ESPECIALES (update 29) =====================
+// Cada personaje tiene un ESPECIAL único que se carga con el tiempo (ESP_T s). Botón ESPECIAL (brilla cuando está listo),
+// tecla R / F en teclado. El bot también los usa (espAI). Se pueden desactivar en AJUSTES (AJ.especiales, activados por defecto).
+const ESP_T = 22;   // segundos para cargar el especial
+const ESPECIALES = {
+  turtobola: { name: 'BALÓN TRAMPA', desc: 'Chuta un balón falso: el portero rival se lanza a por él mientras el de verdad va al otro palo.', need: 'balon', col: '#3fd18b' },
+  conazo: { name: 'ZONA CORTADA', desc: 'Planta una barrera de conos delante del rival: le corta el paso 3 s.', need: 'cerca', rango: 14, col: '#ff8a2a' },
+  calcetrol: { name: 'PESTE A PIES', desc: 'Nube de olor a calcetín: el rival que la cruza va a cámara lenta.', col: '#b6d84a' },
+  buton: { name: 'BOTÓN DE PAUSA', desc: 'Pulsa pausa: el rival se queda congelado 1 s.', col: '#ffd23f' },
+  lobo: { name: 'AULLIDO', desc: 'Aúlla: el rival cercano se asusta, suelta el balón y recula.', need: 'cerca', rango: 9, col: '#8fa6ff' },
+  zorro: { name: 'FINTA ASTUTA', desc: 'Regate automático que deja al rival clavado en el sitio.', need: 'balon', col: '#ff7a3d' },
+  gecko: { name: 'LENGUA PEGAJOSA', desc: 'Atrapa con la lengua un balón suelto a distancia (hasta 11 m).', need: 'suelto', col: '#ff6fa8' },
+  rino: { name: 'EMBESTIDA', desc: 'Carga en línea recta: derriba a quien se cruce y le quita el balón.', col: '#c9d0d6' },
+  conejo: { name: 'INTERFERENCIA', desc: 'Señal pirata: los controles del rival se invierten 2 s.', col: '#a98bff' },
+  carnero: { name: 'DROP DEL BAJO', desc: 'Onda expansiva de bajo: empuja al rival y al balón.', need: 'cerca', rango: 8, col: '#ff3fd0' },
+  pepi: { name: 'RESBALÓN', desc: 'Charco de vinagre: el rival que lo pisa resbala sin control.', col: '#d8ef4a' },
+  mofeta: { name: 'BOMBA FÉTIDA', desc: 'Nube en la portería rival: su portero reacciona tarde al siguiente tiro.', col: '#b04cff' },
+  pantera: { name: 'SPRINT SOMBRA', desc: 'Se vuelve sombra 2 s: semitransparente, muy rápida y nadie le roba.', col: '#38e1ff' },
+  murcielago: { name: 'VUELO NOCTURNO', desc: 'Oscurece la pantalla del rival y vuela por encima de las entradas.', col: '#ff4d6d' },
+  ladri: { name: 'MURO', desc: 'Levanta un muro de ladrillo delante de su portería durante 5 s.', col: '#e0683a' },
+};
+const ESP = { fx: [], obst: [], zonas: [], decoys: [], lengua: null, tex: {}, usos: [] };
+const espOn = () => AJ.especiales !== false;
+const espFoe = (a) => S.practice ? null : (a === user ? rival : a === rival ? user : null);
+const espGkFoe = (a) => a.team === 0 ? gkB : gkA;
+const espGkOwn = (a) => a.team === 0 ? gkA : gkB;
+function espReset(a) { Object.assign(a, { freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0 }); }
+// ---- texturas generadas (una vez) ----
+function espTex(k) {
+  if (ESP.tex[k]) return ESP.tex[k];
+  const cv = document.createElement('canvas'), S2 = k === 'brick' ? 256 : 128; cv.width = cv.height = S2; const c = cv.getContext('2d');
+  if (k === 'soft') { const g = c.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.45, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 128, 128); }
+  else if (k === 'puff') { for (let i = 0; i < 7; i++) { const x = 34 + Math.random() * 60, y = 34 + Math.random() * 60, r = 22 + Math.random() * 18; const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.6, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 128, 128); } }
+  else if (k === 'charco') { const g = c.createRadialGradient(64, 64, 10, 64, 64, 62); g.addColorStop(0, 'rgba(230,250,140,.95)'); g.addColorStop(0.7, 'rgba(190,220,60,.85)'); g.addColorStop(0.92, 'rgba(120,150,30,.7)'); g.addColorStop(1, 'rgba(120,150,30,0)'); c.fillStyle = g; c.beginPath(); for (let i = 0; i <= 24; i++) { const a = i / 24 * Math.PI * 2, r = 50 + Math.sin(i * 2.7) * 8 + Math.cos(i * 1.3) * 5; c.lineTo(64 + Math.cos(a) * r, 64 + Math.sin(a) * r); } c.fill(); c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath(); c.ellipse(48, 46, 14, 6, -0.5, 0, Math.PI * 2); c.fill(); c.beginPath(); c.ellipse(80, 76, 7, 3, -0.5, 0, Math.PI * 2); c.fill(); }
+  else if (k === 'brick') { c.fillStyle = '#7a3a24'; c.fillRect(0, 0, 256, 256); const bh = 32, bw = 64; for (let r = 0; r < 8; r++) for (let i = -1; i < 5; i++) { const x = i * bw + (r % 2 ? bw / 2 : 0); const v = 150 + Math.floor(Math.random() * 50); c.fillStyle = `rgb(${v + 40},${Math.floor(v * 0.45)},${Math.floor(v * 0.3)})`; c.fillRect(x + 3, r * bh + 3, bw - 6, bh - 6); c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(x + 3, r * bh + 3, bw - 6, 5); } }
+  else if (k === 'cono') { for (let i = 0; i < 8; i++) { c.fillStyle = i % 3 === 1 ? '#ffffff' : '#ff7a1a'; c.fillRect(0, i * 16, 128, 16); } }
+  else if (k === 'ruido') { const im = c.createImageData(128, 128); for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = v; im.data[i + 1] = v; im.data[i + 2] = v; im.data[i + 3] = 255; } c.putImageData(im, 0, 0); }
+  else if (k === 'bat') { c.fillStyle = '#1c1024'; c.strokeStyle = '#ff4d6d'; c.lineWidth = 3; c.beginPath(); c.moveTo(64, 50); c.quadraticCurveTo(40, 30, 6, 44); c.quadraticCurveTo(22, 52, 18, 66); c.quadraticCurveTo(32, 58, 40, 70); c.quadraticCurveTo(50, 62, 64, 80); c.quadraticCurveTo(78, 62, 88, 70); c.quadraticCurveTo(96, 58, 110, 66); c.quadraticCurveTo(106, 52, 122, 44); c.quadraticCurveTo(88, 30, 64, 50); c.fill(); c.stroke(); c.beginPath(); c.arc(64, 52, 9, 0, Math.PI * 2); c.fill(); }
+  else { // texto/icono: k = 'txt:<texto>:<color>' (lienzo 256×128)
+    cv.width = 256; const [, t, col] = k.split(':'); let fs = 92; c.font = `bold ${fs}px "Lilita One", Arial Black, sans-serif`;
+    while (c.measureText(t).width > 228 && fs > 30) { fs -= 4; c.font = `bold ${fs}px "Lilita One", Arial Black, sans-serif`; }
+    c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineJoin = 'round';
+    c.lineWidth = 16; c.strokeStyle = '#14193a'; c.strokeText(t, 128, 68); c.fillStyle = col || '#fff'; c.fillText(t, 128, 68);
+  }
+  const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; tx.userData.asp = cv.width / cv.height; if (k === 'brick') { tx.wrapS = tx.wrapT = THREE.RepeatWrapping; }
+  return (ESP.tex[k] = tx);
+}
+function espSprite(tex, color, size, opacity = 1, add = false) {
+  const m = new THREE.SpriteMaterial({ map: tex, color: new THREE.Color(color), transparent: true, opacity, depthWrite: false, blending: add ? THREE.AdditiveBlending : THREE.NormalBlending });
+  const s = new THREE.Sprite(m); s.userData.asp = tex.userData.asp || 1; espScale(s, size); s.renderOrder = 5; return s;
+}
+function espScale(s, v) { s.scale.set(v * (s.userData.asp || 1), v, 1); }
+// efecto visual temporal: upd(k, obj, dt) con k = 0..1 de su vida
+function espFx(obj, life, upd, parent = scene) { parent.add(obj); ESP.fx.push({ obj, t: 0, life, upd, parent }); return obj; }
+function espDispose(o) { o.traverse?.((n) => { if (n.geometry) n.geometry.dispose(); if (n.material && !n.material.userData?.keep) (Array.isArray(n.material) ? n.material : [n.material]).forEach((m) => m.dispose()); }); }
+function espPuffs(x, y, z, color, n, spread, size, life, rise = 0.6, add = false) {
+  for (let i = 0; i < n; i++) {
+    const s = espSprite(espTex('puff'), color, size * (0.7 + Math.random() * 0.6), 0.85, add);
+    const ox = (Math.random() - 0.5) * spread, oy = (Math.random() - 0.5) * spread, oz = Math.random() * spread * 0.4;
+    s.position.copy(g2t(x + ox, y + oy, z + oz)); const v = new THREE.Vector3(ox, rise + Math.random() * rise, -oy).multiplyScalar(0.8);
+    const s0 = s.scale.x;
+    espFx(s, life * (0.7 + Math.random() * 0.5), (k, o, dt) => { o.position.addScaledVector(v, dt); o.scale.setScalar(s0 * (1 + k * 0.8)); o.material.opacity = 0.85 * (1 - k); });
+  }
+}
+function espShock(x, y, color, r1, life, z = 0.08, width = 0.35) {
+  const m = new THREE.Mesh(new THREE.RingGeometry(1 - width, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+  m.rotation.x = -Math.PI / 2; m.position.copy(g2t(x, y, z)); m.renderOrder = 4;
+  espFx(m, life, (k, o) => { const r = 0.3 + (r1 - 0.3) * (1 - Math.pow(1 - k, 2.2)); o.scale.setScalar(r); o.material.opacity = 0.9 * (1 - k); });
+}
+function espIcon(a, txt, color, life, size = 1.3) {   // icono encima de la cabeza de un jugador
+  const s = espSprite(espTex(`txt:${txt}:${color}`), 0xffffff, size);
+  s.position.set(0, 2.95 * ESCALA, 0);
+  return espFx(s, life, (k, o, dt) => { o.position.y = 2.95 * ESCALA + Math.sin(k * 18) * 0.08; o.material.opacity = k > 0.8 ? (1 - k) * 5 : 1; const p = Math.min(1, k * 8); espScale(o, size * (0.5 + 0.5 * p + (p < 1 ? 0 : 0.06 * Math.sin(k * 30)))); }, a.root);
+}
+// ---- sonido sintetizado (WebAudio) ----
+let _nb = null;
+function espNoise(dur, { vol = 0.12, f = 1200, f2 = null, q = 0.8, type = 'bandpass', delay = 0 } = {}) {
+  if (!actx) return; if (!_nb) { _nb = actx.createBuffer(1, actx.sampleRate * 2, actx.sampleRate); const d = _nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const t0 = actx.currentTime + delay, s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
+  s.buffer = _nb; fl.type = type; fl.frequency.setValueAtTime(f, t0); if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t0 + dur); fl.Q.value = q;
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + Math.min(0.04, dur / 4)); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  s.connect(fl).connect(g).connect(actx.destination); s.start(t0); s.stop(t0 + dur + 0.05);
+}
+function espTone(f, dur, { type = 'sine', vol = 0.1, f2 = null, delay = 0, vib = 0, vibF = 6, att = 0.02 } = {}) {
+  if (!actx) return;
+  const t0 = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t0); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t0 + dur);
+  if (vib) { const l = actx.createOscillator(), lg = actx.createGain(); l.frequency.value = vibF; lg.gain.value = vib; l.connect(lg).connect(o.frequency); l.start(t0); l.stop(t0 + dur + 0.05); }
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + att); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+const espSfx = {
+  listo: () => { espTone(880, 0.12, { type: 'triangle', vol: 0.06 }); espTone(1320, 0.18, { type: 'triangle', vol: 0.06, delay: 0.09 }); },
+  turtobola: () => { espTone(160, 0.14, { type: 'triangle', vol: 0.22, f2: 70 }); espTone(150, 0.14, { type: 'triangle', vol: 0.16, f2: 70, delay: 0.05 }); espNoise(0.4, { f: 2400, f2: 600, vol: 0.06, delay: 0.05 }); },
+  conazo: () => { [0, 0.09, 0.18].forEach((d) => { espTone(220, 0.1, { type: 'square', vol: 0.07, f2: 120, delay: d }); espNoise(0.12, { f: 900, vol: 0.08, delay: d }); }); },
+  calcetrol: () => { espNoise(0.9, { f: 300, f2: 120, q: 3, vol: 0.18, type: 'lowpass' }); espTone(110, 0.6, { type: 'sawtooth', vol: 0.05, f2: 70, vib: 8 }); },
+  buton: () => { espTone(1200, 0.05, { type: 'square', vol: 0.08 }); espTone(600, 0.5, { type: 'sawtooth', vol: 0.08, f2: 60, delay: 0.05 }); },
+  lobo: () => { espTone(330, 1.3, { type: 'sawtooth', vol: 0.07, f2: 620, vib: 14, vibF: 5.5, att: 0.15 }); espTone(495, 1.3, { type: 'sine', vol: 0.06, f2: 760, vib: 10, vibF: 5.5, att: 0.2 }); },
+  zorro: () => { espNoise(0.25, { f: 3000, f2: 800, vol: 0.12 }); espTone(700, 0.18, { type: 'triangle', vol: 0.08, f2: 1400 }); },
+  gecko: () => { espTone(300, 0.12, { type: 'square', vol: 0.06, f2: 1200 }); espTone(1200, 0.22, { type: 'sine', vol: 0.09, f2: 200, delay: 0.14 }); espNoise(0.08, { f: 1500, vol: 0.1, delay: 0.32 }); },
+  rino: () => { espNoise(0.9, { f: 180, f2: 90, q: 1, vol: 0.25, type: 'lowpass' }); espTone(70, 0.8, { type: 'sawtooth', vol: 0.08, f2: 45 }); },
+  golpe: () => { espNoise(0.25, { f: 400, f2: 100, vol: 0.25, type: 'lowpass' }); espTone(90, 0.25, { type: 'square', vol: 0.12, f2: 40 }); },
+  conejo: () => { espNoise(0.9, { f: 4000, f2: 1500, q: 0.5, vol: 0.06, type: 'highpass' }); [0, 0.12, 0.24].forEach((d, i) => espTone(1500 - i * 300, 0.08, { type: 'square', vol: 0.05, delay: d })); },
+  carnero: () => { espNoise(0.15, { f: 3000, f2: 8000, vol: 0.05 }); espTone(140, 0.9, { type: 'sine', vol: 0.35, f2: 38, delay: 0.12 }); espTone(70, 0.9, { type: 'square', vol: 0.06, f2: 30, delay: 0.12 }); espNoise(0.5, { f: 120, vol: 0.2, type: 'lowpass', delay: 0.12 }); },
+  pepi: () => { espNoise(0.5, { f: 700, f2: 2500, q: 4, vol: 0.12 }); espTone(400, 0.3, { type: 'sine', vol: 0.06, f2: 900, delay: 0.05 }); },
+  resbalon: () => { espTone(900, 0.45, { type: 'sine', vol: 0.09, f2: 200 }); espNoise(0.3, { f: 2000, vol: 0.06 }); },
+  mofeta: () => { espTone(500, 0.35, { type: 'sine', vol: 0.06, f2: 1100 }); espNoise(0.9, { f: 250, f2: 120, q: 2, vol: 0.2, type: 'lowpass', delay: 0.3 }); },
+  pantera: () => { espNoise(0.6, { f: 600, f2: 4000, q: 1.5, vol: 0.12 }); espTone(220, 0.5, { type: 'sawtooth', vol: 0.05, f2: 880 }); },
+  murcielago: () => { [0, 0.07, 0.14, 0.21].forEach((d) => espTone(3200 + Math.random() * 800, 0.05, { type: 'sine', vol: 0.05, f2: 2200, delay: d })); espNoise(0.5, { f: 500, f2: 200, vol: 0.12, delay: 0.1 }); },
+  ladri: () => { [0, 0.12, 0.24, 0.36].forEach((d) => { espNoise(0.12, { f: 300, vol: 0.18, type: 'lowpass', delay: d }); espTone(120, 0.1, { type: 'square', vol: 0.06, f2: 60, delay: d }); }); },
+  puf: () => espNoise(0.3, { f: 1500, f2: 300, vol: 0.1 }),
+};
+// ---- ¿se puede usar ahora? ----
+function espReady(a) { return !!(a && !a.keeper && espOn() && ESPECIALES[a.charKey] && a.esp >= 1); }
+function espCanUse(a) {
+  if (!espReady(a) || S.mode !== 'play' || a.stun > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0) return false;
+  const e = ESPECIALES[a.charKey], foe = espFoe(a);
+  if (e.need === 'balon') return ball.owner === a;
+  if (e.need === 'suelto') return !ball.owner && Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y) < 11 && ball.pos.z < 3.5;
+  if (e.need === 'cerca') return !!foe && foe.pos.distanceTo(a.pos) < e.rango;
+  return true;
+}
+function espUse(a, auto = false) {
+  if (!espCanUse(a)) { if (a === user && espReady(a) && !auto) espNoSe(a); return false; }
+  const k = a.charKey, e = ESPECIALES[k], foe = espFoe(a);
+  a.esp = 0; a.espUsedT = S.t;
+  const ok = (ESP_FN[k] || (() => true))(a, foe);
+  (espSfx[k] || espSfx.listo)();
+  showBanner('¡' + e.name + '!', a.team === 0 ? 'bAzul esp' : 'bRojo esp', 1100);
+  espShock(a.pos.x, a.pos.y, e.col, 3.2, 0.5);
+  ESP.usos.push({ t: +S.t.toFixed(2), who: NAME(a), k });
+  LOG('especial', a, { k, ok });
+  return true;
+}
+function espNoSe(a) {   // pulsado pero no aplicable ahora
+  const e = ESPECIALES[a.charKey];
+  const m = e.need === 'balon' ? 'NECESITAS EL BALÓN' : e.need === 'suelto' ? 'BALÓN SUELTO CERCA' : e.need === 'cerca' ? 'RIVAL DEMASIADO LEJOS' : '';
+  if (m) showBanner(m, '', 700);
+  sfx.miss();
+}
+// ---- obstáculos (conos, muro) y zonas (nube, charco) ----
+function espAddObst(o) { ESP.obst.push(o); scene.add(o.mesh); return o; }
+function espAddZona(z) { ESP.zonas.push(z); if (z.mesh) scene.add(z.mesh); return z; }
+function espClear() {
+  for (const o of ESP.obst) { scene.remove(o.mesh); espDispose(o.mesh); }
+  for (const z of ESP.zonas) if (z.mesh) { scene.remove(z.mesh); espDispose(z.mesh); }
+  for (const f of ESP.fx) { f.parent.remove(f.obj); espDispose(f.obj); }
+  for (const d of ESP.decoys) { scene.remove(d.mesh); }
+  ESP.obst.length = ESP.zonas.length = ESP.fx.length = ESP.decoys.length = 0; ESP.lengua = null;
+  for (const k of [gkA, gkB]) if (k) { k.decoy = null; k.fetidaT = 0; }
+  for (const a of actors) { espReset(a); espGhostVis(a, false); }
+  espVelo(0); espRuido(0);
+}
+// ---- efectos por personaje ----
+const ESP_FN = {
+  turtobola(a, foe) {   // tiro de verdad al palo lejos del portero + señuelo al otro palo (el portero se tira a por el señuelo)
+    const gk = espGkFoe(a), gy = goalCenter(a.team).y;
+    const sReal = gk && gk.pos.x > 0.3 ? -1 : gk && gk.pos.x < -0.3 ? 1 : (Math.random() < 0.5 ? -1 : 1);
+    a.espDecoy = { x: -sReal * (GW - 1.1), y: gy };
+    shoot(a, new THREE.Vector2(sReal * (GW - 1.2) - a.pos.x, gy - a.pos.y), 0.92, a === user);
+    return true;
+  },
+  conazo(a, foe) {   // barrera de 3 conos en el camino del rival, 3 s
+    const h = foe.vel.lengthSq() > 1 ? foe.vel.clone().normalize() : a.pos.clone().sub(foe.pos).normalize();
+    const c = foe.pos.clone().addScaledVector(h, 1.9), side = new THREE.Vector2(-h.y, h.x);
+    const pts = [-1.6, 0, 1.6].map((o) => c.clone().addScaledVector(side, o));
+    pts.forEach((p, i) => {
+      const g = new THREE.Group();
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.62, 2.1, 20, 1, true), new THREE.MeshBasicMaterial({ map: espTex('cono'), side: THREE.DoubleSide }));
+      cone.position.y = 1.05 + 0.12; g.add(cone);
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.24, 1.5), new THREE.MeshBasicMaterial({ color: 0xff7a1a })); base.position.y = 0.12; g.add(base);
+      const ol = new THREE.Mesh(new THREE.ConeGeometry(0.7, 2.25, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0x14193a, side: THREE.BackSide })); ol.position.y = 1.1; g.add(ol);
+      g.position.copy(g2t(p.x, p.y)); g.scale.setScalar(0.01);
+      espAddObst({ kind: 'cono', x: p.x, y: p.y, r: 0.9, t: 3.0, life: 3.0, blocks: foe.team, mesh: g, delay: i * 0.07 });
+    });
+    // cinta entre conos
+    const tape = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.18, 0.04), new THREE.MeshBasicMaterial({ map: espTex('cono') }));
+    tape.position.copy(g2t(c.x, c.y, 1.3)); tape.rotation.y = Math.atan2(side.y, side.x) * 1; tape.rotation.y = -Math.atan2(side.y, side.x);
+    espAddObst({ kind: 'cinta', x: c.x, y: c.y, r: 0, t: 3.0, life: 3.0, blocks: -1, mesh: tape });
+    espPuffs(c.x, c.y, 0.2, 0xffffff, 8, 3, 1.4, 0.6);
+    foe.vel.multiplyScalar(0.2);
+    return true;
+  },
+  calcetrol(a, foe) {   // nube que ralentiza (entre los dos si está cerca; si no, donde está calcetrol)
+    const p = foe && foe.pos.distanceTo(a.pos) < 10 ? a.pos.clone().lerp(foe.pos, 0.6) : a.pos.clone();
+    const g = new THREE.Group();
+    for (let i = 0; i < 9; i++) { const s = espSprite(espTex('puff'), i % 2 ? 0xb6d84a : 0x8aa83a, 2.4 + Math.random() * 1.2, 0.75); const an = i / 9 * Math.PI * 2; s.position.set(Math.cos(an) * 1.7 * Math.random(), 0.6 + Math.random() * 1.6, Math.sin(an) * 1.7); s.userData.ph = Math.random() * 6; g.add(s); }
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(3.2, 40), new THREE.MeshBasicMaterial({ map: espTex('soft'), color: 0x9fc23a, transparent: true, opacity: 0.55, depthWrite: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.06; g.add(disc);
+    g.position.copy(g2t(p.x, p.y));
+    espAddZona({ kind: 'nube', x: p.x, y: p.y, r: 3.2, t: 6, life: 6, team: a.team, mesh: g });
+    return true;
+  },
+  buton(a, foe) {   // congela al rival 1 s
+    if (!foe) return false;
+    foe.freezeT = 1.0; foe.vel.set(0, 0); foe.kickPending = null; foe.dashT = 0; foe.dribbleT = 0;
+    espIcon(foe, 'II', '#ffd23f', 1.1, 1.5);
+    const ice = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 2.9 * ESCALA, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x9fe6ff, transparent: true, opacity: 0.35, depthWrite: false, side: THREE.DoubleSide }));
+    ice.position.y = 1.45 * ESCALA;
+    espFx(ice, 1.05, (k, o) => { o.material.opacity = 0.35 * (k < 0.1 ? k * 10 : k > 0.85 ? (1 - k) / 0.15 : 1); o.scale.setScalar(1 + 0.03 * Math.sin(k * 40)); }, foe.root);
+    espPuffs(foe.pos.x, foe.pos.y, 1, 0xd8f4ff, 8, 2, 0.8, 0.8, 0.3);
+    return true;
+  },
+  lobo(a, foe) {   // susto: suelta el balón, recula y queda aturdido
+    const away = foe.pos.clone().sub(a.pos).normalize();
+    if (ball.owner === foe) { ball.owner = null; ball.vel.set(-away.x * 4 + away.y * 3, -away.y * 4 - away.x * 3, 3); ball.noCatch = foe; ball.noCatchT = 0.8; }
+    foe.scaredT = 1.1; foe.scaredDir = away; foe.kickPending = null;
+    espIcon(foe, '!!', '#ff5050', 1.2, 1.4);
+    const moon = espSprite(espTex('soft'), 0xfff3b0, 2.6, 1, true); moon.position.set(0, 3.9 * ESCALA, 0);
+    espFx(moon, 1.4, (k, o) => { o.material.opacity = Math.sin(Math.PI * k); }, a.root);
+    for (let i = 0; i < 3; i++) setTimeout(() => espShock(a.pos.x, a.pos.y, 0x8fa6ff, 9, 0.8, 0.1 + i * 0.6, 0.12), i * 180);
+    return true;
+  },
+  zorro(a, foe) {   // regate automático + rival clavado
+    const side = new THREE.Vector2(-a.face.y, a.face.x);
+    if (foe) { const to = foe.pos.clone().sub(a.pos); if (side.dot(to) > 0) side.multiplyScalar(-1); }
+    const dir = side.multiplyScalar(0.75).add(new THREE.Vector2(0, a.team === 0 ? 0.65 : -0.65)).normalize();
+    a.dribbleCd = 0; tryDribble(a, dir); a.dribbleT = 0.5;
+    if (foe && foe.pos.distanceTo(a.pos) < 9) { foe.stun = Math.max(foe.stun, 1.25); foe.dashT = 0; espIcon(foe, '?', '#ffb03d', 1.3, 1.5); }
+    for (let i = 0; i < 6; i++) setTimeout(() => espPuffs(a.pos.x, a.pos.y, 0.6, 0xff9a4a, 2, 0.8, 0.9, 0.5, 0.3), i * 60);
+    return true;
+  },
+  gecko(a) {   // lengua: se estira hasta el balón y lo trae
+    const tongue = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.16, 1, 10), new THREE.MeshBasicMaterial({ color: 0xff5f9e }));
+    tongue.geometry.translate(0, 0.5, 0); tongue.geometry.rotateX(Math.PI / 2);   // crece hacia +Z local
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff3f86 }));
+    const g = new THREE.Group(); g.add(tongue); g.add(tip); scene.add(g);
+    ESP.lengua = { a, t: 0, g, tongue, tip, grab: false };
+    ball.owner = null;
+    return true;
+  },
+  rino(a, foe) {   // embestida recta 0,9 s
+    const md = a === user ? moveDir() : null;
+    let dir = md ? md.clone() : a.face.clone();
+    if (a !== user && foe) dir = foe.pos.clone().sub(a.pos).normalize();
+    a.face.copy(dir.normalize()); a.chargeT = 0.9; a.chargeHit = false; a.dashT = 0; a.dribbleT = 0;
+    return true;
+  },
+  conejo(a, foe) {   // controles invertidos 2 s (el bot se mueve errático)
+    if (!foe) return false;
+    foe.invertT = 2.0;
+    espIcon(foe, '~?~', '#c7b3ff', 2.0, 1.6);
+    for (let i = 0; i < 4; i++) setTimeout(() => espShock(a.pos.x, a.pos.y, 0xa98bff, 12, 0.7, 2.6 * ESCALA, 0.08), i * 150);
+    if (foe === user) espRuido(2.0);
+    return true;
+  },
+  carnero(a, foe) {   // onda expansiva: empuja al rival y al balón
+    const R = 8;
+    for (let i = 0; i < 3; i++) setTimeout(() => espShock(a.pos.x, a.pos.y, i === 1 ? 0x46e6ff : 0xff3fd0, R + 1, 0.55, 0.12 + i * 0.05, 0.22), 120 + i * 110);
+    for (let i = 0; i < 8; i++) { const s = espSprite(espTex('txt:♪:#ff6ee0'), 0xffffff, 1.1); const an = i / 8 * Math.PI * 2; const v = new THREE.Vector3(Math.cos(an) * 6, 2.5, Math.sin(an) * 6); s.position.copy(g2t(a.pos.x, a.pos.y, 1.6)); espFx(s, 0.9, (k, o, dt) => { o.position.addScaledVector(v, dt); o.material.opacity = 1 - k; }); }
+    if (foe && foe.pos.distanceTo(a.pos) < R) {
+      const d = foe.pos.clone().sub(a.pos); const L = Math.max(0.5, d.length()); d.normalize();
+      const f = 1 - L / R * 0.5;
+      foe.vel.copy(d).multiplyScalar(15 * f); foe.stun = Math.max(foe.stun, 0.7); foe.kickPending = null; foe.dashT = 0;
+      if (ball.owner === foe) { ball.owner = null; ball.vel.set(d.x * 11, d.y * 11, 4); ball.noCatch = foe; ball.noCatchT = 0.5; }
+    }
+    if (!ball.owner) { const d = new THREE.Vector2(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y); const L = d.length(); if (L < R && L > 0.2) { d.normalize(); ball.vel.x += d.x * 12 * (1 - L / R * 0.5); ball.vel.y += d.y * 12 * (1 - L / R * 0.5); ball.vel.z = Math.max(ball.vel.z, 3); } }
+    return true;
+  },
+  pepi(a, foe) {   // charco de vinagre en el camino del rival
+    let p = a.pos.clone().addScaledVector(a.face, -2.2);
+    if (foe && foe.pos.distanceTo(a.pos) < 12) p = foe.pos.clone().addScaledVector(foe.vel.lengthSq() > 1 ? foe.vel.clone().normalize() : a.pos.clone().sub(foe.pos).normalize(), 2.2);
+    p.x = THREE.MathUtils.clamp(p.x, -WX + 2, WX - 2); p.y = THREE.MathUtils.clamp(p.y, -WY + 2, WY - 2);
+    const m = new THREE.Mesh(new THREE.CircleGeometry(2.4, 40), new THREE.MeshBasicMaterial({ map: espTex('charco'), transparent: true, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.copy(g2t(p.x, p.y, 0.05)); m.renderOrder = 3; m.scale.setScalar(0.01);
+    espAddZona({ kind: 'charco', x: p.x, y: p.y, r: 2.3, t: 7, life: 7, team: a.team, mesh: m });
+    for (let i = 0; i < 10; i++) { const s = espSprite(espTex('soft'), 0xd8ef4a, 0.5); const v = new THREE.Vector3((Math.random() - 0.5) * 6, 5 + Math.random() * 3, (Math.random() - 0.5) * 6); s.position.copy(g2t(p.x, p.y, 0.3)); espFx(s, 0.7, (k, o, dt) => { v.y -= 14 * dt; o.position.addScaledVector(v, dt); o.material.opacity = 1 - k; }); }
+    return true;
+  },
+  mofeta(a) {   // nube fétida en la portería rival: su portero reacciona tarde al siguiente tiro
+    const gk = espGkFoe(a); if (!gk) return false;
+    gk.fetidaT = 9;
+    const gy = goalCenter(a.team).y, s = Math.sign(gy);
+    const g = new THREE.Group();
+    for (let i = 0; i < 12; i++) { const sp = espSprite(espTex('puff'), i % 3 ? 0x9a3fd6 : 0x6fbf3a, 2.6 + Math.random() * 1.4, 0.7); sp.position.set((Math.random() - 0.5) * 2 * GW, 0.8 + Math.random() * 2.6, s * (1 + Math.random() * 3.5)); sp.userData.ph = Math.random() * 6; g.add(sp); }
+    g.position.copy(g2t(0, gy));
+    espAddZona({ kind: 'fetida', x: 0, y: gy - s * 2, r: 0, t: 9, life: 9, team: a.team, mesh: g, gk });
+    // bomba que vuela hasta la portería
+    const b = espSprite(espTex('soft'), 0xb04cff, 1.2, 1, true); const p0 = g2t(a.pos.x, a.pos.y, 1.5), p1 = g2t(0, gy, 1.5);
+    espFx(b, 0.45, (k, o) => { o.position.lerpVectors(p0, p1, k); o.position.y += Math.sin(Math.PI * k) * 5; });
+    espIcon(gk, 'ZzZ', '#c58bff', 3, 1.5);
+    return true;
+  },
+  pantera(a) { a.ghostT = 2.0; espGhostVis(a, true); return true; },
+  murcielago(a, foe) {
+    a.flyT = 2.2;
+    if (foe === user) espVelo(1.7); else if (foe) foe.blindT = 1.7;
+    for (let i = 0; i < 7; i++) { const s = espSprite(espTex('bat'), 0xffffff, 1.3); const an = Math.random() * Math.PI * 2; const v = new THREE.Vector3(Math.cos(an) * 7, 3 + Math.random() * 3, Math.sin(an) * 7); s.position.copy(g2t(a.pos.x, a.pos.y, 2)); espFx(s, 1.1, (k, o, dt) => { o.position.addScaledVector(v, dt); o.material.opacity = 1 - k * k; }); }
+    if (foe) espIcon(foe, '•_•', '#ff4d6d', 1.7, 1.4);
+    return true;
+  },
+  ladri(a) {   // muro delante de su portería, 5 s
+    const s = a.team === 0 ? -1 : 1, y = s * (HL - 3.2), W2 = GW + 1.2;
+    const geo = new THREE.BoxGeometry(W2 * 2, 2.4, 0.7); const tx = espTex('brick').clone(); tx.needsUpdate = true; tx.repeat.set(W2 * 2 / 2.6, 1.2);
+    const m = new THREE.Mesh(geo, [new THREE.MeshLambertMaterial({ color: 0x8a3e24 }), new THREE.MeshLambertMaterial({ color: 0x8a3e24 }), new THREE.MeshLambertMaterial({ color: 0xa04a2a }), new THREE.MeshLambertMaterial({ color: 0x5a2616 }), new THREE.MeshLambertMaterial({ map: tx }), new THREE.MeshLambertMaterial({ map: tx })]);
+    const ol = new THREE.Mesh(new THREE.BoxGeometry(W2 * 2 + 0.12, 2.52, 0.82), new THREE.MeshBasicMaterial({ color: 0x14193a, side: THREE.BackSide })); m.add(ol);
+    m.position.copy(g2t(0, y, -1.3)); shadowFlags(m, true, true);
+    espAddObst({ kind: 'muro', x: 0, y, hw: W2, hd: 0.45, t: 5, life: 5, blocks: 1 - a.team, ball: s, mesh: m });
+    for (let i = -4; i <= 4; i++) espPuffs(i * W2 / 4, y, 0.2, 0xd8b090, 1, 1.2, 1.6, 0.8, 0.5);
+    return true;
+  },
+};
+// ---- pantera: sombra semitransparente ----
+function espGhostVis(a, on) {
+  if (!a || !a.model) return;
+  if (!!a._ghostOn === on) return; a._ghostOn = on;
+  a.model.traverse((o) => {
+    if (!o.isMesh) return;
+    if (o.userData.outline) { o.visible = !on; return; }
+    const ms = Array.isArray(o.material) ? o.material : [o.material];
+    ms.forEach((m) => { if (on) { m.userData.espT = m.transparent; m.transparent = true; m.opacity = 0.38; m.depthWrite = false; if (m.color) { m.userData.espC = m.color.getHex(); m.color.setHex(0x6a7cff); } } else { m.transparent = !!m.userData.espT; m.opacity = 1; m.depthWrite = true; if (m.color && m.userData.espC !== undefined) m.color.setHex(m.userData.espC); } m.needsUpdate = true; });
+  });
+}
+// ---- pantalla oscura (murciélago) y ruido (conejo) para el usuario ----
+function espVelo(t) { const el = document.getElementById('espVelo'); if (!el) return; ESP.veloT = t; el.classList.toggle('on', t > 0); }
+function espRuido(t) { const el = document.getElementById('espRuido'); if (!el) return; ESP.ruidoT = t; el.classList.toggle('on', t > 0); }
+// ---- multiplicador de velocidad por estados ----
+function espSpeedMul(a) {
+  let m = 1;
+  if (a.slowT > 0) m *= 0.45;
+  if (a.ghostT > 0) m *= 1.55;
+  if (a.flyT > 0) m *= 1.15;
+  return m;
+}
+// IA: dirección errática (interferencia) / ciega (vuelo nocturno)
+function espAiWish(a, wish, dt) {
+  if (a.invertT > 0) { a._errA = (a._errA || 0) + dt * (4 + Math.sin(S.t * 7) * 3); return new THREE.Vector2(Math.cos(a._errA), Math.sin(a._errA * 1.3)).normalize(); }
+  if (a.blindT > 0) { return wish.clone().rotateAround(new THREE.Vector2(), Math.sin(S.t * 3) * 1.4).multiplyScalar(0.55); }
+  return wish;
+}
+// ---- IA: cuándo usa el bot su especial ----
+function espAI(a, opp, dt) {
+  if (!espReady(a) || !espCanUse(a)) return;
+  a._espAiT = (a._espAiT || 0) - dt; if (a._espAiT > 0) return; a._espAiT = 0.25;
+  const k = a.charKey, d = opp ? opp.pos.distanceTo(a.pos) : 99, atkY = goalCenter(a.team).y, dG = Math.abs(atkY - a.pos.y), ownY = -atkY;
+  const oppBall = ball.owner === opp, myBall = ball.owner === a, oppToGoal = opp ? Math.abs(ownY - opp.pos.y) : 99;
+  const bD = Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y), oD = opp ? Math.hypot(ball.pos.x - opp.pos.x, ball.pos.y - opp.pos.y) : 99;
+  let want = false;
+  switch (k) {
+    case 'turtobola': want = myBall && dG < 20 && Math.abs(a.pos.x) < 11; break;
+    case 'conazo': want = oppBall && d < 9 && oppToGoal < 34; break;
+    case 'calcetrol': want = (oppBall && d < 6) || (myBall && d < 4); break;
+    case 'buton': want = (oppBall && d < 5) || (myBall && d < 3.5 && dG < 26); break;
+    case 'lobo': want = oppBall && d < 6.5; break;
+    case 'zorro': want = myBall && d < 3.8; break;
+    case 'gecko': want = !ball.owner && bD > 3 && bD < 10.5 && oD < bD + 2; break;
+    case 'rino': want = oppBall && d < 8 && d > 2.5; break;
+    case 'conejo': want = (oppBall && d < 10) || (myBall && d < 4.5); break;
+    case 'carnero': want = d < 6 && (oppBall || (!ball.owner && bD < 5)); break;
+    case 'pepi': want = oppBall && d < 9 && d > 3; break;
+    case 'mofeta': want = myBall && dG < 26; break;
+    case 'pantera': want = myBall && dG < 32 && d < 8; break;
+    case 'murcielago': want = (myBall && d < 6) || (oppBall && opp === user && d < 8); break;
+    case 'ladri': want = oppBall && oppToGoal < 22; break;
+  }
+  if (want && Math.random() < 0.7) espUse(a, true);
+}
+// ---- actualización (cada paso de simulación) ----
+function espUpdate(dt, playing) {
+  const fld = S.practice ? [user] : [user, rival];
+  for (const a of fld) {
+    if (!a) continue;
+    if (playing && espOn() && a.esp < 1) { a.esp = Math.min(1, a.esp + dt / ESP_T); if (a.esp >= 1 && a === user) espSfx.listo(); }
+    for (const k of ['slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
+    if (a._ghostOn && a.ghostT <= 0) espGhostVis(a, false);
+    if (a.ghostT > 0 && (a._trailT = (a._trailT || 0) - dt) <= 0) { a._trailT = 0.05; espPuffs(a.pos.x, a.pos.y, 1.1, 0x2a2f6a, 1, 0.5, 1.6, 0.45, 0.1); }
+    // rino: choque durante la embestida
+    if (a.chargeT > 0) {
+      if ((a._dustT = (a._dustT || 0) - dt) <= 0) { a._dustT = 0.045; espPuffs(a.pos.x - a.face.x * 0.8, a.pos.y - a.face.y * 0.8, 0.2, 0xc8b89a, 1, 0.6, 1.3, 0.5, 0.4); }
+      const f = espFoe(a);
+      if (f && !a.chargeHit && f.pos.distanceTo(a.pos) < PR * 2 + 0.5) {
+        a.chargeHit = true; a.chargeT = Math.min(a.chargeT, 0.12);
+        const d = f.pos.clone().sub(a.pos).normalize();
+        f.vel.copy(d).multiplyScalar(11); f.stun = Math.max(f.stun, 1.4); f.downT = 1.4; f.kickPending = null; f.dashT = 0; f.dribbleT = 0;
+        if (ball.owner === f) giveBall(a), f.stun = Math.max(f.stun, 1.4);
+        espSfx.golpe(); espPuffs(f.pos.x, f.pos.y, 0.6, 0xffffff, 8, 1.5, 1.2, 0.6); espIcon(f, '*', '#ffd23f', 1.2, 1.5); LOG('embestida_golpe', a, {});
+      }
+    }
+    // zonas
+    for (const z of ESP.zonas) {
+      if (z.team === a.team || z.r <= 0) continue;
+      const inside = Math.hypot(a.pos.x - z.x, a.pos.y - z.y) < z.r;
+      if (z.kind === 'nube' && inside) { if (a.slowT <= 0) espIcon(a, 'puaj', '#b6d84a', 1.0, 1.6); a.slowT = Math.max(a.slowT, 0.6); }
+      if (z.kind === 'charco' && inside && a.slipCd <= 0 && a.slipT <= 0 && a.flyT <= 0) {
+        a.slipT = 1.1; a.slipCd = 2.2; a.slipSpin = 0;
+        const v = a.vel.lengthSq() > 1 ? a.vel.clone() : a.face.clone().multiplyScalar(5); a.slipV = v.multiplyScalar(1.15);
+        if (ball.owner === a) { ball.owner = null; ball.vel.set(a.slipV.x * 0.9, a.slipV.y * 0.9, 1.5); ball.noCatch = a; ball.noCatchT = 0.8; }
+        a.kickPending = null; a.dashT = 0; a.dribbleT = 0; espSfx.resbalon(); espIcon(a, '!?', '#d8ef4a', 1.1, 1.5); LOG('resbalon', a, {});
+      }
+    }
+  }
+  // obstáculos y zonas: vida
+  for (let i = ESP.obst.length - 1; i >= 0; i--) {
+    const o = ESP.obst[i]; o.t -= dt; const el = o.life - o.t;
+    if (o.kind === 'cono') { const k = THREE.MathUtils.clamp((el - (o.delay || 0)) / 0.18, 0, 1); const out = o.t < 0.25 ? o.t / 0.25 : 1; o.mesh.scale.setScalar(Math.max(0.01, (k < 1 ? k * 1.15 : 1) * out)); }
+    if (o.kind === 'cinta') o.mesh.scale.set(Math.min(1, el / 0.3) * (o.t < 0.25 ? o.t / 0.25 : 1) + 0.001, 1, 1);
+    if (o.kind === 'muro') { const up = THREE.MathUtils.clamp(el / 0.35, 0, 1), dn = THREE.MathUtils.clamp(o.t / 0.35, 0, 1); o.mesh.position.y = -1.3 + 2.5 * Math.min(1 - Math.pow(1 - up, 3), dn) + (up < 1 ? 0 : 0); if (up < 1 && Math.random() < 0.5) espPuffs((Math.random() - 0.5) * 2 * o.hw, o.y, 0.1, 0xd8b090, 1, 0.5, 1.2, 0.5, 0.6); }
+    if (o.t <= 0) { scene.remove(o.mesh); espDispose(o.mesh); ESP.obst.splice(i, 1); }
+  }
+  for (let i = ESP.zonas.length - 1; i >= 0; i--) {
+    const z = ESP.zonas[i]; z.t -= dt; const el = z.life - z.t, fin = THREE.MathUtils.clamp(z.t / 0.6, 0, 1), ini = THREE.MathUtils.clamp(el / 0.35, 0, 1);
+    if (z.kind === 'charco') z.mesh.scale.setScalar(Math.max(0.01, (1 - Math.pow(1 - ini, 3)) * (0.5 + 0.5 * fin)));
+    if (z.mesh && (z.kind === 'nube' || z.kind === 'fetida')) { z.mesh.children.forEach((s) => { if (s.isSprite) { s.material.opacity = 0.72 * ini * fin; s.position.y += Math.sin(S.t * 1.7 + s.userData.ph) * 0.004; s.material.rotation = Math.sin(S.t * 0.8 + s.userData.ph) * 0.4; } else s.material.opacity = 0.5 * ini * fin; }); }
+    if (z.kind === 'charco') z.mesh.material.opacity = fin;
+    if (z.kind === 'fetida' && (z.gk.fetidaT <= 0)) z.t = Math.min(z.t, 0.6);
+    if (z.t <= 0) { if (z.mesh) { scene.remove(z.mesh); espDispose(z.mesh); } ESP.zonas.splice(i, 1); }
+  }
+  for (const k of [gkA, gkB]) if (k && k.fetidaT > 0) k.fetidaT = Math.max(0, k.fetidaT - dt);
+  // lengua del gecko
+  const L = ESP.lengua;
+  if (L) {
+    L.t += dt; const a = L.a, mouth = new THREE.Vector3(a.pos.x + a.face.x * 0.35, a.pos.y + a.face.y * 0.35, 1.55 * ESCALA);
+    const bp = new THREE.Vector3(ball.pos.x, ball.pos.y, ball.pos.z), D = bp.clone().sub(mouth), dist = D.length();
+    let reach;
+    if (L.t < 0.16) reach = dist * (L.t / 0.16);
+    else { if (!L.grab) { L.grab = true; espSfx.puf(); } const k = Math.min(1, (L.t - 0.16) / 0.26); reach = dist * (1 - k); ball.owner = null; ball.vel.set(0, 0, 0);
+      const tgt = mouth.clone().addScaledVector(D.clone().normalize(), Math.max(0.6, reach)); ball.pos.set(tgt.x, tgt.y, Math.max(BR, tgt.z)); }
+    const ang = Math.atan2(D.x, D.y); a.face.set(Math.sin(ang), Math.cos(ang));
+    L.g.position.copy(g2t(mouth.x, mouth.y, mouth.z));
+    L.g.lookAt(g2t(bp.x, bp.y, bp.z)); L.tongue.scale.set(1, 1, Math.max(0.05, reach)); L.tip.position.set(0, 0, Math.max(0.05, reach));
+    if (L.t > 0.42 || ball.owner) { scene.remove(L.g); espDispose(L.g); ESP.lengua = null; if (!ball.owner && S.mode === 'play') { giveBall(a); ball.noCatch = null; } LOG('lengua', a, {}); }
+  }
+  // señuelos (balón trampa)
+  for (let i = ESP.decoys.length - 1; i >= 0; i--) {
+    const d = ESP.decoys[i]; d.t += dt; d.alive = d.t < d.life;
+    d.vel.z -= GRAV * dt; d.pos.addScaledVector(d.vel, dt); if (d.pos.z < BR) { d.pos.z = BR; d.vel.z = Math.abs(d.vel.z) * 0.5; d.vel.x *= 0.98; d.vel.y *= 0.98; }
+    d.mesh.position.copy(g2t(d.pos.x, d.pos.y, d.pos.z)); d.mesh.rotation.x += dt * 12;
+    const lineCross = Math.abs(d.pos.y) > HL - 0.3;
+    if (!d.alive || lineCross) {
+      espPuffs(d.pos.x, d.pos.y, d.pos.z, 0xffffff, 10, 1.2, 1.3, 0.6); espSfx.puf();
+      const t = espSprite(espTex('txt:PUF:#ffffff'), 0xffffff, 2); t.position.copy(g2t(d.pos.x, d.pos.y, d.pos.z + 1.2)); espFx(t, 0.8, (k, o) => { o.material.opacity = 1 - k; o.position.y += 0.02; });
+      scene.remove(d.mesh); ESP.decoys.splice(i, 1); if (d.gk && d.gk.decoy === d) d.gk.decoy = null;
+    }
+  }
+  // overlays del usuario
+  if (ESP.veloT > 0) { ESP.veloT -= dt; if (ESP.veloT <= 0) espVelo(0); }
+  if (ESP.ruidoT > 0) { ESP.ruidoT -= dt; if (ESP.ruidoT <= 0) espRuido(0); }
+}
+function espSpawnDecoy(a, tgt) {
+  const gk = espGkFoe(a); if (!ballMesh) return;
+  const mesh = ballMesh.clone(); scene.add(mesh);
+  const dir = new THREE.Vector2(tgt.x - a.pos.x, tgt.y - a.pos.y).normalize(), sp = 21;
+  const d = { mesh, pos: new THREE.Vector3(a.pos.x + dir.x * (PR + BR + 0.15) - dir.y * 0.4, a.pos.y + dir.y * (PR + BR + 0.15) + dir.x * 0.4, BR + 0.05), vel: new THREE.Vector3(dir.x * sp, dir.y * sp, 2.2), t: 0, life: 1.6, alive: true, gk };
+  ESP.decoys.push(d); if (gk) { gk.decoy = d; gk.react = 0; gk.wasComing = false; }
+  LOG('señuelo', a, {});
+}
+// colisiones con obstáculos (después de mover a todos)
+function espCollide() {
+  for (const o of ESP.obst) {
+    if (o.kind === 'cinta') continue;
+    for (const a of actors) {
+      if (a.team !== o.blocks || (a.flyT > 0)) continue;
+      if (o.kind === 'cono') {
+        const dx = a.pos.x - o.x, dy = a.pos.y - o.y, L = Math.hypot(dx, dy), m = o.r + PR;
+        if (L < m) { const nx = L > 1e-4 ? dx / L : 0, ny = L > 1e-4 ? dy / L : 1; a.pos.set(o.x + nx * m, o.y + ny * m); const vn = a.vel.x * nx + a.vel.y * ny; if (vn < 0) { a.vel.x -= vn * nx; a.vel.y -= vn * ny; } }
+      } else if (o.kind === 'muro' && !a.keeper) {
+        const dx = a.pos.x - o.x, dy = a.pos.y - o.y, mx = o.hw + PR, my = o.hd + PR;
+        if (Math.abs(dx) < mx && Math.abs(dy) < my) {
+          const px = mx - Math.abs(dx), py = my - Math.abs(dy);
+          if (py < px) { a.pos.y = o.y + Math.sign(dy || -o.ball) * my; a.vel.y = 0; } else { a.pos.x = o.x + Math.sign(dx || 1) * mx; a.vel.x = 0; }
+        }
+      }
+    }
+    // el muro para el balón que viene de fuera hacia la portería
+    if (o.kind === 'muro' && o.t < o.life - 0.2) {
+      const s = o.ball, rel = (ball.pos.y - o.y) * s;
+      if (Math.abs(ball.pos.x - o.x) < o.hw + BR && ball.pos.z < 2.5 + BR && rel > -o.hd - BR && rel < o.hd + BR && ball.vel.y * s > 0 && (prevBall.y - o.y) * s <= -o.hd - BR * 0.5) {
+        if (ball.owner && !ball.owner.keeper) ball.owner = null;
+        ball.pos.y = o.y - s * (o.hd + BR + 0.02); ball.vel.y = -ball.vel.y * 0.55; ball.vel.x *= 0.8; ball.vel.z = Math.max(ball.vel.z, 1.5);
+        espPuffs(ball.pos.x, o.y, ball.pos.z, 0xd8b090, 4, 0.8, 1, 0.4); espSfx.golpe(); LOG('muro_para', null, {});
+      }
+    }
+  }
+}
+// ---- efectos visuales por frame ----
+function espRender(dt) {
+  for (let i = ESP.fx.length - 1; i >= 0; i--) {
+    const f = ESP.fx[i]; f.t += dt; const k = Math.min(1, f.t / f.life);
+    f.upd(k, f.obj, dt);
+    if (f.t >= f.life) { f.parent.remove(f.obj); espDispose(f.obj); ESP.fx.splice(i, 1); }
+  }
+  for (const a of actors) {
+    if (a.keeper) continue;
+    // murciélago: vuela (sube y baja) ; resbalón: gira ; derribado: tumbado
+    let lift = 0; if (a.flyT > 0) { const k = a.flyT; lift = Math.min(1, (2.2 - k) / 0.25, k / 0.3) * (1.1 + Math.sin(S.t * 9) * 0.15); }
+    a.body.position.y = lift;
+    if (a.slipT > 0) { a.slipSpin = (a.slipSpin || 0) + dt * 14; a.body.rotation.y = a.slipSpin; a.body.rotation.z = Math.sin(a.slipSpin * 0.5) * 0.25; }
+    else if (a.downT > 0) { const k = Math.min(1, (1.4 - a.downT) / 0.18, a.downT / 0.3); a.body.rotation.x = -1.35 * k; a.body.rotation.y = 0; }
+    else if (a.body.rotation.x || a.body.rotation.y) { a.body.rotation.x = 0; a.body.rotation.y = 0; }
+    if (a.freezeT > 0) a.mixer.timeScale = 0; else if (a.mixer.timeScale === 0) a.mixer.timeScale = 1;
+  }
+}
+// ---- UI: botón y barras ----
+const espMiniA = document.querySelector('#marcador .azul .espMini b'), espMiniB = document.querySelector('#marcador .rojo .espMini b');
+function espUI() {
+  const on = espOn() && !!user && !!ESPECIALES[user.charKey];
+  document.body.classList.toggle('sinEsp', !on);
+  if (!on || !btnEspecial) return;
+  const v = (289 * (1 - Math.max(0, Math.min(1, user.esp || 0)))).toFixed(1);
+  if (cargaEspecial._v !== v) { cargaEspecial._v = v; cargaEspecial.style.strokeDashoffset = v; }
+  const full = user.esp >= 1, can = full && espCanUse(user);
+  btnEspecial.classList.toggle('lleno', full); btnEspecial.classList.toggle('usable', can);
+  const pa = Math.round((user.esp || 0) * 100) + '%', pb = Math.round(((rival && rival.esp) || 0) * 100) + '%';
+  if (espMiniA && espMiniA._w !== pa) { espMiniA._w = pa; espMiniA.style.width = pa; espMiniA.parentNode.classList.toggle('lleno', user.esp >= 1); }
+  if (espMiniB && rival && espMiniB._w !== pb) { espMiniB._w = pb; espMiniB.style.width = pb; espMiniB.parentNode.classList.toggle('lleno', rival.esp >= 1); }
+}
+function espSetBtnLabel() {
+  if (!btnEspecial || !user) return;
+  const e = ESPECIALES[user.charKey]; btnEspecial.style.setProperty('--ec', e ? e.col : '#fff');
+  const n = btnEspecial.querySelector('.espNom'); if (n) n.textContent = e ? e.name : '';
+}
+function setEspeciales(on) {
+  AJ.especiales = !!on; saveAjustes();
+  const b = document.getElementById('ajEspeciales');
+  if (b) { b.textContent = 'ESPECIALES: ' + (AJ.especiales ? 'SÍ' : 'NO'); b.classList.toggle('on', AJ.especiales); }
+  if (!AJ.especiales) { for (const a of actors) a.esp = 0; if (ballMesh) espClear(); }
+  document.body.classList.toggle('sinEsp', !AJ.especiales);
+}
+function espHTML(key, cls = 'espInfo') { const e = ESPECIALES[key]; return e ? `<div class="${cls}" style="--ec:${e.col}"><b>★ ${e.name}</b><span>${e.desc}</span></div>` : ''; }
+
 // ===================== FLUJO DE PARTIDO =====================
 const elA = document.getElementById('golesA'), elB = document.getElementById('golesB'), elReloj = document.getElementById('reloj');
 const banner = document.getElementById('banner'), pantalla = document.getElementById('pantalla'), resultado = document.getElementById('resultado');
@@ -1887,6 +2426,7 @@ function showBanner(txt, cls = '', ms = 1400) {
 }
 function kickoff(first) {
   for (const a of actors) a.celebrate = false;
+  espClear();
   if (S.practice) { practiceBall(true); return; }
   if (first) { S.vsT = 1.5; showVsCards(true); }   // update 17: cartas enfrentadas 1,5 s antes del saque
   user.place(0, -3.2); rival.place(0, 3.2);
@@ -1903,6 +2443,7 @@ function startGame() {
   actx?.resume?.();
   S.score = [0, 0]; S.time = DURACION; S.goals = 0; S.saves = 0; S.shots = 0;
   if (user) user.energy = 1; if (rival) rival.energy = 1;
+  for (const a of [user, rival]) if (a) a.esp = 0; ESP.usos.length = 0; espSetBtnLabel();
   elA.textContent = '0'; elB.textContent = '0'; elReloj._t = null;
   applyPracticeHud();
   applyBoots(user.model, bootEquip());
@@ -1984,7 +2525,12 @@ function renderTienda() {
     tiendaLista.appendChild(d);
   }
 }
-function openTienda() { if (S.mode !== 'menu') return; renderTienda(); tiendaEl.classList.add('visible'); }
+function renderTiendaEsp() {   // update 29: especiales de los personajes (el tuyo primero)
+  const el = document.getElementById('tiendaEsp'); if (!el) return;
+  const ks = [CHARS[sel].key, ...CHARS.map((c) => c.key).filter((k) => k !== CHARS[sel].key)];
+  el.innerHTML = ks.map((k, i) => { const c = CHARS.find((x) => x.key === k), e = ESPECIALES[k]; return `<div class="tiEsp${i === 0 ? ' tuyo' : ''}" style="--ec:${e.col};--c:${c.color}"><img src="${c.badge || c.card}" alt=""><div><div class="tiEspNom"><b>${e.name}</b><small>${c.name}${i === 0 ? ' · TU PERSONAJE' : ''}</small></div><div class="tiEspDesc">${e.desc}</div></div></div>`; }).join('');
+}
+function openTienda() { if (S.mode !== 'menu') return; renderTienda(); renderTiendaEsp(); tiendaEl.classList.add('visible'); }
 function closeTienda() { tiendaEl.classList.remove('visible'); }
 document.getElementById('btnMenuTienda').addEventListener('click', openTienda);
 document.getElementById('tiendaCerrar').addEventListener('click', closeTienda);
@@ -2087,13 +2633,14 @@ function update(dt) {
   // --- usuario ---
   const wish = new THREE.Vector2(input.jx, input.jy);
   if (input.keys.u) wish.y += 1; if (input.keys.d) wish.y -= 1; if (input.keys.l) wish.x -= 1; if (input.keys.r) wish.x += 1;
+  if (user && user.invertT > 0) wish.multiplyScalar(-1);   // update 29: INTERFERENCIA (controles invertidos)
   if (wish.lengthSq() > 1e-6) wish.normalize();   // update 23: el joystick solo da dirección; cualquier inclinación (fuera de la zona muerta del 12 %) = velocidad máxima
   const canMove = playing;
   if (playing) runBuffer();
   if (user) updateEnergy(user, playing && input.turboDown, wish.lengthSq() > 0.04, dt);
   if (user && user.sprinting && !user._spr && wish.lengthSq() > 0.04) turboKick(wish);
   if (user) user._spr = user.sprinting;
-  const userSp = SPEED_USER * (user ? user.sf.vel : 1) * (ball.owner === user ? 0.9 : 1) * (input.shootDown ? 0.55 : 1) * (user && user.sprinting ? TURBO_MULT : 1);
+  const userSp = SPEED_USER * (user ? user.sf.vel : 1) * (ball.owner === user ? 0.9 : 1) * (input.shootDown ? 0.55 : 1) * (user && user.sprinting ? TURBO_MULT : 1) * (user ? espSpeedMul(user) : 1);
   moveActor(user, canMove ? wish : new THREE.Vector2(), userSp, dt);
   if (input.shootDown) {
     if (ball.owner !== user) { input.shootDown = false; input.charge = 0; btnChutar.classList.remove('pulsado'); }
@@ -2101,14 +2648,15 @@ function update(dt) {
   }
   // --- rival IA ---
   if (!S.practice) {
-  const aiWish = playing ? aiField(rival, user, dt) : new THREE.Vector2();
+  const aiWish = playing && rival.freezeT <= 0 && rival.slipT <= 0 ? espAiWish(rival, aiField(rival, user, dt), dt) : new THREE.Vector2();
+  if (playing) espAI(rival, user, dt);   // update 29: el bot usa su especial
   if (rival) updateEnergy(rival, playing && !!rival.wantTurbo, aiWish.lengthSq() > 0.04, dt);
-  const aiSp = SPEED_AI * rival.sf.vel * (ball.owner === rival ? 0.88 : 1) * (rival && rival.sprinting ? TURBO_MULT : 1);
+  const aiSp = SPEED_AI * rival.sf.vel * (ball.owner === rival ? 0.88 : 1) * (rival && rival.sprinting ? TURBO_MULT : 1) * espSpeedMul(rival);
   moveActor(rival, aiWish, aiSp, dt);
   // --- porteros ---
   for (const k of [gkA, gkB]) {
     const r = playing ? aiKeeper(k, dt) : null;
-    if (r && r.wish) { moveActor(k, r.wish, SPEED_GK * k.sf.ref, dt); if (ball.owner !== k && k.diveT <= 0) k.face.copy(r.face); }
+    if (r && r.wish) { moveActor(k, r.wish, SPEED_GK * k.sf.ref * (k.fetidaT > 0 ? 0.6 : 1), dt); if (ball.owner !== k && k.diveT <= 0) k.face.copy(r.face); }
     else moveActor(k, new THREE.Vector2(), SPEED_GK, dt);
     const s = k.team === 0 ? -1 : 1;
     // el portero no sale de su área
@@ -2117,6 +2665,7 @@ function update(dt) {
   }
   }
   separate();
+  espCollide();
   for (const a of actors) updateKick(a, dt);
 
   // --- balón ---
@@ -2154,7 +2703,10 @@ function update(dt) {
         if ((a.dashT > 0 || a.dashEnded) && dd < (PR * 2 + 0.5) * a.sf.ent && ball.ownT > 0.55) {
           // FÍSICO vs ENTRADA: probabilidad (0-40 %) de aguantar la entrada sin perder el balón
           const keep = THREE.MathUtils.clamp(0.1 + (o.sf.t.fis - a.sf.t.ent) * 0.015, 0, 0.4);
-          if (o.dribbleT <= 0 && Math.random() < keep) {
+          if (o.ghostT > 0 || o.flyT > 0) {   // update 29: SPRINT SOMBRA / VUELO NOCTURNO: la entrada no le toca
+            a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
+            sfx.miss(); showBanner(o.flyT > 0 ? '¡POR ENCIMA!' : '¡SOMBRA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('especial_esquiva', o, { vs: NAME(a) });
+          } else if (o.dribbleT <= 0 && Math.random() < keep) {
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
             showBanner('¡AGUANTA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('aguanta_entrada', o, { vs: NAME(a), p: +keep.toFixed(2) });
           } else if (o.dribbleT > 0) {
@@ -2185,6 +2737,7 @@ function update(dt) {
       else ballOut(ev);
     }
   } else ball.lineEvent = null;
+  espUpdate(dt, playing);   // update 29: especiales
   if (S.mode === 'out') { S.pauseT -= dt; if (S.pauseT <= 0) goalKick(); }
 
   // --- apuntado (CHUTAR / REGATE mantenidos) ---
@@ -2212,6 +2765,7 @@ function update(dt) {
   btnTurbo.classList.toggle('pulsado', !!input.turboDown);
   btnTurbo.classList.toggle('activo', !!(user && user.sprinting));
   btnTurbo.classList.toggle('vacio', !!(user && user.energy <= TURBO_MIN && !user.sprinting));
+  espUI();
 }
 
 // línea de apuntado en el césped (botones CHUTAR / REGATE mantenidos)
@@ -2345,6 +2899,7 @@ function render(dt) {
   updateNet(dt);
   if (S.mode === 'menu') { renderMenu(dt); return; }
   for (const a of actors) a.sync(dt, S.t);
+  espRender(dt);   // update 29: efectos de especiales (después de sync: tumbado / vuelo / resbalón)
   ballMesh.position.copy(g2t(ball.pos.x, ball.pos.y, ball.pos.z));
   // giro del balón: en el suelo rueda sin deslizar (ω = up×v / r, con transición tras el bote); en el aire conserva su giro
   const v = _wv.set(ball.vel.x, 0, -ball.vel.y);
@@ -2408,7 +2963,7 @@ function quitMatch() {
   S.vsT = 0; showVsCards(false);
   S.paused = false; pausaEl.classList.remove('visible'); resetInputs();
   if (S.practice) { S.practice = false; applyPracticeHud(); }
-  if (ballMesh) { ball.owner = null; ball.vel.set(0, 0, 0); }
+  if (ballMesh) { ball.owner = null; ball.vel.set(0, 0, 0); espClear(); }
   LOG('salir_partido', null, {});
   const sc = S.comp; S.comp = null;
   openMenu();
@@ -2510,7 +3065,7 @@ function cardHTML(key) {
   return `<div class="mlCard ${t.rareza}" data-k="${key}" style="--c:${c.color}">` +
     `<div class="mlFoto"><img src="${PORTRAITS[key] || c.card}" alt="" draggable="false"></div>` +
     `<div class="mlTop"><div class="mlMedia">${t.media}</div><div class="mlPos">${t.pos}</div></div><div class="mlRar">${t.rareza.toUpperCase()}</div>` +
-    `<div class="mlNom">${c.name}</div>` +
+    `<div class="mlNom">${c.name}</div>` + (ESPECIALES[key] ? `<div class="mlEsp" style="--ec:${ESPECIALES[key].col}">★ ${ESPECIALES[key].name}</div>` : '') +
     `<div class="mlAD"><div class="mlA"><small>ATQ</small>${t.atq}</div><div class="mlD"><small>DEF</small>${t.def}</div></div>` +
     `<div class="mlStats">${bars}</div><div class="mlBrillo"></div></div>`;
 }
@@ -2522,7 +3077,7 @@ const colEl = document.getElementById('coleccion'), colLista = document.getEleme
 let colIdx = 0;
 function openColeccion() {
   if (S.mode !== 'menu') return;
-  colLista.innerHTML = CHARS.map((c) => `<div class="colItem">${cardHTML(c.key)}<div class="colLema">${STATS[c.key].lema}</div></div>`).join('');
+  colLista.innerHTML = CHARS.map((c) => `<div class="colItem">${cardHTML(c.key)}<div class="colLema">${STATS[c.key].lema}</div>${espHTML(c.key, 'colEsp')}</div>`).join('');
   [...colLista.children].forEach((d, i) => d.addEventListener('click', () => { if (i === colIdx) { selectChar(i); closeColeccion(); } else colGo(i); }));
   colEl.classList.add('visible'); colGo(sel);
 }
@@ -2551,6 +3106,7 @@ function showVsCards(on) {
 const mNombre = document.getElementById('mNombre'), mVs = document.getElementById('mVs'), mCartas = document.getElementById('mCartas');
 function buildMenuUI() {
   mCartas.classList.toggle('muchas', CHARS.length > 8);   // update 22: 11 personajes -> rejilla de 6 columnas (2 filas)
+  mCartas.classList.toggle('muchisimas', CHARS.length > 12);   // update 29: 15 personajes -> 8 columnas
   CHARS.forEach((c, i) => {
     const d = document.createElement('div'); d.className = 'carta'; d.style.setProperty('--c', c.color);
     if (c.badge) d.classList.add('conBadge');
@@ -2588,6 +3144,7 @@ function selectChar(i, celebrate = true) {
   }
   const c = CHARS[sel];
   mNombre.textContent = c.name; mNombre.style.setProperty('--c', c.color);
+  const mEsp = document.getElementById('mEsp'); if (mEsp) mEsp.innerHTML = espHTML(c.key, 'mEspIn');   // update 29: especial en el selector
   showBigCard();
   [...mCartas.children].forEach((d, k) => d.classList.toggle('sel', k === sel));
   pickRival();
@@ -2983,8 +3540,9 @@ const CTRL = {
   turbo: { el: btnTurbo, name: 'Turbo' },
   entrada: { el: btnEntrada, name: 'Entrada' },
   alto: { el: btnAlto, name: 'Chut alto' },
+  especial: { el: btnEspecial, name: 'Especial' },
 };
-const BTN_IDS = ['chutar', 'regate', 'turbo', 'entrada', 'alto'];
+const BTN_IDS = ['chutar', 'regate', 'turbo', 'entrada', 'alto', 'especial'];
 const S_MIN = 0.6, S_MAX = 1.6, CTRL_MARGIN = 6, TOP_RESERVE = 46;   // TOP_RESERVE: marcador
 const clampS = (v) => Math.max(S_MIN, Math.min(S_MAX, +v || 1));
 let _ins = null, _insKey = '';
@@ -3095,7 +3653,7 @@ function edView(v) {
   acciones.classList.toggle('con-balon', editor.view === 'con');
   acciones.classList.toggle('sin-balon', editor.view === 'sin');
   for (const b of document.querySelectorAll('#edVista button')) b.classList.toggle('sel', b.dataset.v === editor.view);
-  if (editor.sel && editor.sel !== 'joy' && editor.sel !== 'turbo' && getComputedStyle(CTRL[editor.sel].el).visibility === 'hidden') edSelect(null);
+  if (editor.sel && editor.sel !== 'joy' && editor.sel !== 'turbo' && editor.sel !== 'especial' && getComputedStyle(CTRL[editor.sel].el).visibility === 'hidden') edSelect(null);
 }
 function edSyncOpa() { edOpa.value = Math.round(editor.opa * 100); edOpaV.textContent = edOpa.value + '%'; }
 function openEditor() {
@@ -3189,6 +3747,8 @@ function setAimAssist(on) {
 }
 btnAjAsist.addEventListener('click', () => setAimAssist(!AJ.aimAssist));
 setAimAssist(AJ.aimAssist);
+document.getElementById('ajEspeciales').addEventListener('click', () => setEspeciales(!espOn()));
+setEspeciales(espOn());
 setShowFps(AJ.showFps);
 for (const b of document.querySelectorAll('#ajCalidad button')) b.addEventListener('click', () => { setQuality(b.dataset.q); refreshAjustes(); });
 const btnAjustes = document.getElementById('btnAjustes');
@@ -3281,3 +3841,6 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
 // update 25 (pruebas): getters vivos (Object.assign copia el valor del getter una sola vez)
 Object.defineProperty(window.__game, 'BADGES', { get: () => BADGES, configurable: true });
 Object.defineProperty(window.__game, 'sel', { get: () => sel, configurable: true });
+// update 29 (pruebas): especiales
+Object.assign(window.__game, { ESPECIALES, ESP, ESP_T, espUse: (who) => espUse(who === 'rival' ? rival : user), espCanUse: (who) => espCanUse(who === 'rival' ? rival : user),
+  espCharge: (who, v = 1) => { const a = who === 'rival' ? rival : user; if (a) a.esp = v; }, setEspeciales: (on) => setEspeciales(on), espClear: () => espClear() });
