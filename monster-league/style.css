@@ -522,3 +522,12 @@ body.horizontal .mFila #btnMenuJugar{padding:8px 28px 10px}
 /* update 27: badges ilustrados en el selector: el arte llena la casilla (el marco negro del badge se sustituye por el borde de la casilla) */
 .carta.conBadge .cartaFoto{background:none;align-items:stretch}
 .carta.conBadge .cartaFoto img{object-fit:cover}
+/* update 28: casillas sin badge al nivel de las ilustradas: fondo con rayos y brillo de su color y el modelo más grande;
+   nombre siempre pegado abajo (sin franja de color cuando la fila es más alta por un nombre de 2 líneas) */
+.carta{display:flex;flex-direction:column}
+.carta .cartaNom{flex:1 0 auto}
+.carta:not(.conBadge) .cartaFoto{position:relative;overflow:hidden;
+  background:radial-gradient(circle at 50% 55%,rgba(255,255,255,.55) 0,rgba(255,255,255,.12) 38%,rgba(0,0,0,0) 62%),
+    repeating-conic-gradient(from 0deg at 50% 55%,rgba(255,255,255,.16) 0 10deg,rgba(255,255,255,0) 10deg 24deg),
+    radial-gradient(circle at 50% 50%,rgba(0,0,0,0) 45%,rgba(0,0,0,.28) 100%)}
+.carta:not(.conBadge) .cartaFoto img{transform:scale(1.14) translateY(5%);transform-origin:50% 100%;filter:drop-shadow(0 2px 2px rgba(0,0,0,.35))}
