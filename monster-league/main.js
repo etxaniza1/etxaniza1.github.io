@@ -30,7 +30,7 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=24';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=25';   // cache busting de modelos y tarjetas
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
@@ -43,6 +43,7 @@ const CHARS = [
   { key: 'conejo', name: 'CONEJO ANTENA', color: '#7A5CCF', toon: true },   // update 22: personaje nuevo (Tripo)
   { key: 'carnero', name: 'DJ CARNERO', color: '#2E2B3A', toon: true },     // update 22: personaje nuevo (Tripo)
   { key: 'pepi', name: 'PEPI', color: '#5E7D1C', toon: true },              // update 22: Pepi el pepinillo (Tripo)
+  { key: 'mofeta', name: 'BADGER MOFETA', color: '#A23CC4', toon: true },  // update 25: Badger Mofeta (Tripo m9)
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`, ...c }));
 // ===================== STATS DE PERSONAJE (update 17) =====================
 // Escala 1-100. ATAQUE: vel (velocidad), tir (potencia de tiro), pre (precisión/control), reg (regate).
@@ -59,6 +60,7 @@ const STATS = {
   conejo: { vel: 82, tir: 68, pre: 92, reg: 88, ent: 70, fis: 60, ref: 96, pos: 'MCO', lema: 'Señal perfecta: lo capta todo antes que nadie' },
   carnero: { vel: 72, tir: 90, pre: 78, reg: 84, ent: 76, fis: 90, ref: 66, pos: 'SD', lema: 'Pincha el ritmo: aguanta, gira y suelta el bajo' },
   pepi: { vel: 92, tir: 72, pre: 74, reg: 92, ent: 80, fis: 58, ref: 88, pos: 'ED', lema: 'Avinagrado: rápido, escurridizo y siempre de mal humor' },
+  mofeta: { vel: 66, tir: 78, pre: 72, reg: 62, ent: 94, fis: 96, ref: 88, pos: 'DFC', lema: 'Muro apestoso: nadie quiere acercarse' },
   rino: { vel: 70, tir: 94, pre: 68, reg: 64, ent: 86, fis: 92, ref: 82, pos: 'DC', lema: 'Ariete: el cañón más fuerte' },
 };
 const STAT_KEYS = ['vel', 'tir', 'pre', 'reg', 'ent', 'fis', 'ref'];
@@ -865,7 +867,15 @@ function setJoy(x, y) { joyBase.style.left = x + 'px'; joyBase.style.top = y + '
 
 // Evitar zoom, scroll y gestos del navegador (multitáctil de juego sí está permitido)
 const swallow = (e) => { if (e.cancelable !== false) e.preventDefault(); };   // sin aviso si el navegador ya no permite cancelar
-document.addEventListener('touchmove', swallow, { passive: false });
+// update 25: los paneles con scroll (ajustes, tienda, colección, torneo/liga) SÍ se desplazan con el dedo.
+// Antes este preventDefault global en touchmove bloqueaba cualquier scroll táctil (AJUSTES no bajaba en el móvil).
+const SCROLL_SEL = '.ajCaja, .tiCaja, .coLado, .coCuadro, .coLiga, #coCuerpo, .scrollPanel';
+function inScroller(t) {
+  const el = t && t.closest ? t.closest(SCROLL_SEL) : null;
+  for (let e = el; e && e !== document.body; e = e.parentElement) if (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) { const cs = getComputedStyle(e); if (/(auto|scroll)/.test(cs.overflowY + cs.overflowX)) return true; }
+  return false;
+}
+document.addEventListener('touchmove', (e) => { if (e.touches.length === 1 && inScroller(e.target)) return; swallow(e); }, { passive: false });
 document.addEventListener('gesturestart', swallow);
 document.addEventListener('gesturechange', swallow);
 document.addEventListener('gestureend', swallow);
@@ -1198,7 +1208,7 @@ window.addEventListener('pointerup', (e) => swipeEnd(e));
 window.addEventListener('pointercancel', (e) => swipeEnd(e, true));
 const swipeZona = document.getElementById('swipeZona');
 if (swipeZona) {
-  swipeZona.addEventListener('pointerdown', (e) => { if (!AJ.swipeShot || editor.on) return; e.preventDefault(); swipeStart(e, swipeZona); });
+  swipeZona.addEventListener('pointerdown', (e) => { if (!AJ.swipeShot || editor.on || !document.body.classList.contains('enPartido') || S.mode === 'menu' || S.mode === 'end') return; e.preventDefault(); swipeStart(e, swipeZona); });
   swipeZona.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
 }
 // rastro blanco del dedo (se dibuja en cada frame; se desvanece en ~0,35 s al soltar)
@@ -2029,7 +2039,7 @@ function goalKick() {
   S.mode = 'play';
 }
 function endGame() {
-  S.mode = 'end'; sfx.whistle();
+  S.mode = 'end'; sfx.whistle(); setEnPartido(false);
   const [a, b] = S.score;
   for (const x of actors) x.celebrate = (a > b && x.team === 0) || (b > a && x.team === 1);
   resultado.innerHTML = `<div style="font-size:18px;opacity:.85">¡FINAL DEL PARTIDO!</div><div style="font-size:44px;margin:6px 0"><span style="color:#5ea0ff">${a}</span> - <span style="color:#ff6262">${b}</span></div>` +
@@ -2409,7 +2419,9 @@ pausaEl.addEventListener('pointerdown', (e) => { if (e.target === pausaEl) { e.p
 // ===================== MENÚ DE PERSONAJES =====================
 const menuEl = document.getElementById('menu');
 const hudEls = ['hud', 'joyZona', 'acciones'].map((id) => document.getElementById(id));
-function hudSet(on) { for (const e of hudEls) if (e) e.style.visibility = on ? '' : 'hidden'; }
+function hudSet(on) { for (const e of hudEls) if (e) e.style.visibility = on ? '' : 'hidden'; setEnPartido(on); }
+// update 25: la zona de deslizamiento solo existe en partido (antes tapaba el menú y la pantalla final -> "se congela")
+function setEnPartido(on) { document.body.classList.toggle('enPartido', !!on); if (!on && typeof swipeEnd === 'function') swipeEnd(null, true); }
 const menuScene = new THREE.Scene();
 menuScene.background = new THREE.Color('#2459c9');
 const menuCam = new THREE.PerspectiveCamera(30, 9 / 16, 0.1, 100);
@@ -3260,3 +3272,6 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     cargando.textContent = 'Error cargando: ' + err.message;
   }
 })();
+
+// update 25 (pruebas): getters vivos (Object.assign copia el valor del getter una sola vez)
+Object.defineProperty(window.__game, 'sel', { get: () => sel, configurable: true });
