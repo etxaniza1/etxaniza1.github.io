@@ -588,6 +588,9 @@ body.horizontal .mDerecha:has(#mCartas.muchisimas){left:51%;right:2%}
 body.horizontal #mCartas.muchas.muchisimas{--cw:min(calc((47vw - 50px) / 8),12.5vh,104px);gap:clamp(4px,1.4vh,9px) 6px;max-width:calc(8 * var(--cw) + 44px)}
 body.horizontal #mCartas.muchisimas .cartaNom{font-size:clamp(6px,1.75vh,10px)}
 body.horizontal #mCartas.muchisimas .carta.sel{transform:translateY(-4px) scale(1.06)}
+/* update 34: 17 personajes -> 9 columnas */
+body.horizontal #mCartas.muchas.muchisimas.nueveCol{--cw:min(calc((47vw - 54px) / 9),12.5vh,98px);gap:clamp(4px,1.4vh,9px) 5px;max-width:calc(9 * var(--cw) + 46px)}
+body.horizontal #mCartas.nueveCol .cartaNom{font-size:clamp(5.5px,1.6vh,9.5px)}
 body.horizontal .colEsp{top:101%;left:-115%;right:-115%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.horizontal .colItem:has(.colEsp) .colLema{display:none}
 

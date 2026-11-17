@@ -32,10 +32,10 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=33';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=34';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
-const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi'];
+const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote'];
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
@@ -53,6 +53,7 @@ const CHARS = [
   { key: 'murcielago', name: 'MURCIÉLAGO', color: '#B3263A', toon: true }, // update 29: Vampire Bat (Tripo)
   { key: 'ladri', name: 'LADRI', color: '#C4502A', toon: true },           // update 29: Ladri el ladrillo (Tripo)
   { key: 'tubi', name: 'TUBI', color: '#D62839', toon: true },             // update 30: Tubi el desatascador (Tripo)
+  { key: 'ajolote', name: 'AJOLOTE', color: '#E2559F', toon: true },        // update 34: Ajolote (Tripo por piezas)
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`,
   badge: BADGES.includes(c.key) ? `assets/badges/${c.key}.webp?${ASSET_V}` : null, ...c }));
 // update 32: badges a prueba de fallos: precarga al arrancar; si una imagen de badge falla se reintenta una vez
@@ -87,6 +88,7 @@ const STATS = {   // update 31: rehechas. Más variedad: nadie es bueno en todo.
   murcielago: { vel: 98, tir: 62, pre: 76, reg: 97, ent: 76, fis: 44, ref: 90, cur: 35, pos: 'EI', lema: 'Cazador nocturno: vuela por la banda, pero es de papel' },
   ladri: { vel: 46, tir: 72, pre: 66, reg: 48, ent: 94, fis: 95, ref: 86, cur: 0, pos: 'DFC', lema: 'Muro de ladrillo: por aquí no pasa ni el aire' },
   tubi: { vel: 58, tir: 70, pre: 80, reg: 72, ent: 86, fis: 84, ref: 50, cur: 15, pos: 'MCD', lema: 'Ventosa: lo que toca, se queda pegado' },
+  ajolote: { vel: 76, tir: 64, pre: 82, reg: 86, ent: 78, fis: 62, ref: 88, cur: 30, pos: 'CAR', lema: 'Regenerador: resbaladizo, incansable y siempre vuelve' },   // update 34
 };
 const STAT_KEYS = ['vel', 'tir', 'pre', 'reg', 'ent', 'fis', 'ref'];
 const STAT_NAMES = { vel: 'VELOCIDAD', tir: 'TIRO', pre: 'PRECISIÓN', reg: 'REGATE', ent: 'ENTRADA', fis: 'FÍSICO', ref: 'REFLEJOS', cur: 'EFECTO' };
@@ -1405,7 +1407,7 @@ function updateEnergy(a, want, moving, dt) {
   const can = want && moving && a.stun <= 0 && a.dashT <= 0 && a.dribbleT <= 0 && (a.sprinting ? a.energy > 0 : a.energy > TURBO_MIN);
   if (can) {
     a.sprinting = true;
-    a.energy = Math.max(0, a.energy - TURBO_DRAIN * dt);
+    if (!(a.regenT > 0)) a.energy = Math.max(0, a.energy - TURBO_DRAIN * dt);   // update 34: REGENERACIÓN -> turbo infinito
     if (a.energy <= 0) a.sprinting = false;
   } else {
     a.sprinting = false;
@@ -1418,15 +1420,41 @@ function kickLocal(a) {   // posición del balón en el impacto (m, relativo al 
   const t = a.meta.Kick.toe_at_impact;   // coords de Blender: x (izq +), y (adelante -)
   return { fwd: -t[1] * ESCALA + BR * 0.85, right: -t[0] * ESCALA };
 }
-// update 31: EFECTO. Devuelve la curva (rad/s, como las botas 'rosca') y gira 'dir' para compensar: el balón sale abierto y se cierra hacia dentro.
-function effectCurve(a, dir, L, sp, k = 1, toward = null) {
-  const c0 = (a.sf && a.sf.cur) || 0; if (c0 <= 0.001 || sp < 4) return 0;
-  const g = toward || goalCenter(a.team), nx = -dir.y, ny = dir.x;
-  let sgn = Math.sign(nx * (g.x - a.pos.x) + ny * (g.y - a.pos.y)); if (!sgn) sgn = Math.random() < 0.5 ? -1 : 1;
-  const c = 0.46 * c0 * k * THREE.MathUtils.clamp(L / 20, 0.45, 1.1), T = L / sp;
-  dir.rotateAround(new THREE.Vector2(), -sgn * 0.5 * c * T * 0.9);
-  return sgn * c;
+// update 31: EFECTO. update 34: curva REAL en forma de C (un poco menos que media vuelta con el máximo).
+// La curva es geométrica (curvatura constante por metro recorrido, en el aire y rodando): el balón sale abierto -sgn·θ/2 y gira
+// θ en total hasta llegar al punto apuntado (cuerda L), así que acaba donde apuntas. θ = EF_THETA · EFECTO · k: Zorro (80) ~115°,
+// 50 ~72°, 10 ~14°, 0 = recto. Después del punto apuntado sigue recto. Cualquier choque (palo, portero, jugador, valla) la anula.
+const EF_THETA = 2.5, _efO = new THREE.Vector2();
+function effectPlan(a, dir, sp, k = 1, toward = null, Lfix = null, o = null) {
+  const c0 = (a.sf && a.sf.cur) || 0; if (c0 <= 0.001 || sp < 4) return null;
+  o = o || a.pos;
+  const g = toward || goalCenter(a.team);
+  if (!toward && dir.y * Math.sign(g.y - o.y) <= 0.35) return null;   // update 34: solo los tiros hacia la portería hacen la C (pases y despejes laterales salen rectos)
+  let L = Lfix;
+  if (L == null) {
+    if (toward) L = Math.hypot(toward.x - o.x, toward.y - o.y);
+    else L = Math.abs((g.y - o.y) / dir.y);   // hasta la línea de gol en la dirección apuntada
+  }
+  L = THREE.MathUtils.clamp(L, 5, 36);
+  const th = Math.min(2.2, EF_THETA * c0 * k * THREE.MathUtils.clamp(L / 14, 0.55, 1));
+  if (th < 0.01) return null;
+  // sentido del giro: el que hace que el balón llegue a la línea de gol menos 'tumbado' (más fácil de meter y de leer para el portero);
+  // si da igual (tiro de frente), se cierra hacia el centro de la portería como en v31
+  const gy = goalCenter(a.team).y, fy = Math.sign(gy - o.y) || 1, ang = Math.atan2(dir.y * fy, dir.x);   // ángulo de la cuerda respecto a la línea de gol (0-180°)
+  const endA = (h) => (h <= 0 || h >= Math.PI) ? -1 : Math.min(h, Math.PI - h);
+  const ePlus = endA(ang + th / 2), eMinus = endA(ang - th / 2);   // giro antihorario (+) / horario (-) en coordenadas 'hacia la portería'
+  let sgn;
+  if (toward || Math.abs(ePlus - eMinus) < 0.17) {
+    const nx = -dir.y, ny = dir.x; sgn = Math.sign(nx * (g.x - o.x) + ny * (g.y - o.y)); if (!sgn) sgn = (o.x * Math.sign(gy || 1)) > 0 ? 1 : -1;
+  } else sgn = (ePlus > eMinus ? 1 : -1) * fy;   // con fy < 0 (ataca hacia y-) el espejo invierte el sentido
+  const R = L / (2 * Math.sin(th / 2));
+  return { rot: -sgn * th / 2, ef: sgn / R, efS: R * th, th, L, sgn };
 }
+function effectCurve(a, dir, L, sp, k = 1, toward = null) {   // compat (tests v31): aplica el plan a 'dir' y devuelve la curvatura con signo (1/m)
+  const pl = effectPlan(a, dir, sp, k, toward, L); if (!pl) return 0;
+  dir.rotateAround(new THREE.Vector2(), pl.rot); return pl.ef;
+}
+function applyEffect(pl) { ball.fx.ef = pl ? pl.ef : 0; ball.fx.efS = pl ? pl.efS : 0; ball.fx.efH = null; }
 // update 32: TIRO/PASE (botón de chut normal): tiro / pase controlado, mucho más lento que el antiguo CHUTAR.
 // Opción AJ.tiroPase (SÍ por defecto; NO = CHUTAR con la potencia de antes). CHUT ALTO y chut por deslizamiento no cambian.
 function tpOn() { return AJ.tiroPase !== false; }
@@ -1473,15 +1501,23 @@ function releaseShot(a, dir, power, assist, loft, hspeed, soft) {
   }
   const lob = hspeed !== undefined, bfx = a === user ? bootShot(dir, lob) : null;
   if (bfx) { sp *= bfx.speed; if (loft !== undefined) loft *= bfx.speed; if (bfx.jitter) dir.rotateAround(new THREE.Vector2(), bfx.jitter); }
-  Object.assign(ball.fx, { curve: bfx ? bfx.curve : 0, lift: bfx ? bfx.lift : 0, dip: bfx ? bfx.dip : 0 });
-  let efLift = 0;
-  if (!a.keeper) {   // update 31: CHUT LEJANO (tiro) + EFECTO (curva hacia dentro según la stat; se compensa la dirección para que llegue cerca de donde apuntas)
+  Object.assign(ball.fx, { curve: bfx ? bfx.curve : 0, lift: bfx ? bfx.lift : 0, dip: bfx ? bfx.dip : 0 }); applyEffect(null);
+  let efLift = 0, efPl = null;
+  if (!a.keeper) {   // update 31: CHUT LEJANO (tiro) + EFECTO. update 34: curva en C (effectPlan): sale abierto y se cierra hasta donde apuntas
     const g = goalCenter(a.team), Lg = Math.hypot(g.x - a.pos.x, g.y - a.pos.y);
     if (Lg > 18 && hspeed === undefined && !soft) sp *= a.sf.lejos;
-    const ef = effectCurve(a, dir, Math.min(Lg, 34), sp, lob ? 0.7 : soft ? 0.6 : 1); if (ef) { ball.fx.curve += ef; efLift = lob ? 0 : 1.2 * a.sf.cur; }
+    efPl = effectPlan(a, dir, sp, lob ? 0.85 : soft ? 0.8 : 1, null, null, ball.pos);   // desde donde sale el balón (la curva acaba justo donde apuntas)
   }
+  const dir0 = dir.clone(), o0 = new THREE.Vector2(ball.pos.x, ball.pos.y); if (efPl) dir.rotateAround(_efO, efPl.rot);
   ball.owner = null; ball.noCatch = a; ball.noCatchT = 0.35; ball.lastTouch = a;
-  if (Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y) < PR + BR * 0.5) ball.pos.set(a.pos.x + dir.x * (PR + BR + 0.15), a.pos.y + dir.y * (PR + BR + 0.15), BR + 0.05);
+  if (Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y) < PR + BR * 0.5) {
+    ball.pos.set(a.pos.x + dir.x * (PR + BR + 0.15), a.pos.y + dir.y * (PR + BR + 0.15), BR + 0.05);
+    if (efPl) {   // el balón se ha recolocado: se recalcula la curva desde aquí hacia el MISMO punto apuntado
+      const P = new THREE.Vector2(o0.x + dir0.x * efPl.L, o0.y + dir0.y * efPl.L), d2 = P.clone().sub(ball.pos).normalize();
+      const p2 = effectPlan(a, d2, sp, lob ? 0.85 : soft ? 0.8 : 1, null, P.distanceTo(ball.pos), ball.pos); if (p2) { efPl = p2; dir.copy(d2).rotateAround(_efO, efPl.rot); }
+    }
+  }
+  if (efPl) { applyEffect(efPl); efLift = lob ? 0 : 0.5 * a.sf.cur; LOG('efecto', a, { th: Math.round(THREE.MathUtils.radToDeg(efPl.th)), L: +efPl.L.toFixed(1), sgn: efPl.sgn }); }
   ball.pos.z = Math.max(ball.pos.z, BR + 0.05);
   ball.vel.set(dir.x * sp, dir.y * sp, loft !== undefined ? loft : soft ? 0.35 + 1.1 * power * power + efLift * 0.4 : 0.8 + 3.2 * power * power + efLift);   // chut normal: raso / poca altura (con EFECTO, algo más alto para que se vea la rosca)
   if (hspeed !== undefined) ball.pos.z = BR + 0.02;
@@ -1490,6 +1526,7 @@ function releaseShot(a, dir, power, assist, loft, hspeed, soft) {
   if (bfx && bfx.dip) ball.backspin = 0;
   ball.w.set(0, 1, 0).cross(_wv.set(ball.vel.x, 0, -ball.vel.y)).multiplyScalar((ball.backspin > 0 ? -0.6 * ball.backspin : bfx && bfx.dip ? 0.05 : 0.7) / BR);
   if (ball.fx.curve) ball.w.y += ball.fx.curve * 60;   // giro vertical visible en la rosca
+  if (ball.fx.ef) ball.w.y += ball.fx.ef * sp * 2.2;     // update 34: giro visible de la curva en C
   a.kickT = 0.35; a.face.copy(dir);
   if (a.espDecoy) { espSpawnDecoy(a, a.espDecoy); a.espDecoy = null; }   // update 29: BALÓN TRAMPA
   S.shots++; ball.kickN = (ball.kickN || 0) + 1; sfx.kick(power); LOG('tiro', a, { soft: !!soft, pos: [+a.pos.x.toFixed(1), +a.pos.y.toFixed(1)], vel: [+ball.vel.x.toFixed(1), +ball.vel.y.toFixed(1), +ball.vel.z.toFixed(1)] });
@@ -1566,6 +1603,11 @@ function airStep(p, v, dt, fx) {
   v.x *= f; v.y *= f; v.z = v.z * f - GRAV * dt;
   // update 15: efecto de las botas. curve = Magnus lateral (a = curve·|v|, perpendicular a la velocidad, giro que se va
   // perdiendo); lift = sustentación por retroceso; dip = 'hoja seca': sin giro, cae de golpe en la bajada
+  if (fx && fx.ef && fx.efS > 0) {   // update 34: EFECTO en C -> gira la velocidad horizontal ef rad por metro recorrido (también rodando)
+    const sh = Math.hypot(v.x, v.y), ds = Math.min(sh * dt, fx.efS);
+    if (ds > 0) { const an = fx.ef * ds, c = Math.cos(an), s_ = Math.sin(an), vx = v.x; v.x = vx * c - v.y * s_; v.y = vx * s_ + v.y * c; fx.efS -= ds; }
+    if (fx.efS <= 1e-4) { fx.ef = 0; fx.efS = 0; }
+  }
   if (fx && p.z > BR + 0.02) {
     if (fx.curve) { const vx = v.x; v.x -= v.y * fx.curve * dt; v.y += vx * fx.curve * dt; fx.curve *= 1 - 0.35 * dt; }
     if (fx.lift) v.z += fx.lift * dt;
@@ -1574,10 +1616,10 @@ function airStep(p, v, dt, fx) {
   p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt;
 }
 // predicción del vuelo hasta el primer bote (misma integración que el balón real; sin colisiones)
-const _pp = new THREE.Vector3(), _pv = new THREE.Vector3(), _pfx = { curve: 0, lift: 0, dip: 0 };
+const _pp = new THREE.Vector3(), _pv = new THREE.Vector3(), _pfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 };
 function predictFlight(pos, vel, out, maxT = 5, h = 1 / 120, fx) {
   _pp.copy(pos); _pv.copy(vel); let t = 0, peak = pos.z;
-  const pf = fx ? Object.assign(_pfx, fx) : null;
+  const pf = fx ? Object.assign(_pfx, { ef: 0, efS: 0 }, fx) : null;
   if (out) out.length = 0;
   while (t < maxT) {
     airStep(_pp, _pv, h, pf); t += h; peak = Math.max(peak, _pp.z);
@@ -1626,7 +1668,7 @@ function netPush(b, ax, sgn, lim, dt, gl, s) {
   const f = Math.exp(-5 * dt);                              // la malla agarra el balón: frena lo tangencial
   for (const k of ['x', 'y', 'z']) if (k !== ax && !(k === 'z' && b.vel.z < 0)) b.vel[k] *= f;
   if (ax !== 'z') b.backspin = 0;
-  if (b.fx) b.fx.curve = 0;
+  if (b.fx) { b.fx.curve = 0; b.fx.ef = 0; b.fx.efS = 0; }
   netImpact(b, ax, sgn, Math.min(pen, NET_MAXPEN));
 }
 // deformación visual: impactos con amplitud que sigue al balón mientras empuja y luego oscila amortiguada hasta 0
@@ -1687,7 +1729,12 @@ function updateNet(dt) {
 }
 function stepBall(dt, prev) {
   const b = ball;
+  if (b.fx.ef) {   // update 34: curva en C -> se anula si alguien/algo ha desviado el balón desde el último paso
+    const h = Math.atan2(b.vel.y, b.vel.x);
+    if (b.owner || (b.fx.efH != null && Math.abs(Math.atan2(Math.sin(h - b.fx.efH), Math.cos(h - b.fx.efH))) > 0.12) || Math.hypot(b.vel.x, b.vel.y) < 0.5) { b.fx.ef = 0; b.fx.efS = 0; }
+  }
   airStep(b.pos, b.vel, dt, b.fx);
+  b.fx.efH = b.fx.ef ? Math.atan2(b.vel.y, b.vel.x) : null;
   // suelo: bote con restitución y algo de fricción en el impacto; rodadura con rozamiento
   if (b.pos.z < BR) {
     b.pos.z = BR;
@@ -1926,18 +1973,19 @@ function aiKeeper(k, dt) {
   // update 29: BALÓN TRAMPA -> el portero sigue al señuelo mientras exista
   const B = k.decoy && k.decoy.alive ? k.decoy : ball, bOwner = B === ball ? ball.owner : null;
   let tx = B.pos.x * 0.55;
-  const comingIn = B.vel.y * s > 4 && !bOwner;
+  const gc = B === ball && !bOwner && ball.fx.ef ? gkLeeCurva(B, lineY, s) : null;   // update 34: tiro con curva en C -> el portero la lee tarde (se puede engañar)
+  const comingIn = (B.vel.y * s > 4 || (gc && gc.tt < 2)) && !bOwner;
   if (comingIn) {
-    const tt = (lineY - B.pos.y) / B.vel.y;
-    if (tt > 0 && tt < 2) tx = B.pos.x + B.vel.x * tt;
+    const tt = gc ? gc.tt : (lineY - B.pos.y) / B.vel.y;
+    if (tt > 0 && tt < 2) tx = gc ? gc.x : B.pos.x + B.vel.x * tt;
   }
   k.react = (k.react || 0) - dt;
   if (k.react > 0) tx = k.lastTx ?? tx; else { k.lastTx = tx; if (comingIn && !k.wasComing) { k.react = 0.15 + Math.random() * 0.15; if (k.fetidaT > 0 && B === ball) { k.react = 0.6 + Math.random() * 0.15; k.fetidaT = 0; LOG('fetida_reaccion_tarde', k, {}); } } }   // BOMBA FÉTIDA: reacciona tarde
   k.wasComing = comingIn;
   if (comingIn && k.diveT <= 0 && k.react <= 0 && !bOwner) {
-    const tt = (lineY - B.pos.y) / B.vel.y;
-    const bx = B.pos.x + B.vel.x * tt;
-    const bz = gkBallZ(B, tt);
+    const tt = gc ? gc.tt : (lineY - B.pos.y) / B.vel.y;
+    const bx = gc ? gc.x : B.pos.x + B.vel.x * tt;
+    const bz = gc ? gc.z : gkBallZ(B, tt);
     if (tt > 0.05 && tt < 0.5 && Math.abs(bx - k.pos.x) > 1.0 * ESCALA && Math.abs(bx) < GW + 0.6) startDive(k, bx, bz);
     else if (gkPlus() && tt > 0.05 && tt < 0.55 && Math.abs(bx) < GW + 0.6 && Math.abs(bx - k.pos.x) < 1.6 * ESCALA && k.gkJumpT <= 0 && !k.gkJumpQ && bz > GK_REACH * ESCALA - 0.25 && bz < GH + 0.6 && Math.abs(k.pos.y - lineY) < 1.8) startGkJump(k, bz, tt);   // update 30: salta a por el balón alto
   }
@@ -1969,6 +2017,27 @@ function aiKeeper(k, dt) {
   const wish = new THREE.Vector2(tx - k.pos.x, ty - k.pos.y);
   const L = wish.length(); if (L > 0.2) wish.multiplyScalar(Math.min(1, L / 1.2) / L * (k.backpedal ? (k.lobT < 0.35 ? 0 : 0.4) : 1)); else wish.set(0, 0);   // vaselina: tarda en reaccionar y recula despacio
   const f = k.face.clone(); const r = moveKeeperFace(k, s); return { wish, face: r };
+}
+// update 34: dónde y cuándo cruza la línea del portero un balón con curva en C (misma integración que el balón; suelo aproximado)
+const _gq = new THREE.Vector3(), _gv = new THREE.Vector3(), _gfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 }, _gcr = { tt: 9, x: 0, z: 0 };
+function gkCurveCross(lineY, s) {
+  if (S.t === _gcr.st && lineY === _gcr.ly) return _gcr.tt < 9 ? _gcr : null;
+  _gcr.st = S.t; _gcr.ly = lineY; _gcr.tt = 9;
+  _gq.copy(ball.pos); _gv.copy(ball.vel); Object.assign(_gfx, ball.fx); const h = 1 / 60;
+  for (let t = h; t < 2.2; t += h) {
+    const py = _gq.y; airStep(_gq, _gv, h, _gfx);
+    if (_gq.z < BR) { _gq.z = BR; _gv.z = Math.abs(_gv.z) > BOUNCE_MIN ? -_gv.z * BOUNCE_E : 0; }
+    if ((py - lineY) * s < 0 && (_gq.y - lineY) * s >= 0) { _gcr.tt = t; _gcr.x = _gq.x; _gcr.z = _gq.z; return _gcr; }
+  }
+  return null;
+}
+// el portero no adivina la rosca desde el principio: al salir el balón se fía de la dirección (recta) y según se acerca va leyendo la curva
+// (lectura completa en los últimos ~0,1 s). Así la curva en C le engaña a veces, pero si llega con tiempo reacciona y se estira.
+const _gl = { tt: 9, x: 0, z: 0 };
+function gkLeeCurva(B, lineY, s) {
+  const gc = gkCurveCross(lineY, s); if (!gc) return null;
+  const w = THREE.MathUtils.clamp(1.15 - gc.tt * 1.6, 0.1, 1), xl = B.pos.x + B.vel.x * gc.tt;
+  _gl.tt = gc.tt; _gl.z = gc.z; _gl.x = xl + (gc.x - xl) * w; return _gl;
 }
 function startDive(k, bx, bz) {
   const side = Math.sign(bx - k.pos.x) || 1;
@@ -2034,6 +2103,7 @@ const ESPECIALES = {
   pantera: { name: 'SPRINT SOMBRA', desc: 'Se vuelve sombra 2 s: semitransparente, muy rápida y nadie le roba.', col: '#38e1ff' },
   murcielago: { name: 'VUELO NOCTURNO', desc: 'Oscurece la pantalla del rival y vuela por encima de las entradas.', col: '#ff4d6d' },
   ladri: { name: 'MURO', desc: 'Levanta un muro de ladrillo delante de su portería durante 5 s.', col: '#e0683a' },
+  ajolote: { name: 'REGENERACIÓN', desc: 'Se regenera al instante: se quita cualquier efecto malo (congelado, lento, mareo, resbalón, ciego...), recarga el TURBO al 100 % y durante 4 s el turbo no se gasta y las entradas le resbalan (piel viscosa). Se puede usar aunque esté aturdido.', col: '#ff7ac8' },   // update 34
   tubi: { name: 'VENTOSA', desc: 'Dispara el desatascador: se pega al rival 1,5 s y, si lleva el balón, se lo trae. Luego nadie se lo quita en 3 s.', need: 'cerca', rango: 9, col: '#ff4f5e' },   // update 30
 };
 const ESP = { fx: [], obst: [], zonas: [], decoys: [], lengua: null, tex: {}, usos: [] };
@@ -2041,7 +2111,7 @@ const espOn = () => AJ.especiales !== false;
 const espFoe = (a) => S.practice ? null : is2v2() ? espFoe2(a) : (a === user ? rival : a === rival ? user : null);   // update 30: 2 VS 2 -> el que lleva el balón o el más cercano
 const espGkFoe = (a) => a.team === 0 ? gkB : gkA;
 const espGkOwn = (a) => a.team === 0 ? gkA : gkB;
-function espReset(a) { Object.assign(a, { stickT: 0, freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0 }); }
+function espReset(a) { Object.assign(a, { stickT: 0, freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0, regenT: 0 }); }
 // ---- texturas generadas (una vez) ----
 function espTex(k) {
   if (ESP.tex[k]) return ESP.tex[k];
@@ -2050,6 +2120,7 @@ function espTex(k) {
   else if (k === 'puff') { for (let i = 0; i < 7; i++) { const x = 34 + Math.random() * 60, y = 34 + Math.random() * 60, r = 22 + Math.random() * 18; const g = c.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(0.6, 'rgba(255,255,255,.5)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 128, 128); } }
   else if (k === 'charco') { const g = c.createRadialGradient(64, 64, 10, 64, 64, 62); g.addColorStop(0, 'rgba(230,250,140,.95)'); g.addColorStop(0.7, 'rgba(190,220,60,.85)'); g.addColorStop(0.92, 'rgba(120,150,30,.7)'); g.addColorStop(1, 'rgba(120,150,30,0)'); c.fillStyle = g; c.beginPath(); for (let i = 0; i <= 24; i++) { const a = i / 24 * Math.PI * 2, r = 50 + Math.sin(i * 2.7) * 8 + Math.cos(i * 1.3) * 5; c.lineTo(64 + Math.cos(a) * r, 64 + Math.sin(a) * r); } c.fill(); c.fillStyle = 'rgba(255,255,255,.75)'; c.beginPath(); c.ellipse(48, 46, 14, 6, -0.5, 0, Math.PI * 2); c.fill(); c.beginPath(); c.ellipse(80, 76, 7, 3, -0.5, 0, Math.PI * 2); c.fill(); }
   else if (k === 'brick') { c.fillStyle = '#7a3a24'; c.fillRect(0, 0, 256, 256); const bh = 32, bw = 64; for (let r = 0; r < 8; r++) for (let i = -1; i < 5; i++) { const x = i * bw + (r % 2 ? bw / 2 : 0); const v = 150 + Math.floor(Math.random() * 50); c.fillStyle = `rgb(${v + 40},${Math.floor(v * 0.45)},${Math.floor(v * 0.3)})`; c.fillRect(x + 3, r * bh + 3, bw - 6, bh - 6); c.fillStyle = 'rgba(255,255,255,.12)'; c.fillRect(x + 3, r * bh + 3, bw - 6, 5); } }
+  else if (k === 'burbuja') { const g = c.createRadialGradient(56, 54, 4, 64, 64, 60); g.addColorStop(0, 'rgba(255,255,255,.10)'); g.addColorStop(0.72, 'rgba(255,255,255,.22)'); g.addColorStop(0.9, 'rgba(255,255,255,.95)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.beginPath(); c.arc(64, 64, 60, 0, Math.PI * 2); c.fill(); c.fillStyle = 'rgba(255,255,255,.95)'; c.beginPath(); c.ellipse(44, 40, 13, 8, -0.7, 0, Math.PI * 2); c.fill(); }   // update 34: burbuja (ajolote)
   else if (k === 'cono') { for (let i = 0; i < 8; i++) { c.fillStyle = i % 3 === 1 ? '#ffffff' : '#ff7a1a'; c.fillRect(0, i * 16, 128, 16); } }
   else if (k === 'ruido') { const im = c.createImageData(128, 128); for (let i = 0; i < im.data.length; i += 4) { const v = Math.random() * 255; im.data[i] = v; im.data[i + 1] = v; im.data[i + 2] = v; im.data[i + 3] = 255; } c.putImageData(im, 0, 0); }
   else if (k === 'bat') { c.fillStyle = '#1c1024'; c.strokeStyle = '#ff4d6d'; c.lineWidth = 3; c.beginPath(); c.moveTo(64, 50); c.quadraticCurveTo(40, 30, 6, 44); c.quadraticCurveTo(22, 52, 18, 66); c.quadraticCurveTo(32, 58, 40, 70); c.quadraticCurveTo(50, 62, 64, 80); c.quadraticCurveTo(78, 62, 88, 70); c.quadraticCurveTo(96, 58, 110, 66); c.quadraticCurveTo(106, 52, 122, 44); c.quadraticCurveTo(88, 30, 64, 50); c.fill(); c.stroke(); c.beginPath(); c.arc(64, 52, 9, 0, Math.PI * 2); c.fill(); }
@@ -2126,13 +2197,15 @@ const espSfx = {
   murcielago: () => { [0, 0.07, 0.14, 0.21].forEach((d) => espTone(3200 + Math.random() * 800, 0.05, { type: 'sine', vol: 0.05, f2: 2200, delay: d })); espNoise(0.5, { f: 500, f2: 200, vol: 0.12, delay: 0.1 }); },
   ladri: () => { [0, 0.12, 0.24, 0.36].forEach((d) => { espNoise(0.12, { f: 300, vol: 0.18, type: 'lowpass', delay: d }); espTone(120, 0.1, { type: 'square', vol: 0.06, f2: 60, delay: d }); }); },
   tubi: () => { espTone(260, 0.12, { type: 'square', vol: 0.05, f2: 900 }); espTone(170, 0.4, { type: 'sine', vol: 0.12, f2: 420, vib: 18, vibF: 12, delay: 0.04 }); },
+  ajolote: () => { [0, 0.07, 0.15, 0.22, 0.3].forEach((d, i) => espTone(380 + i * 140, 0.09, { type: 'sine', vol: 0.09, f2: 900 + i * 180, delay: d })); espNoise(0.5, { f: 900, f2: 2600, q: 2, vol: 0.06, delay: 0.05 }); espTone(660, 0.6, { type: 'triangle', vol: 0.05, f2: 1320, att: 0.2, delay: 0.3 }); },   // update 34: burbujas
   plop: () => { espNoise(0.08, { f: 600, vol: 0.2, type: 'lowpass' }); espTone(520, 0.14, { type: 'sine', vol: 0.15, f2: 150 }); },
   puf: () => espNoise(0.3, { f: 1500, f2: 300, vol: 0.1 }),
 };
 // ---- ¿se puede usar ahora? ----
 function espReady(a) { return !!(a && !a.keeper && espOn() && ESPECIALES[a.charKey] && a.esp >= 1); }
 function espCanUse(a) {
-  if (!espReady(a) || S.mode !== 'play' || a.stun > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0) return false;
+  if (!espReady(a) || S.mode !== 'play') return false;
+  if (a.charKey !== 'ajolote' && (a.stun > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0)) return false;   // update 34: REGENERACIÓN se puede usar aturdido
   const e = ESPECIALES[a.charKey], foe = espFoe(a);
   if (e.need === 'balon') return ball.owner === a;
   if (e.need === 'suelto') return !ball.owner && Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y) < 11 && ball.pos.z < 3.5;
@@ -2310,6 +2383,17 @@ const ESP_FN = {
     return true;
   },
   pantera(a) { a.ghostT = 2.0; espGhostVis(a, true); return true; },
+  ajolote(a) {   // update 34: REGENERACIÓN -> limpia estados malos, turbo lleno y 4 s de turbo infinito + piel viscosa (las entradas resbalan)
+    const malos = ['stun', 'freezeT', 'slowT', 'invertT', 'slipT', 'scaredT', 'blindT', 'downT'].filter((k) => a[k] > 0);
+    for (const k of ['stun', 'freezeT', 'slowT', 'invertT', 'slipT', 'scaredT', 'blindT', 'downT']) a[k] = 0;
+    a.slipCd = 1.5; a.energy = 1; a.regenT = 4.0;
+    if (a === user) { espVelo(0); espRuido(0); }
+    espShock(a.pos.x, a.pos.y, 0x8fe6ff, 4.2, 0.6, 0.1, 0.3); setTimeout(() => espShock(a.pos.x, a.pos.y, 0xff7ac8, 3.4, 0.5, 0.12, 0.25), 140);
+    for (let i = 0; i < 14; i++) { const s = espSprite(espTex('burbuja'), i % 3 ? 0xbff4ff : 0xffb3e0, 0.35 + Math.random() * 0.45, 0.95); const an = i / 14 * Math.PI * 2, r = 0.6 + Math.random() * 0.8; const v = new THREE.Vector3(Math.cos(an) * 1.2, 2.2 + Math.random() * 2.2, Math.sin(an) * 1.2); s.position.copy(g2tS(a.pos.x + Math.cos(an) * r, a.pos.y - Math.sin(an) * r, 0.4 + Math.random() * 1.2)); espFx(s, 1.0 + Math.random() * 0.4, (k, o, dt) => { o.position.addScaledVector(v, dt); o.position.x += Math.sin(k * 12 + an) * 0.01; o.material.opacity = 0.95 * (1 - k * k); }); }
+    espIcon(a, '+', '#ff7ac8', 1.2, 1.6);
+    LOG('regeneracion', a, { quita: malos });
+    return true;
+  },
   murcielago(a, foe) {
     a.flyT = 2.2;
     if (foe === user) espVelo(1.7); else if (foe) foe.blindT = 1.7;
@@ -2396,6 +2480,7 @@ function espAI(a, opp, dt) {
     case 'pantera': want = myBall && dG < 32 && d < 8; break;
     case 'murcielago': want = (myBall && d < 6) || (oppBall && opp === user && d < 8); break;
     case 'ladri': want = oppBall && oppToGoal < 22; break;
+    case 'ajolote': want = a.stun > 0.25 || a.freezeT > 0.25 || a.slowT > 0.3 || a.invertT > 0.3 || a.blindT > 0.3 || a.slipT > 0.3 || (myBall && d < 5 && a.energy < 0.35) || (oppBall && d < 9 && a.energy < 0.25); break;   // update 34
     case 'tubi': want = (oppBall && d > 1.5 && d < 8.5) || (myBall && d < 3 && dG < 24); break;
   }
   if (want && Math.random() < 0.7) espUse(a, true);
@@ -2406,7 +2491,8 @@ function espUpdate(dt, playing) {
   for (const a of fld) {
     if (!a) continue;
     if (playing && espOn() && a.esp < 1) { a.esp = Math.min(1, a.esp + dt / ESP_T); if (a.esp >= 1 && a === user) espSfx.listo(); }
-    for (const k of ['stickT', 'slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
+    for (const k of ['stickT', 'slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd', 'regenT']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
+    if (a.regenT > 0 && (a._bubT = (a._bubT || 0) - dt) <= 0) { a._bubT = 0.09; const s = espSprite(espTex('burbuja'), Math.random() < 0.3 ? 0xffb3e0 : 0xbff4ff, 0.25 + Math.random() * 0.3, 0.9); const ox = (Math.random() - 0.5) * 1.2, oy = (Math.random() - 0.5) * 1.2; s.position.copy(g2tS(a.pos.x + ox, a.pos.y + oy, 0.3 + Math.random() * 1.4)); espFx(s, 0.8, (k, o, dt) => { o.position.y += 2.2 * dt; o.material.opacity = 0.9 * (1 - k); }); }   // update 34: burbujas mientras se regenera
     if (a._ghostOn && a.ghostT <= 0) espGhostVis(a, false);
     if (a.ghostT > 0 && (a._trailT = (a._trailT || 0) - dt) <= 0) { a._trailT = 0.05; espPuffs(a.pos.x, a.pos.y, 1.1, 0x2a2f6a, 1, 0.5, 1.6, 0.45, 0.1); }
     // rino: choque durante la embestida
@@ -2987,7 +3073,7 @@ function update(dt) {
     const n = Math.ceil(Math.hypot(ball.vel.x, ball.vel.y, ball.vel.z) * dt / 0.15) || 1;
     for (let i = 0; i < Math.min(n, 8); i++) { const p = ball.pos.clone(); stepBall(dt / Math.min(n, 8), p); }
     if (ball.postHit) {   // update 32: ¡PALO! / ¡LARGUERO!
-      if (S.mode === 'play' && !ball.lineEvent && S.t - (S.paloT || -9) > 1) { S.paloT = S.t; showBanner(ball.postHit === 'larguero' ? '¡LARGUERO!' : '¡PALO!', '', 900); LOG('palo', ball.lastTouch, { k: ball.postHit }); MS_ev('palo', ball.lastTouch); }
+      if (S.mode === 'play' && !ball.lineEvent && S.t - (S.paloT || -9) > 1) { S.paloT = S.t; LOG('palo', ball.lastTouch, { k: ball.postHit }); MS_ev('palo', ball.lastTouch); }   // update 34: sin rótulo ¡PALO! / ¡LARGUERO! (se sigue contando para las estadísticas)
       ball.postHit = null;
     }
   }
@@ -3010,9 +3096,9 @@ function update(dt) {
           if (o.stickT > 0) {   // update 30: VENTOSA -> el balón está pegado
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
             sfx.miss(); showBanner('¡PEGADO!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('ventosa_aguanta', o, { vs: NAME(a) });
-          } else if (o.ghostT > 0 || o.flyT > 0) {   // update 29: SPRINT SOMBRA / VUELO NOCTURNO: la entrada no le toca
+          } else if (o.ghostT > 0 || o.flyT > 0 || o.regenT > 0) {   // update 29: SPRINT SOMBRA / VUELO NOCTURNO: la entrada no le toca; update 34: REGENERACIÓN (piel viscosa)
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
-            sfx.miss(); showBanner(o.flyT > 0 ? '¡POR ENCIMA!' : '¡SOMBRA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('especial_esquiva', o, { vs: NAME(a) });
+            sfx.miss(); showBanner(o.flyT > 0 ? '¡POR ENCIMA!' : o.regenT > 0 ? '¡RESBALA!' : '¡SOMBRA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('especial_esquiva', o, { vs: NAME(a) });
           } else if (o.dribbleT <= 0 && Math.random() < keep) {
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
             showBanner('¡AGUANTA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('aguanta_entrada', o, { vs: NAME(a), p: +keep.toFixed(2) });
@@ -3134,11 +3220,14 @@ function updateChargeBar(c) {
     cargaBarra.dataset.z = c < ALTO_PERFECT[0] ? 'suave' : c <= ALTO_PERFECT[1] ? 'perfecta' : 'alta';
   }
 }
+const _efDir = new THREE.Vector2(), _efFx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 };
+function efFx(bf, pl) { _efFx.curve = bf ? bf.curve || 0 : 0; _efFx.lift = bf ? bf.lift || 0 : 0; _efFx.dip = bf ? bf.dip || 0 : 0; _efFx.ef = pl ? pl.ef : 0; _efFx.efS = pl ? pl.efS : 0; return _efFx; }
 function updateShotPreview() {   // update 15: con botas de efecto, el chut con mini-joystick enseña su trayectoria (curva / caída)
   lobArc.count = lobGround.count = LOB_DOTS;
   const bf = bootShot(aim.dir, false, true), pw = 0.35 + 0.65 * aim.power, sp = (tpOn() ? (TP_V0 + TP_V1 * pw) * Math.sqrt(user.sf.tir) : 13 + 19 * pw) * bf.speed;
-  const start = new THREE.Vector3(ball.pos.x + aim.dir.x * 0.4, ball.pos.y + aim.dir.y * 0.4, BR + 0.05);
-  predictFlight(start, new THREE.Vector3(aim.dir.x * sp, aim.dir.y * sp, tpOn() ? 0.35 + 1.1 * pw * pw : 0.8 + 3.2 * pw * pw), _lobPts, 1.6, 1 / 120, bf);
+  const pl = effectPlan(user, aim.dir, sp, tpOn() ? 0.8 : 1, null, null, ball.pos), d0 = _efDir.copy(aim.dir); if (pl) d0.rotateAround(_efO, pl.rot);   // update 34: el indicador enseña la curva en C
+  const start = new THREE.Vector3(ball.pos.x + d0.x * 0.4, ball.pos.y + d0.y * 0.4, BR + 0.05);
+  predictFlight(start, new THREE.Vector3(d0.x * sp, d0.y * sp, tpOn() ? 0.35 + 1.1 * pw * pw + (pl ? 0.2 * user.sf.cur : 0) : 0.8 + 3.2 * pw * pw + (pl ? 0.5 * user.sf.cur : 0)), _lobPts, 1.6, 1 / 120, efFx(bf, pl));
   const n = _lobPts.length / 3;
   for (let i = 0; i < LOB_DOTS; i++) {
     const k = Math.min(n - 1, Math.round((i + 0.5) / LOB_DOTS * (n - 1))) * 3;
@@ -3159,7 +3248,8 @@ function updateLobPreview(on, shotPrev) {
   const lp = lobParams(aim.lobP, AJ.largoStat === false ? 1 : lobStatK(user));
   const start = new THREE.Vector3(ball.pos.x + aim.dir.x * 0.4, ball.pos.y + aim.dir.y * 0.4, BR + 0.02);
   const bf = bootShot(aim.dir, true, true);
-  const land = predictFlight(start, new THREE.Vector3(aim.dir.x * lp.h * bf.speed, aim.dir.y * lp.h * bf.speed, lp.vz * bf.speed), _lobPts, 5, 1 / 120, bf);
+  const pl = effectPlan(user, aim.dir, lp.h * bf.speed, 0.85, null, null, ball.pos), d0 = _efDir.copy(aim.dir); if (pl) d0.rotateAround(_efO, pl.rot);   // update 34: curva en C también en el CHUT ALTO (trayectoria y diana reales)
+  const land = predictFlight(start, new THREE.Vector3(d0.x * lp.h * bf.speed, d0.y * lp.h * bf.speed, lp.vz * bf.speed), _lobPts, 5, 1 / 120, efFx(bf, pl));
   let n = _lobPts.length / 3;
   if (AJ.ocultaCaida === true) {   // update 32 (opcional desde v33): indicador corto = solo la salida (~30 % del vuelo, máx. 6 m): da la dirección, NO dónde cae
     let m = Math.max(2, Math.round(n * 0.4));
@@ -3428,6 +3518,7 @@ const mNombre = document.getElementById('mNombre'), mVs = document.getElementByI
 function buildMenuUI() {
   mCartas.classList.toggle('muchas', CHARS.length > 8);   // update 22: 11 personajes -> rejilla de 6 columnas (2 filas)
   mCartas.classList.toggle('muchisimas', CHARS.length > 12);   // update 29: 15 personajes -> 8 columnas
+  mCartas.classList.toggle('nueveCol', CHARS.length > 16);   // update 34: 17 personajes -> 9 columnas (2 filas, sin una carta suelta en una 3ª fila)
   CHARS.forEach((c, i) => {
     const d = document.createElement('div'); d.className = 'carta'; d.style.setProperty('--c', c.color);
     if (c.badge) d.classList.add('conBadge');
@@ -4129,7 +4220,7 @@ Object.assign(window.__game, {
   // pruebas: simula con la física real (stepBall, con postes/larguero/red) un chut alto con carga c desde D m de la línea de gol
   simAlto: (c, D, dt = 1 / 120) => {
     const sv = { pos: ball.pos.clone(), vel: ball.vel.clone(), owner: ball.owner, le: ball.lineEvent, bs: ball.backspin };
-    const lp = lobParams(c); ball.owner = null; ball.lineEvent = null; ball.backspin = 0; const fx0 = { ...ball.fx }; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0 });
+    const lp = lobParams(c); ball.owner = null; ball.lineEvent = null; ball.backspin = 0; const fx0 = { ...ball.fx }; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 });
     ball.pos.set(0, HL - D, BR + 0.02); ball.vel.set(0, lp.h, lp.vz);
     const prev = new THREE.Vector3(); let t = 0, zGoal = null, tGoal = null, tBounce = null, peak = 0;
     for (; t < 6 && !ball.lineEvent; t += dt) {
@@ -4221,14 +4312,14 @@ function releasePass(a, tgt, lofted, m) {
   MS_pass(a);   // update 32
   const d = new V2(tgt.x - a.pos.x, tgt.y - a.pos.y), L = Math.max(1, d.length()); d.normalize();
   const j = THREE.MathUtils.degToRad(a.sf.jitterDeg * 0.45) * (Math.random() * 2 - 1); if (j) d.rotateAround(new V2(), j);   // PRECISIÓN
-  ball.owner = null; ball.noCatch = a; ball.noCatchT = 0.3; ball.lastTouch = a; ball.backspin = 0; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0 });
+  ball.owner = null; ball.noCatch = a; ball.noCatchT = 0.3; ball.lastTouch = a; ball.backspin = 0; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 });
   const off = PR + BR + 0.15;
   ball.pos.set(a.pos.x + d.x * off, a.pos.y + d.y * off, BR + 0.05);
   if (lofted) {   // elevado: si el receptor está en el área rival llega a la altura de la cabeza (centro para rematar)
     const inBox = m && Math.abs(goalCenter(a.team).y - tgt.y) < 13 && Math.abs(tgt.x) < 10;
     const zt = inBox ? HEAD_H + 0.2 : 0.8, T = THREE.MathUtils.clamp(L / 14, 0.7, 1.5), D = Math.max(1, L - off);
     const vz = (zt - ball.pos.z + 0.5 * GRAV * T * T) / T, vh = D / T * 1.06;   // +6 %: rozamiento del aire
-    { const ef = effectCurve(a, d, D, vh, 0.5, m ? m.pos : null); if (ef) { ball.fx.curve = ef; ball.vel.set(d.x * vh, d.y * vh, vz); } else ball.vel.set(d.x * vh, d.y * vh, vz); }   // update 31: EFECTO en el centro
+    { const pl = effectPlan(a, d, vh, 0.5, m ? m.pos : tgt, D); if (pl) d.rotateAround(new V2(), pl.rot); applyEffect(pl); const vk = pl ? pl.efS / D : 1; ball.vel.set(d.x * vh * vk, d.y * vh * vk, vz); }   // update 31: EFECTO en el centro; update 34: curva en C (el arco es algo más largo que la cuerda)
     ball.w.set(0, 1, 0).cross(_wv.set(ball.vel.x, 0, -ball.vel.y)).multiplyScalar(-0.25 / BR);
   } else {
     const sp = THREE.MathUtils.clamp(9 + L * 0.55, 11, 22);
@@ -4444,9 +4535,9 @@ function trampaBot(a, w) {
 }
 
 // ---------- SALTO Y CABEZAZO ----------
-const _ap = new THREE.Vector3(), _av = new THREE.Vector3(), _afx = { curve: 0, lift: 0, dip: 0 };
+const _ap = new THREE.Vector3(), _av = new THREE.Vector3(), _afx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 };
 // update 31: círculo de caída (la marca blanca del suelo). Solo se puede cabecear estando DENTRO (usuario y bots)
-const _lp = { x: 0, y: 0, k: -1, t: -1 }, _lq = new THREE.Vector3(), _lv = new THREE.Vector3(), _lfx = { curve: 0, lift: 0, dip: 0 };
+const _lp = { x: 0, y: 0, k: -1, t: -1 }, _lq = new THREE.Vector3(), _lv = new THREE.Vector3(), _lfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 };
 function landPt() {
   if (ball.owner || ball.pos.z <= BR + 0.05) return null;
   const key = ball.kickN || 0;
@@ -4559,7 +4650,7 @@ function doHeader(a, intent) {
   } else {   // despeje: hacia delante, alto y lejos del centro de nuestra área
     dir = new V2(a.pos.x * 0.4 + (Math.random() - 0.5) * 8, dirY * 12).normalize(); sp = 13 + Math.random() * 3; vz = 6;
   }
-  ball.owner = null; ball.lastTouch = a; ball.noCatch = a; ball.noCatchT = 0.35; ball.backspin = 0; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0 });
+  ball.owner = null; ball.lastTouch = a; ball.noCatch = a; ball.noCatchT = 0.35; ball.backspin = 0; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 });
   ball.pos.set(a.pos.x + dir.x * PR * 0.6, a.pos.y + dir.y * PR * 0.6, z0);
   ball.vel.set(dir.x * sp, dir.y * sp, vz);
   ball.w.set(0, 1, 0).cross(_wv.set(ball.vel.x, 0, -ball.vel.y)).multiplyScalar(0.3 / BR);
@@ -4860,6 +4951,7 @@ Object.assign(window.__game, {
 });
 Object.assign(window.__game, { cardHTML, shoot, THREE, effectCurve, applyTeamDiscs, discosOn, trampaFire: (x, y) => trampaFire(x === undefined ? null : { x, y }), screenToField, trampaPointer, landPt: () => { const l = landPt(); return l && { x: l.x, y: l.y }; }, inLandCircle: (a) => inLandCircle(a || user), LAND_R });   // update 31
 Object.assign(window.__game, { MS_get, msShow, msHide, get MS() { return MS; }, marcadorSet, marcGol, CTRL, TR, applyComboTR, applyTiroPase, showBanner, ROT_LOG, confeti, lobStatK: (k) => lobStatK({ charKey: k }), tpOn });   // update 32
+Object.assign(window.__game, { effectPlan, EF_THETA, gkCurveCross: (lineY, s) => { const r = gkCurveCross(lineY, s); return r && { tt: r.tt, x: r.x, z: r.z }; } });   // update 34
 Object.defineProperty(window.__game, 'trampa', { get: () => trampa && { t0: trampa.t0, tgt: trampa.tgt, held: trampa.held, pid: trampa.pid }, configurable: true });
 Object.defineProperties(window.__game, {
   mateA: { get: () => mateA, configurable: true }, mateB: { get: () => mateB, configurable: true },
