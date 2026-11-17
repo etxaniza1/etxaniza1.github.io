@@ -518,3 +518,7 @@ body.horizontal .mFila #btnMenuJugar{padding:8px 28px 10px}
 /* ---------- update 25: scroll táctil en paneles (ajustes, tienda, colección, torneo/liga) ---------- */
 #ajustes,#tienda,#comp,#coleccion{touch-action:pan-y}
 .ajCaja,.tiCaja,.coLado,.coCuadro,.coLiga,.scrollPanel{overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain}
+
+/* update 27: badges ilustrados en el selector: el arte llena la casilla (el marco negro del badge se sustituye por el borde de la casilla) */
+.carta.conBadge .cartaFoto{background:none;align-items:stretch}
+.carta.conBadge .cartaFoto img{object-fit:cover}

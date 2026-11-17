@@ -30,7 +30,10 @@ const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=26';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=27';   // cache busting de modelos y tarjetas
+// update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
+// (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
+const BADGES = [];
 const CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
@@ -44,7 +47,8 @@ const CHARS = [
   { key: 'carnero', name: 'DJ CARNERO', color: '#2E2B3A', toon: true },     // update 22: personaje nuevo (Tripo)
   { key: 'pepi', name: 'PEPI', color: '#5E7D1C', toon: true },              // update 22: Pepi el pepinillo (Tripo)
   { key: 'mofeta', name: 'BADGER MOFETA', color: '#A23CC4', toon: true },  // update 25: Badger Mofeta (Tripo m9)
-].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`, ...c }));
+].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`,
+  badge: BADGES.includes(c.key) ? `assets/badges/${c.key}.webp?${ASSET_V}` : null, ...c }));
 // ===================== STATS DE PERSONAJE (update 17) =====================
 // Escala 1-100. ATAQUE: vel (velocidad), tir (potencia de tiro), pre (precisión/control), reg (regate).
 // DEFENSA: ent (entrada/robo), fis (físico: aguantar entradas y choques), ref (reflejos: su portero).
@@ -2549,7 +2553,8 @@ function buildMenuUI() {
   mCartas.classList.toggle('muchas', CHARS.length > 8);   // update 22: 11 personajes -> rejilla de 6 columnas (2 filas)
   CHARS.forEach((c, i) => {
     const d = document.createElement('div'); d.className = 'carta'; d.style.setProperty('--c', c.color);
-    d.innerHTML = `<div class="cartaFoto"><img src="${c.card}" alt="" draggable="false"></div><div class="cartaNom">${c.name}</div>`;
+    if (c.badge) d.classList.add('conBadge');
+    d.innerHTML = `<div class="cartaFoto"><img src="${c.badge || c.card}" alt="" draggable="false"></div><div class="cartaNom">${c.name}</div>`;
     d.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (i !== sel) selectChar(i); });
     mCartas.appendChild(d);
   });
@@ -3274,4 +3279,5 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
 })();
 
 // update 25 (pruebas): getters vivos (Object.assign copia el valor del getter una sola vez)
+Object.defineProperty(window.__game, 'BADGES', { get: () => BADGES, configurable: true });
 Object.defineProperty(window.__game, 'sel', { get: () => sel, configurable: true });
