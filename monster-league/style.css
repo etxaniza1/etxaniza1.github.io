@@ -404,7 +404,7 @@ body.horizontal #mCartas.muchas .cartaNom{font-size:clamp(7px,2vh,11px);letter-s
 /* ---------- update 24: chut por deslizamiento ---------- */
 #swipeZona{position:absolute;right:0;bottom:0;width:52%;height:78%;display:none;touch-action:none;z-index:3}
 body.horizontal #swipeZona{z-index:19}
-body.desliz #swipeZona{display:block}
+body.desliz.enPartido #swipeZona{display:block}
 body.desliz #btnAlto{visibility:hidden !important;pointer-events:none !important}
 body.editando #swipeZona{display:none}
 #swipeTrail{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:23}
@@ -514,3 +514,7 @@ body.horizontal .mFila #btnMenuJugar{padding:8px 28px 10px}
 }
 .coTu{display:flex;align-items:center;gap:6px;background:#14193a;border-radius:12px;padding:3px 10px 3px 8px}
 .coTu small{font-size:clamp(9px,2.4vh,12px);color:#cfe0ff;letter-spacing:.5px}
+
+/* ---------- update 25: scroll táctil en paneles (ajustes, tienda, colección, torneo/liga) ---------- */
+#ajustes,#tienda,#comp,#coleccion{touch-action:pan-y}
+.ajCaja,.tiCaja,.coLado,.coCuadro,.coLiga,.scrollPanel{overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain}
