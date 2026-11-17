@@ -6,6 +6,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
 const ESCALA = parseFloat(P.get('escala') || '1.3');      // escala de personajes (1 = 2,00 m; 1.3 se lee mejor en móvil)
+const LAND_R = 1.9;   // update 31: radio del círculo de caída (m): solo se cabecea dentro
 const DURACION = parseFloat(P.get('tiempo') || '120');   // segundos de partido
 // Por defecto: apaisado 16:9, campo en vertical, cámara G. ?vertical=1 recupera el modo retrato antiguo.
 const VERTICAL = (P.has('vertical') && P.get('vertical') !== '0')
@@ -29,8 +30,9 @@ const DRIBBLE_T = 0.32, DRIBBLE_CD = 1.5, DRIBBLE_SPEED = 13.5;
 const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH_MISS_STUN = 0.42;
 const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN = 0.1;
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
+const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=30';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=31';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi'];
@@ -57,38 +59,38 @@ const CHARS = [
 // Escala 1-100. ATAQUE: vel (velocidad), tir (potencia de tiro), pre (precisión/control), reg (regate).
 // DEFENSA: ent (entrada/robo), fis (físico: aguantar entradas y choques), ref (reflejos: su portero).
 // Todos suman 556 puntos (nadie es mejor en total); la MEDIA premia la especialidad (como en las cartas de fútbol).
-const STATS = {
-  conazo: { vel: 80, tir: 80, pre: 82, reg: 79, ent: 78, fis: 78, ref: 79, pos: 'MC', lema: 'Equilibrado: hace de todo bien' },
-  calcetrol: { vel: 84, tir: 74, pre: 80, reg: 92, ent: 74, fis: 66, ref: 86, pos: 'EXT', lema: 'Escurridizo: se estira y se escapa' },
-  buton: { vel: 64, tir: 86, pre: 74, reg: 66, ent: 84, fis: 95, ref: 87, pos: 'DFC', lema: 'Un muro: no hay quien lo mueva' },
-  lobo: { vel: 88, tir: 78, pre: 76, reg: 80, ent: 88, fis: 74, ref: 72, pos: 'MCD', lema: 'Cazador: rápido y muerde en la presión' },
-  zorro: { vel: 86, tir: 72, pre: 90, reg: 88, ent: 70, fis: 64, ref: 86, pos: 'MP', lema: 'Astuto: precisión y engaño' },
-  gecko: { vel: 93, tir: 66, pre: 78, reg: 90, ent: 76, fis: 60, ref: 93, pos: 'EI', lema: 'Eléctrico: el más rápido, tiro flojo' },
-  turtobola: { vel: 64, tir: 80, pre: 72, reg: 59, ent: 90, fis: 96, ref: 95, pos: 'POR', lema: 'Blindado: lento, pero bajo palos no pasa nada' },
-  conejo: { vel: 82, tir: 68, pre: 92, reg: 88, ent: 70, fis: 60, ref: 96, pos: 'MCO', lema: 'Señal perfecta: lo capta todo antes que nadie' },
-  carnero: { vel: 72, tir: 90, pre: 78, reg: 84, ent: 76, fis: 90, ref: 66, pos: 'SD', lema: 'Pincha el ritmo: aguanta, gira y suelta el bajo' },
-  pepi: { vel: 92, tir: 72, pre: 74, reg: 92, ent: 80, fis: 58, ref: 88, pos: 'ED', lema: 'Avinagrado: rápido, escurridizo y siempre de mal humor' },
-  mofeta: { vel: 66, tir: 78, pre: 72, reg: 62, ent: 94, fis: 96, ref: 88, pos: 'DFC', lema: 'Muro apestoso: nadie quiere acercarse' },
-  rino: { vel: 70, tir: 94, pre: 68, reg: 64, ent: 86, fis: 92, ref: 82, pos: 'DC', lema: 'Ariete: el cañón más fuerte' },
-  pantera: { vel: 92, tir: 90, pre: 80, reg: 84, ent: 72, fis: 70, ref: 68, pos: 'DC', lema: 'Sombra letal: aparece de la nada y la clava' },
-  murcielago: { vel: 94, tir: 70, pre: 76, reg: 93, ent: 78, fis: 58, ref: 87, pos: 'EI', lema: 'Cazador nocturno: vuela por la banda y nadie lo toca' },
-  ladri: { vel: 64, tir: 76, pre: 74, reg: 62, ent: 94, fis: 96, ref: 90, pos: 'DFC', lema: 'Muro de ladrillo: por aquí no pasa ni el aire' },
-  tubi: { vel: 66, tir: 78, pre: 84, reg: 80, ent: 90, fis: 92, ref: 66, pos: 'MCD', lema: 'Ventosa: lo que toca, se queda pegado' },   // update 30
+const STATS = {   // update 31: rehechas. Más variedad: nadie es bueno en todo. cur = EFECTO (curva del balón al chutar/centrar, 0 recto - 100 mucha curva)
+  conazo: { vel: 64, tir: 62, pre: 70, reg: 60, ent: 72, fis: 74, ref: 68, cur: 10, pos: 'MC', lema: 'Del montón: hace un poco de todo, nada brillante' },
+  calcetrol: { vel: 88, tir: 58, pre: 76, reg: 95, ent: 62, fis: 52, ref: 84, cur: 35, pos: 'EXT', lema: 'Escurridizo: se estira y se escapa, pero chuta flojo' },
+  buton: { vel: 52, tir: 90, pre: 68, reg: 48, ent: 84, fis: 90, ref: 76, cur: 0, pos: 'DFC', lema: 'Lento como un armario, pero su zambombazo lejano duele' },
+  lobo: { vel: 92, tir: 74, pre: 72, reg: 84, ent: 93, fis: 76, ref: 60, cur: 15, pos: 'MCD', lema: 'Cazador: rápido y muerde en la presión' },
+  zorro: { vel: 90, tir: 74, pre: 97, reg: 94, ent: 62, fis: 56, ref: 84, cur: 80, pos: 'MP', lema: 'Astuto: la pone donde quiere y con una rosca imposible' },
+  gecko: { vel: 99, tir: 54, pre: 78, reg: 94, ent: 68, fis: 48, ref: 90, cur: 30, pos: 'EI', lema: 'Eléctrico: el más rápido, pero de lejos no hace daño' },
+  turtobola: { vel: 42, tir: 78, pre: 64, reg: 46, ent: 80, fis: 93, ref: 92, cur: 0, pos: 'POR', lema: 'Blindado: lentísimo, pero bajo palos no pasa nada' },
+  conejo: { vel: 82, tir: 60, pre: 96, reg: 88, ent: 58, fis: 50, ref: 97, cur: 45, pos: 'MCO', lema: 'Señal perfecta: lo capta todo antes que nadie' },
+  carnero: { vel: 66, tir: 96, pre: 80, reg: 86, ent: 72, fis: 90, ref: 60, cur: 40, pos: 'SD', lema: 'Pincha el ritmo: aguanta, gira y suelta el bajo' },
+  pepi: { vel: 95, tir: 66, pre: 64, reg: 94, ent: 76, fis: 46, ref: 84, cur: 20, pos: 'ED', lema: 'Avinagrado: rapidísimo y escurridizo, pero se cae solo' },
+  mofeta: { vel: 54, tir: 68, pre: 60, reg: 50, ent: 93, fis: 94, ref: 82, cur: 5, pos: 'DFC', lema: 'Muro apestoso: nadie quiere acercarse' },
+  rino: { vel: 50, tir: 99, pre: 62, reg: 54, ent: 84, fis: 94, ref: 76, cur: 25, pos: 'DC', lema: 'Ariete lento: el cañón lejano más fuerte de la liga' },
+  pantera: { vel: 98, tir: 96, pre: 88, reg: 92, ent: 66, fis: 68, ref: 58, cur: 50, pos: 'DC', lema: 'Sombra letal: aparece de la nada y la clava (no defiende)' },
+  murcielago: { vel: 98, tir: 62, pre: 76, reg: 97, ent: 76, fis: 44, ref: 90, cur: 35, pos: 'EI', lema: 'Cazador nocturno: vuela por la banda, pero es de papel' },
+  ladri: { vel: 46, tir: 72, pre: 66, reg: 48, ent: 94, fis: 95, ref: 86, cur: 0, pos: 'DFC', lema: 'Muro de ladrillo: por aquí no pasa ni el aire' },
+  tubi: { vel: 58, tir: 70, pre: 80, reg: 72, ent: 86, fis: 84, ref: 50, cur: 15, pos: 'MCD', lema: 'Ventosa: lo que toca, se queda pegado' },
 };
 const STAT_KEYS = ['vel', 'tir', 'pre', 'reg', 'ent', 'fis', 'ref'];
-const STAT_NAMES = { vel: 'VELOCIDAD', tir: 'TIRO', pre: 'PRECISIÓN', reg: 'REGATE', ent: 'ENTRADA', fis: 'FÍSICO', ref: 'REFLEJOS' };
+const STAT_NAMES = { vel: 'VELOCIDAD', tir: 'TIRO', pre: 'PRECISIÓN', reg: 'REGATE', ent: 'ENTRADA', fis: 'FÍSICO', ref: 'REFLEJOS', cur: 'EFECTO' };
 for (const k in STATS) {
   const t = STATS[k], all = STAT_KEYS.map((x) => t[x]), top3 = [...all].sort((a, b) => b - a).slice(0, 3);
   const avg = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
   t.atq = Math.round(avg([t.vel, t.tir, t.pre, t.reg])); t.def = Math.round(avg([t.ent, t.fis, t.ref]));
-  t.media = Math.round(0.75 * avg(top3) + 0.25 * avg(all) - 3);
+  t.media = Math.round(0.55 * avg(top3) + 0.45 * avg(all));   // update 31: media = especialidad + conjunto (sin suma fija)
   t.rareza = t.media >= 84 ? 'oro' : t.media >= 78 ? 'plata' : 'bronce';
 }
-// efecto moderado en el juego: 65 -> ×(1-amp), 80 -> ×1, 95 -> ×(1+amp)
-function statF(v, amp = 0.15) { return THREE.MathUtils.clamp(1 + amp * (v - 80) / 15, 1 - amp, 1 + amp); }
+// update 31: rango más amplio (stats 40-99): 75 -> ×1, 97 -> ×(1+amp), 53 -> ×(1-amp), 42 -> ×(1-1,5·amp)
+function statF(v, amp = 0.15) { return THREE.MathUtils.clamp(1 + amp * (v - 75) / 22, 1 - 1.5 * amp, 1 + 1.1 * amp); }
 function actorStats(a) {
   const t = STATS[a.charKey] || STATS.conazo;
-  return { t, vel: statF(t.vel), tir: statF(t.tir, 0.12), reg: statF(t.reg), ent: statF(t.ent), fis: statF(t.fis), ref: statF(t.ref), jitterDeg: (100 - t.pre) * 0.09 };
+  return { t, vel: statF(t.vel), tir: statF(t.tir, 0.12), reg: statF(t.reg), ent: statF(t.ent), fis: statF(t.fis), ref: statF(t.ref), jitterDeg: (100 - t.pre) * 0.09, cur: (t.cur || 0) / 100, lejos: statF(t.tir, 0.10) };
 }
 const GLB = {};          // key -> gltf
 let META = {};           // key -> metadatos de animación
@@ -107,7 +109,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color('#a8d8f5');
 const camera = new THREE.PerspectiveCamera(40, 9 / 16, 1, 500);
 // GameCamera (Blender Z-up): loc (0,-58.10,46.33), rot X 52° -> 38° bajo la horizontal
-camera.position.copy(g2t(0, -58.101, 46.329));
+camera.position.copy(g2tS(0, -58.101, 46.329));
 camera.rotation.set(THREE.MathUtils.degToRad(-38), 0, 0);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x8a9a7a, 1.25));
@@ -120,11 +122,14 @@ const AJ_KEY = 'ml_ajustes_v1', AJ_VER = 13;
 const IS_TOUCH = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(pointer: coarse)').matches;
 // lod: fracción de triángulos de los personajes en partida (simplificación meshopt en tiempo de carga; el menú usa el modelo completo)
 // shadowEvery: el mapa de sombras se recalcula cada N frames (luz fija, solo se mueven jugadores y balón)
+// update 31 (rendimiento): lodErr = error máximo de la simplificación (relativo al tamaño del modelo; 0.002-0.003 = 3-5 mm, < 1 px en pantalla).
+// olLod = malla del contorno (solo silueta), shLod = malla que proyecta la sombra (capa SHADOW_LAYER; el mapa de sombras es mucho más basto).
+// Las TEXTURAS no cambian en ninguna calidad. Resolución máx.: Media 1.25x, Alta 1.75x, Ultra 2x; sombra Alta 1024 / Ultra 2048.
 const QUALITY = {
   baja:  { label: 'Baja',  pr: () => Math.min(DPR(), 1),   prFloor: 0.75, shadow: 0,    soft: false, aniso: 1,  lod: 0.2,  lodErr: 0.012 },
-  media: { label: 'Media', pr: () => Math.min(DPR(), 1.5), prFloor: 1,    shadow: 0,    soft: false, aniso: 4,  lod: 0.35, lodErr: 0.006 },
-  alta:  { label: 'Alta',  pr: () => Math.min(DPR(), 2),   prFloor: 1,    shadow: 2048, soft: true,  aniso: 16, lod: 1,    shadowEvery: 2 },
-  ultra: { label: 'Ultra', pr: () => Math.min(DPR(), 3),   prFloor: 1,    shadow: 4096, soft: true,  aniso: 16, lod: 1,    shadowEvery: 1 },
+  media: { label: 'Media', pr: () => Math.min(DPR(), 1.25), prFloor: 1,   shadow: 0,    soft: false, aniso: 4,  lod: 0.35, lodErr: 0.006, olLod: 0.22 },
+  alta:  { label: 'Alta',  pr: () => Math.min(DPR(), 1.75), prFloor: 1,   shadow: 1024, soft: true,  aniso: 16, lod: 0.55, lodErr: 0.003, olLod: 0.3, shLod: 0.12, shadowEvery: 2 },
+  ultra: { label: 'Ultra', pr: () => Math.min(DPR(), 2),   prFloor: 1,    shadow: 2048, soft: true,  aniso: 16, lod: 0.7,  lodErr: 0.002, olLod: 0.4, shLod: 0.16, shadowEvery: 1 },
 };
 const DEFAULT_QUALITY = IS_TOUCH ? 'media' : 'alta';
 function DPR() { return window.devicePixelRatio || 1; }
@@ -149,6 +154,9 @@ function loadAjustes() {
   a.especiales = a.especiales !== false;   // update 29: especiales activados por defecto   // update 24: chut por deslizamiento (apagado por defecto)
   // update 30: cabezazos y porteros mejorados activados; salto automático y cambio de jugador apagados
   a.cabezazos = a.cabezazos !== false; a.porteros = a.porteros !== false; a.saltoAuto = !!a.saltoAuto; a.cambio = !!a.cambio;
+  a.cabCirculo = a.cabCirculo !== false;
+  a.trampaApunta = a.trampaApunta !== false;
+  a.discos2v2 = a.discos2v2 !== false;   // update 31: 2 VS 2 con círculos sólidos azul (tu equipo) / rojo (rivales)   // update 31: BALÓN TRAMPA apuntado (NO = como antes: chut automático + señuelo)   // update 31: cabezazo solo dentro del círculo de caída
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
 }
@@ -174,9 +182,26 @@ function applyTextureQuality(root) {
     }
   });
 }
+const SHADOW_LAYER = 1;
+const SHADOW_PROXY_MAT = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
 function shadowFlags(root, cast, receive) {
   if (!root) return;
-  root.traverse((o) => { if (o.isMesh && !o.userData.outline && !(o.material && o.material.isMeshBasicMaterial && !(o.material.userData && o.material.userData.toon))) { o.castShadow = cast; o.receiveShadow = receive && !(o.material.userData && o.material.userData.toon); } });
+  const proxies = [];
+  root.traverse((o) => { if (o.isMesh && !o.userData.outline && !o.userData.shadowProxy && !(o.material && o.material.isMeshBasicMaterial && !(o.material.userData && o.material.userData.toon))) {
+    o.castShadow = cast; o.receiveShadow = receive && !(o.material.userData && o.material.userData.toon);
+    if (o.isSkinnedMesh && o.material && (o.material.userData?.toon || (Array.isArray(o.material) && o.material[0]?.userData?.toon))) { if (cast) proxies.push(o); o.layers.disable(SHADOW_LAYER); }
+    else if (cast) o.layers.enable(SHADOW_LAYER); else o.layers.disable(SHADOW_LAYER);
+  } });
+  // update 31: personaje -> malla simplificada que solo existe para el mapa de sombras (capa SHADOW_LAYER; la cámara no la ve)
+  for (const o of proxies) {
+    if (o.userData.shadowMesh) continue;
+    const sm = new THREE.SkinnedMesh(o.userData.srcGeom || o.geometry, SHADOW_PROXY_MAT);
+    sm.bind(o.skeleton, o.bindMatrix); sm.bindMode = o.bindMode; sm.frustumCulled = false; sm.castShadow = true; sm.receiveShadow = false;
+    sm.userData.shadowProxy = true; sm.userData.srcGeom = o.userData.srcGeom || o.geometry; sm.layers.set(SHADOW_LAYER);
+    sm.position.copy(o.position); sm.quaternion.copy(o.quaternion); sm.scale.copy(o.scale);
+    o.parent.add(sm); o.userData.shadowMesh = sm;
+    const r = root.userData.actorRef; if (r) applyLOD(r);
+  }
 }
 // sombras: nivel 0 = las de la calidad; 1 = sin suavizado; 2 = 1024 px; 3 = solo sombra "blob"
 function shadowSize() {
@@ -208,6 +233,7 @@ function applyQuality(reason) {
     c.left = -E; c.right = E; c.top = E; c.bottom = -E; c.near = 1; c.far = 160; c.updateProjectionMatrix();
     sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03; sun.shadow.radius = soft ? (AJ.quality === 'ultra' ? 4 : 3) : 1;
     sun.position.set(-0.384, 0.743, 0.548).multiplyScalar(70);
+    c.layers.set(SHADOW_LAYER);   // update 31: solo proyectan sombra los objetos de la capa de sombras (personajes con malla ligera)
     renderer.shadowMap.needsUpdate = true;
   }
   if (changed) {
@@ -263,7 +289,7 @@ const simplifierReady = import('./vendor/addons/libs/meshopt_simplifier.module.j
 const _lodCache = new Map();
 function lodGeometry(src, ratio, err) {
   if (!Simplifier || ratio >= 0.999 || !src.index) return src;
-  const key = src.uuid + '|' + ratio;
+  const key = src.uuid + '|' + ratio + '|' + err;
   let g = _lodCache.get(key);
   if (g) return g;
   const P = src.attributes.position, n = P.count, pos = new Float32Array(n * 3);
@@ -288,7 +314,10 @@ function applyLOD(a) {
   a.model.traverse((o) => {
     if (!o.isMesh) return;
     const src = o.userData.srcGeom || (o.userData.srcGeom = o.geometry);
-    const g = lodGeometry(src, q.lod, q.lodErr || 0.006);
+    // update 31: contorno y sombra con su propio nivel (nunca más detalle que el cuerpo)
+    const ratio = o.userData.shadowProxy ? (q.shLod || 0.15) : o.userData.outline ? Math.min(q.lod, q.olLod || q.lod) : q.lod;
+    const err = o.userData.shadowProxy ? 0.03 : o.userData.outline ? Math.max(q.lodErr || 0.006, 0.005) : (q.lodErr || 0.006);
+    const g = lodGeometry(src, ratio, err);
     if (o.geometry !== g) o.geometry = g;
     if (o.material && (o.material.userData?.toon || o.material.userData?.outline || (Array.isArray(o.material) && o.material[0]?.userData?.toon))) ensureSmoothN(g);
   });
@@ -397,7 +426,7 @@ function updateSideCam(cfg, snap) {
   } else if (!cfg.follow) {
     camFollowY = 0;
   }
-  camera.position.copy(g2t(cfg.D, camFollowY, cfg.H));
+  camera.position.copy(g2tS(cfg.D, camFollowY, cfg.H));
   camera.up.set(0, 1, 0);
   camera.lookAt(g2t(cfg.xLook, camFollowY, 0));
 }
@@ -408,12 +437,12 @@ function updateBrawlCam(cfg, snap) {
     const hi =  HL - (cfg.aheadPlay != null ? cfg.aheadPlay : (cfg.ahead || 16) * 0.28);
     const target = THREE.MathUtils.clamp(user.pos.y, lo, hi);
     camFollowY = snap ? target : camFollowY + (target - camFollowY) * 0.16;
-    camera.position.copy(g2t(0, camFollowY - cfg.D, cfg.H));
+    camera.position.copy(g2tS(0, camFollowY - cfg.D, cfg.H));
     camera.up.set(0, 1, 0);
     camera.lookAt(g2t(0, camFollowY + cfg.lookOff, 0));
   } else {
     camFollowY = 0;
-    camera.position.copy(g2t(0, -cfg.D, cfg.H));
+    camera.position.copy(g2tS(0, -cfg.D, cfg.H));
     camera.up.set(0, 1, 0);
     camera.lookAt(g2t(0, cfg.yLook || 0, 0));
   }
@@ -701,7 +730,7 @@ class Actor {
     model.traverse((o) => { if (o.isSkinnedMesh) o.frustumCulled = false; });
     this.charScale = (CHARS.find((c) => c.key === charKey) || {}).scale || 1;   // multiplicador por personaje (todos 1: alturas igualadas en el modelado)
     model.scale.setScalar(ESCALA * this.charScale);
-    this.model = model;
+    this.model = model; model.userData.actorRef = this;
     applyLOD(this);   // menos triángulos en partida según calidad (el menú usa el modelo completo)
     this.body.add(model);
     this.root.add(this.body);
@@ -785,7 +814,7 @@ class Actor {
     const targetYaw = Math.atan2(this.face.x, -this.face.y);   // los modelos miran a +Z de three (hacia la cámara) por defecto
     let d = targetYaw - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     this.yaw += d * Math.min(1, dt * (this === user ? 26 : 14));
-    this.root.position.copy(g2t(this.pos.x, this.pos.y));
+    this.root.position.copy(g2tS(this.pos.x, this.pos.y));
     this.root.rotation.y = this.yaw;
     this.kickAnimT = Math.max(0, this.kickAnimT - dt);
     this.tackleT = Math.max(0, this.tackleT - dt);
@@ -1143,7 +1172,7 @@ bindAim(btnChutar, 'chutar');
 bindAim(btnRegate, 'regate');
 bindAim(btnAlto, 'alto');
 bindHold(btnEntrada, (e) => { btnEntrada.classList.add('pulsado'); markAction('entrada', e); if (!doAction('entrada')) bufferAction('entrada'); }, () => btnEntrada.classList.remove('pulsado'));
-bindHold(btnEspecial, (e) => { markAction('especial', e); btnEspecial.classList.add('pulsado'); if (S.mode === 'play' && !S.paused) espUse(user); }, () => btnEspecial.classList.remove('pulsado'));   // update 29
+bindHold(btnEspecial, (e) => { markAction('especial', e); btnEspecial.classList.add('pulsado'); if (S.mode === 'play' && !S.paused) { espUse(user); if (trampa && trampa.held) trampa.pid = e && e.pointerId; } }, () => btnEspecial.classList.remove('pulsado'));   // update 29 (+31 balón trampa apuntado)
 bindHold(btnTurbo, (e) => { markAction('turbo', e); input.turboDown = true; btnTurbo.classList.add('pulsado'); turboKick(); }, () => { input.turboDown = false; btnTurbo.classList.remove('pulsado'); });
 
 // ---- CHUT POR DESLIZAMIENTO (update 24, opción de AJUSTES; apagado por defecto) ----
@@ -1354,7 +1383,17 @@ function kickLocal(a) {   // posición del balón en el impacto (m, relativo al 
   const t = a.meta.Kick.toe_at_impact;   // coords de Blender: x (izq +), y (adelante -)
   return { fwd: -t[1] * ESCALA + BR * 0.85, right: -t[0] * ESCALA };
 }
+// update 31: EFECTO. Devuelve la curva (rad/s, como las botas 'rosca') y gira 'dir' para compensar: el balón sale abierto y se cierra hacia dentro.
+function effectCurve(a, dir, L, sp, k = 1, toward = null) {
+  const c0 = (a.sf && a.sf.cur) || 0; if (c0 <= 0.001 || sp < 4) return 0;
+  const g = toward || goalCenter(a.team), nx = -dir.y, ny = dir.x;
+  let sgn = Math.sign(nx * (g.x - a.pos.x) + ny * (g.y - a.pos.y)); if (!sgn) sgn = Math.random() < 0.5 ? -1 : 1;
+  const c = 0.46 * c0 * k * THREE.MathUtils.clamp(L / 20, 0.45, 1.1), T = L / sp;
+  dir.rotateAround(new THREE.Vector2(), -sgn * 0.5 * c * T * 0.9);
+  return sgn * c;
+}
 function shoot(a, dir, power, assist, loft, hspeed) {
+  if (a.trampaShot && a !== user) { const gy = goalCenter(a.team).y; dir = new THREE.Vector2(a.trampaShot.x - a.pos.x, gy - a.pos.y); a.trampaShot = null; LOG('trampa_tiro', a, {}); }   // update 31: tras el balón trampa, al otro palo
   if (a.kickPending || a.freezeT > 0 || a.slipT > 0) return;
   dir = dir.clone(); if (dir.lengthSq() < 0.01) dir.set(0, a.team === 0 ? 1 : -1);
   dir.normalize();
@@ -1396,10 +1435,16 @@ function releaseShot(a, dir, power, assist, loft, hspeed) {
   const lob = hspeed !== undefined, bfx = a === user ? bootShot(dir, lob) : null;
   if (bfx) { sp *= bfx.speed; if (loft !== undefined) loft *= bfx.speed; if (bfx.jitter) dir.rotateAround(new THREE.Vector2(), bfx.jitter); }
   Object.assign(ball.fx, { curve: bfx ? bfx.curve : 0, lift: bfx ? bfx.lift : 0, dip: bfx ? bfx.dip : 0 });
+  let efLift = 0;
+  if (!a.keeper) {   // update 31: CHUT LEJANO (tiro) + EFECTO (curva hacia dentro según la stat; se compensa la dirección para que llegue cerca de donde apuntas)
+    const g = goalCenter(a.team), Lg = Math.hypot(g.x - a.pos.x, g.y - a.pos.y);
+    if (Lg > 18 && hspeed === undefined) sp *= a.sf.lejos;
+    const ef = effectCurve(a, dir, Math.min(Lg, 34), sp, lob ? 0.7 : 1); if (ef) { ball.fx.curve += ef; efLift = lob ? 0 : 1.2 * a.sf.cur; }
+  }
   ball.owner = null; ball.noCatch = a; ball.noCatchT = 0.35; ball.lastTouch = a;
   if (Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y) < PR + BR * 0.5) ball.pos.set(a.pos.x + dir.x * (PR + BR + 0.15), a.pos.y + dir.y * (PR + BR + 0.15), BR + 0.05);
   ball.pos.z = Math.max(ball.pos.z, BR + 0.05);
-  ball.vel.set(dir.x * sp, dir.y * sp, loft !== undefined ? loft : 0.8 + 3.2 * power * power);   // chut normal: raso / poca altura
+  ball.vel.set(dir.x * sp, dir.y * sp, loft !== undefined ? loft : 0.8 + 3.2 * power * power + efLift);   // chut normal: raso / poca altura (con EFECTO, algo más alto para que se vea la rosca)
   if (hspeed !== undefined) ball.pos.z = BR + 0.02;
   // giro: chut raso = rueda hacia delante; chut alto = efecto de retroceso (más en la vaselina suave)
   ball.backspin = hspeed !== undefined ? THREE.MathUtils.clamp(1.1 - hspeed / 28, 0.1, 1) * (bfx ? bfx.backspin : 1) : 0;
@@ -1927,7 +1972,7 @@ function keeperContact(k) {
 // tecla R / F en teclado. El bot también los usa (espAI). Se pueden desactivar en AJUSTES (AJ.especiales, activados por defecto).
 const ESP_T = 22;   // segundos para cargar el especial
 const ESPECIALES = {
-  turtobola: { name: 'BALÓN TRAMPA', desc: 'Chuta un balón falso: el portero rival se lanza a por él mientras el de verdad va al otro palo.', need: 'balon', col: '#3fd18b' },
+  turtobola: { name: 'BALÓN TRAMPA', desc: 'Lanza un balón FALSO adonde apuntes (arrastra desde el botón o toca el campo) y sigue con tu balón: el portero y el rival se van a por el falso.', need: 'balon', col: '#3fd18b' },
   conazo: { name: 'ZONA CORTADA', desc: 'Planta una barrera de conos delante del rival: le corta el paso 3 s.', need: 'cerca', rango: 14, col: '#ff8a2a' },
   calcetrol: { name: 'PESTE A PIES', desc: 'Nube de olor a calcetín: el rival que la cruza va a cámara lenta.', col: '#b6d84a' },
   buton: { name: 'BOTÓN DE PAUSA', desc: 'Pulsa pausa: el rival se queda congelado 1 s.', col: '#ffd23f' },
@@ -1982,14 +2027,14 @@ function espPuffs(x, y, z, color, n, spread, size, life, rise = 0.6, add = false
   for (let i = 0; i < n; i++) {
     const s = espSprite(espTex('puff'), color, size * (0.7 + Math.random() * 0.6), 0.85, add);
     const ox = (Math.random() - 0.5) * spread, oy = (Math.random() - 0.5) * spread, oz = Math.random() * spread * 0.4;
-    s.position.copy(g2t(x + ox, y + oy, z + oz)); const v = new THREE.Vector3(ox, rise + Math.random() * rise, -oy).multiplyScalar(0.8);
+    s.position.copy(g2tS(x + ox, y + oy, z + oz)); const v = new THREE.Vector3(ox, rise + Math.random() * rise, -oy).multiplyScalar(0.8);
     const s0 = s.scale.x;
     espFx(s, life * (0.7 + Math.random() * 0.5), (k, o, dt) => { o.position.addScaledVector(v, dt); o.scale.setScalar(s0 * (1 + k * 0.8)); o.material.opacity = 0.85 * (1 - k); });
   }
 }
 function espShock(x, y, color, r1, life, z = 0.08, width = 0.35) {
   const m = new THREE.Mesh(new THREE.RingGeometry(1 - width, 1, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
-  m.rotation.x = -Math.PI / 2; m.position.copy(g2t(x, y, z)); m.renderOrder = 4;
+  m.rotation.x = -Math.PI / 2; m.position.copy(g2tS(x, y, z)); m.renderOrder = 4;
   espFx(m, life, (k, o) => { const r = 0.3 + (r1 - 0.3) * (1 - Math.pow(1 - k, 2.2)); o.scale.setScalar(r); o.material.opacity = 0.9 * (1 - k); });
 }
 function espIcon(a, txt, color, life, size = 1.3) {   // icono encima de la cabeza de un jugador
@@ -2075,12 +2120,22 @@ function espClear() {
   for (const d of ESP.decoys) { scene.remove(d.mesh); }
   ESP.obst.length = ESP.zonas.length = ESP.fx.length = ESP.decoys.length = 0; ESP.lengua = null; espVentosaClear();
   for (const k of [gkA, gkB]) if (k) { k.decoy = null; k.fetidaT = 0; }
+  if (typeof trampa !== 'undefined' && trampa) { trampa = null; if (trampaArrow) trampaArrow.visible = false; }
   for (const a of actors) { espReset(a); espGhostVis(a, false); }
   espVelo(0); espRuido(0);
 }
 // ---- efectos por personaje ----
 const ESP_FN = {
-  turtobola(a, foe) {   // tiro de verdad al palo lejos del portero + señuelo al otro palo (el portero se tira a por el señuelo)
+  turtobola(a, foe) {
+    // update 31: NO chuta solo. Usuario: apunta (arrastrar desde ESPECIAL, o tocar el campo / 2º toque) y lanza un balón FALSO; sigue con el suyo.
+    // Bot: lanza el falso hacia un palo y sigue conduciendo; chuta al otro palo un instante después.
+    if (AJ.trampaApunta !== false) {
+      if (a === user && !window.__game.userBot) { trampaStart(a); return true; }
+      const gk = espGkFoe(a), gy = goalCenter(a.team).y, sd = gk && Math.abs(gk.pos.x) > 0.3 ? Math.sign(gk.pos.x) : (a.pos.x > 0 ? -1 : 1);
+      const tgt = { x: sd * (GW - 1.0) * (0.8 + Math.random() * 0.4), y: gy };   // falso al palo del portero (que se lance)...
+      espSpawnDecoy(a, tgt); a.trampaShot = { at: S.t + 0.35 + Math.random() * 0.2, x: -sd * (GW - 1.2) };   // ...y el de verdad al otro
+      return true;
+    }
     const gk = espGkFoe(a), gy = goalCenter(a.team).y;
     const sReal = gk && gk.pos.x > 0.3 ? -1 : gk && gk.pos.x < -0.3 ? 1 : (Math.random() < 0.5 ? -1 : 1);
     a.espDecoy = { x: -sReal * (GW - 1.1), y: gy };
@@ -2097,12 +2152,12 @@ const ESP_FN = {
       cone.position.y = 1.05 + 0.12; g.add(cone);
       const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.24, 1.5), new THREE.MeshBasicMaterial({ color: 0xff7a1a })); base.position.y = 0.12; g.add(base);
       const ol = new THREE.Mesh(new THREE.ConeGeometry(0.7, 2.25, 20, 1, true), new THREE.MeshBasicMaterial({ color: 0x14193a, side: THREE.BackSide })); ol.position.y = 1.1; g.add(ol);
-      g.position.copy(g2t(p.x, p.y)); g.scale.setScalar(0.01);
+      g.position.copy(g2tS(p.x, p.y)); g.scale.setScalar(0.01);
       espAddObst({ kind: 'cono', x: p.x, y: p.y, r: 0.9, t: 3.0, life: 3.0, blocks: foe.team, mesh: g, delay: i * 0.07 });
     });
     // cinta entre conos
     const tape = new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.18, 0.04), new THREE.MeshBasicMaterial({ map: espTex('cono') }));
-    tape.position.copy(g2t(c.x, c.y, 1.3)); tape.rotation.y = Math.atan2(side.y, side.x) * 1; tape.rotation.y = -Math.atan2(side.y, side.x);
+    tape.position.copy(g2tS(c.x, c.y, 1.3)); tape.rotation.y = Math.atan2(side.y, side.x) * 1; tape.rotation.y = -Math.atan2(side.y, side.x);
     espAddObst({ kind: 'cinta', x: c.x, y: c.y, r: 0, t: 3.0, life: 3.0, blocks: -1, mesh: tape });
     espPuffs(c.x, c.y, 0.2, 0xffffff, 8, 3, 1.4, 0.6);
     foe.vel.multiplyScalar(0.2);
@@ -2113,7 +2168,7 @@ const ESP_FN = {
     const g = new THREE.Group();
     for (let i = 0; i < 9; i++) { const s = espSprite(espTex('puff'), i % 2 ? 0xb6d84a : 0x8aa83a, 2.4 + Math.random() * 1.2, 0.75); const an = i / 9 * Math.PI * 2; s.position.set(Math.cos(an) * 1.7 * Math.random(), 0.6 + Math.random() * 1.6, Math.sin(an) * 1.7); s.userData.ph = Math.random() * 6; g.add(s); }
     const disc = new THREE.Mesh(new THREE.CircleGeometry(3.2, 40), new THREE.MeshBasicMaterial({ map: espTex('soft'), color: 0x9fc23a, transparent: true, opacity: 0.55, depthWrite: false })); disc.rotation.x = -Math.PI / 2; disc.position.y = 0.06; g.add(disc);
-    g.position.copy(g2t(p.x, p.y));
+    g.position.copy(g2tS(p.x, p.y));
     espAddZona({ kind: 'nube', x: p.x, y: p.y, r: 3.2, t: 6, life: 6, team: a.team, mesh: g });
     return true;
   },
@@ -2173,7 +2228,7 @@ const ESP_FN = {
   carnero(a, foe) {   // onda expansiva: empuja al rival y al balón
     const R = 8;
     for (let i = 0; i < 3; i++) setTimeout(() => espShock(a.pos.x, a.pos.y, i === 1 ? 0x46e6ff : 0xff3fd0, R + 1, 0.55, 0.12 + i * 0.05, 0.22), 120 + i * 110);
-    for (let i = 0; i < 8; i++) { const s = espSprite(espTex('txt:♪:#ff6ee0'), 0xffffff, 1.1); const an = i / 8 * Math.PI * 2; const v = new THREE.Vector3(Math.cos(an) * 6, 2.5, Math.sin(an) * 6); s.position.copy(g2t(a.pos.x, a.pos.y, 1.6)); espFx(s, 0.9, (k, o, dt) => { o.position.addScaledVector(v, dt); o.material.opacity = 1 - k; }); }
+    for (let i = 0; i < 8; i++) { const s = espSprite(espTex('txt:♪:#ff6ee0'), 0xffffff, 1.1); const an = i / 8 * Math.PI * 2; const v = new THREE.Vector3(Math.cos(an) * 6, 2.5, Math.sin(an) * 6); s.position.copy(g2tS(a.pos.x, a.pos.y, 1.6)); espFx(s, 0.9, (k, o, dt) => { o.position.addScaledVector(v, dt); o.material.opacity = 1 - k; }); }
     if (foe && foe.pos.distanceTo(a.pos) < R) {
       const d = foe.pos.clone().sub(a.pos); const L = Math.max(0.5, d.length()); d.normalize();
       const f = 1 - L / R * 0.5;
@@ -2188,9 +2243,9 @@ const ESP_FN = {
     if (foe && foe.pos.distanceTo(a.pos) < 12) p = foe.pos.clone().addScaledVector(foe.vel.lengthSq() > 1 ? foe.vel.clone().normalize() : a.pos.clone().sub(foe.pos).normalize(), 2.2);
     p.x = THREE.MathUtils.clamp(p.x, -WX + 2, WX - 2); p.y = THREE.MathUtils.clamp(p.y, -WY + 2, WY - 2);
     const m = new THREE.Mesh(new THREE.CircleGeometry(2.4, 40), new THREE.MeshBasicMaterial({ map: espTex('charco'), transparent: true, depthWrite: false }));
-    m.rotation.x = -Math.PI / 2; m.position.copy(g2t(p.x, p.y, 0.05)); m.renderOrder = 3; m.scale.setScalar(0.01);
+    m.rotation.x = -Math.PI / 2; m.position.copy(g2tS(p.x, p.y, 0.05)); m.renderOrder = 3; m.scale.setScalar(0.01);
     espAddZona({ kind: 'charco', x: p.x, y: p.y, r: 2.3, t: 7, life: 7, team: a.team, mesh: m });
-    for (let i = 0; i < 10; i++) { const s = espSprite(espTex('soft'), 0xd8ef4a, 0.5); const v = new THREE.Vector3((Math.random() - 0.5) * 6, 5 + Math.random() * 3, (Math.random() - 0.5) * 6); s.position.copy(g2t(p.x, p.y, 0.3)); espFx(s, 0.7, (k, o, dt) => { v.y -= 14 * dt; o.position.addScaledVector(v, dt); o.material.opacity = 1 - k; }); }
+    for (let i = 0; i < 10; i++) { const s = espSprite(espTex('soft'), 0xd8ef4a, 0.5); const v = new THREE.Vector3((Math.random() - 0.5) * 6, 5 + Math.random() * 3, (Math.random() - 0.5) * 6); s.position.copy(g2tS(p.x, p.y, 0.3)); espFx(s, 0.7, (k, o, dt) => { v.y -= 14 * dt; o.position.addScaledVector(v, dt); o.material.opacity = 1 - k; }); }
     return true;
   },
   mofeta(a) {   // nube fétida en la portería rival: su portero reacciona tarde al siguiente tiro
@@ -2199,7 +2254,7 @@ const ESP_FN = {
     const gy = goalCenter(a.team).y, s = Math.sign(gy);
     const g = new THREE.Group();
     for (let i = 0; i < 12; i++) { const sp = espSprite(espTex('puff'), i % 3 ? 0x9a3fd6 : 0x6fbf3a, 2.6 + Math.random() * 1.4, 0.7); sp.position.set((Math.random() - 0.5) * 2 * GW, 0.8 + Math.random() * 2.6, s * (1 + Math.random() * 3.5)); sp.userData.ph = Math.random() * 6; g.add(sp); }
-    g.position.copy(g2t(0, gy));
+    g.position.copy(g2tS(0, gy));
     espAddZona({ kind: 'fetida', x: 0, y: gy - s * 2, r: 0, t: 9, life: 9, team: a.team, mesh: g, gk });
     // bomba que vuela hasta la portería
     const b = espSprite(espTex('soft'), 0xb04cff, 1.2, 1, true); const p0 = g2t(a.pos.x, a.pos.y, 1.5), p1 = g2t(0, gy, 1.5);
@@ -2211,7 +2266,7 @@ const ESP_FN = {
   murcielago(a, foe) {
     a.flyT = 2.2;
     if (foe === user) espVelo(1.7); else if (foe) foe.blindT = 1.7;
-    for (let i = 0; i < 7; i++) { const s = espSprite(espTex('bat'), 0xffffff, 1.3); const an = Math.random() * Math.PI * 2; const v = new THREE.Vector3(Math.cos(an) * 7, 3 + Math.random() * 3, Math.sin(an) * 7); s.position.copy(g2t(a.pos.x, a.pos.y, 2)); espFx(s, 1.1, (k, o, dt) => { o.position.addScaledVector(v, dt); o.material.opacity = 1 - k * k; }); }
+    for (let i = 0; i < 7; i++) { const s = espSprite(espTex('bat'), 0xffffff, 1.3); const an = Math.random() * Math.PI * 2; const v = new THREE.Vector3(Math.cos(an) * 7, 3 + Math.random() * 3, Math.sin(an) * 7); s.position.copy(g2tS(a.pos.x, a.pos.y, 2)); espFx(s, 1.1, (k, o, dt) => { o.position.addScaledVector(v, dt); o.material.opacity = 1 - k * k; }); }
     if (foe) espIcon(foe, '•_•', '#ff4d6d', 1.7, 1.4);
     return true;
   },
@@ -2235,7 +2290,7 @@ const ESP_FN = {
     const geo = new THREE.BoxGeometry(W2 * 2, 2.4, 0.7); const tx = espTex('brick').clone(); tx.needsUpdate = true; tx.repeat.set(W2 * 2 / 2.6, 1.2);
     const m = new THREE.Mesh(geo, [new THREE.MeshLambertMaterial({ color: 0x8a3e24 }), new THREE.MeshLambertMaterial({ color: 0x8a3e24 }), new THREE.MeshLambertMaterial({ color: 0xa04a2a }), new THREE.MeshLambertMaterial({ color: 0x5a2616 }), new THREE.MeshLambertMaterial({ map: tx }), new THREE.MeshLambertMaterial({ map: tx })]);
     const ol = new THREE.Mesh(new THREE.BoxGeometry(W2 * 2 + 0.12, 2.52, 0.82), new THREE.MeshBasicMaterial({ color: 0x14193a, side: THREE.BackSide })); m.add(ol);
-    m.position.copy(g2t(0, y, -1.3)); shadowFlags(m, true, true);
+    m.position.copy(g2tS(0, y, -1.3)); shadowFlags(m, true, true);
     espAddObst({ kind: 'muro', x: 0, y, hw: W2, hd: 0.45, t: 5, life: 5, blocks: 1 - a.team, ball: s, mesh: m });
     for (let i = -4; i <= 4; i++) espPuffs(i * W2 / 4, y, 0.2, 0xd8b090, 1, 1.2, 1.6, 0.8, 0.5);
     return true;
@@ -2248,6 +2303,7 @@ function espGhostVis(a, on) {
   a.model.traverse((o) => {
     if (!o.isMesh) return;
     if (o.userData.outline) { o.visible = !on; return; }
+    if (o.userData.shadowProxy) return;
     const ms = Array.isArray(o.material) ? o.material : [o.material];
     ms.forEach((m) => { if (on) { m.userData.espT = m.transparent; m.transparent = true; m.opacity = 0.38; m.depthWrite = false; if (m.color) { m.userData.espC = m.color.getHex(); m.color.setHex(0x6a7cff); } } else { m.transparent = !!m.userData.espT; m.opacity = 1; m.depthWrite = true; if (m.color && m.userData.espC !== undefined) m.color.setHex(m.userData.espC); } m.needsUpdate = true; });
   });
@@ -2358,7 +2414,7 @@ function espUpdate(dt, playing) {
     else { if (!L.grab) { L.grab = true; espSfx.puf(); } const k = Math.min(1, (L.t - 0.16) / 0.26); reach = dist * (1 - k); ball.owner = null; ball.vel.set(0, 0, 0);
       const tgt = mouth.clone().addScaledVector(D.clone().normalize(), Math.max(0.6, reach)); ball.pos.set(tgt.x, tgt.y, Math.max(BR, tgt.z)); }
     const ang = Math.atan2(D.x, D.y); a.face.set(Math.sin(ang), Math.cos(ang));
-    L.g.position.copy(g2t(mouth.x, mouth.y, mouth.z));
+    L.g.position.copy(g2tS(mouth.x, mouth.y, mouth.z));
     L.g.lookAt(g2t(bp.x, bp.y, bp.z)); L.tongue.scale.set(1, 1, Math.max(0.05, reach)); L.tip.position.set(0, 0, Math.max(0.05, reach));
     if (L.t > 0.42 || ball.owner) { scene.remove(L.g); espDispose(L.g); ESP.lengua = null; if (!ball.owner && S.mode === 'play') { giveBall(a); ball.noCatch = null; } LOG('lengua', a, {}); }
   }
@@ -2367,11 +2423,11 @@ function espUpdate(dt, playing) {
   for (let i = ESP.decoys.length - 1; i >= 0; i--) {
     const d = ESP.decoys[i]; d.t += dt; d.alive = d.t < d.life;
     d.vel.z -= GRAV * dt; d.pos.addScaledVector(d.vel, dt); if (d.pos.z < BR) { d.pos.z = BR; d.vel.z = Math.abs(d.vel.z) * 0.5; d.vel.x *= 0.98; d.vel.y *= 0.98; }
-    d.mesh.position.copy(g2t(d.pos.x, d.pos.y, d.pos.z)); d.mesh.rotation.x += dt * 12;
+    d.mesh.position.copy(g2tS(d.pos.x, d.pos.y, d.pos.z)); d.mesh.rotation.x += dt * 12;
     const lineCross = Math.abs(d.pos.y) > HL - 0.3;
     if (!d.alive || lineCross) {
       espPuffs(d.pos.x, d.pos.y, d.pos.z, 0xffffff, 10, 1.2, 1.3, 0.6); espSfx.puf();
-      const t = espSprite(espTex('txt:PUF:#ffffff'), 0xffffff, 2); t.position.copy(g2t(d.pos.x, d.pos.y, d.pos.z + 1.2)); espFx(t, 0.8, (k, o) => { o.material.opacity = 1 - k; o.position.y += 0.02; });
+      const t = espSprite(espTex('txt:PUF:#ffffff'), 0xffffff, 2); t.position.copy(g2tS(d.pos.x, d.pos.y, d.pos.z + 1.2)); espFx(t, 0.8, (k, o) => { o.material.opacity = 1 - k; o.position.y += 0.02; });
       scene.remove(d.mesh); ESP.decoys.splice(i, 1); if (d.gk && d.gk.decoy === d) d.gk.decoy = null;
     }
   }
@@ -2382,10 +2438,13 @@ function espUpdate(dt, playing) {
 function espSpawnDecoy(a, tgt) {
   const gk = espGkFoe(a); if (!ballMesh) return;
   const mesh = ballMesh.clone(); scene.add(mesh);
-  const dir = new THREE.Vector2(tgt.x - a.pos.x, tgt.y - a.pos.y).normalize(), sp = 21;
+  const L = Math.hypot(tgt.x - a.pos.x, tgt.y - a.pos.y), dir = new THREE.Vector2(tgt.x - a.pos.x, tgt.y - a.pos.y).normalize(), sp = THREE.MathUtils.clamp(8 + L * 0.9, 12, 21);
+  // update 31: los rivales de campo cercanos también pican y van a por el falso un momento
+  for (const f of fieldPlayers()) if (f.team !== a.team && f !== user && Math.hypot(f.pos.x - a.pos.x, f.pos.y - a.pos.y) < 16) f.decoyChase = { until: S.t + 0.7 + Math.random() * 0.5 };
   const d = { mesh, pos: new THREE.Vector3(a.pos.x + dir.x * (PR + BR + 0.15) - dir.y * 0.4, a.pos.y + dir.y * (PR + BR + 0.15) + dir.x * 0.4, BR + 0.05), vel: new THREE.Vector3(dir.x * sp, dir.y * sp, 2.2), t: 0, life: 1.6, alive: true, gk };
   ESP.decoys.push(d); if (gk) { gk.decoy = d; gk.react = 0; gk.wasComing = false; }
-  LOG('señuelo', a, {});
+  for (const f of fieldPlayers()) if (f.decoyChase && !f.decoyChase.d) f.decoyChase.d = d;
+  LOG('señuelo', a, { x: +tgt.x.toFixed(1), y: +tgt.y.toFixed(1), conBalon: ball.owner === a });
 }
 // colisiones con obstáculos (después de mover a todos)
 function espCollide() {
@@ -2492,6 +2551,7 @@ function startGame() {
   elA.textContent = '0'; elB.textContent = '0'; elReloj._t = null;
   applyPracticeHud();
   document.body.classList.toggle('m2v2', is2v2());   // update 30
+  applyTeamDiscs();   // update 31
   applyBoots(user.model, bootEquip());
   pantalla.classList.remove('visible'); menuEl.classList.remove('visible'); hudSet(true);
   sfx.whistle(); kickoff(true);
@@ -2853,7 +2913,7 @@ function makeLobPreview() {
   const cr = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.12).rotateX(-Math.PI / 2), r1.material);
   const cr2 = cr.clone(); cr2.rotation.y = Math.PI / 2;
   for (const m of [r1, r2, cr, cr2]) { m.renderOrder = 4; m.position.y = 0.05; lobLand.add(m); }
-  flightMark = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.75, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }));
+  flightMark = new THREE.Mesh(new THREE.RingGeometry(LAND_R - 0.22, LAND_R, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }));
   flightMark.renderOrder = 3;
   for (const o of [lobArc, lobGround, lobLand, flightMark]) { o.visible = false; o.frustumCulled = false; scene.add(o); }
 }
@@ -2920,12 +2980,12 @@ function updateLobPreview(on, shotPrev) {
 }
 function updateFlightMark() {
   if (!flightMark) return;
-  const on = !ball.owner && ball.pos.z > 1.4 && S.mode !== 'menu';
+  const on = !ball.owner && (ball.pos.z > 1.4 || (ball.pos.z > BALL_LOW * 0.8 && landPt())) && S.mode !== 'menu';
   flightMark.visible = on;
   if (!on) return;
-  const l = predictFlight(ball.pos, ball.vel, null, 4, 1 / 60, ball.fx);
+  const l = landPt() || predictFlight(ball.pos, ball.vel, null, 4, 1 / 60, ball.fx);
   flightMark.position.set(l.x, 0.04, -l.y);
-  flightMark.scale.setScalar(0.8 + Math.min(1.2, ball.pos.z * 0.08));
+  flightMark.scale.setScalar(1);   // update 31: radio fijo = zona real donde se puede cabecear
 }
 function updateAimLine() {
   if (!aimLine) return;
@@ -2945,7 +3005,7 @@ function updateAimLine() {
   const body = Math.max(0.3, len - start - 1.25);
   for (const m of [u.strip, u.shadow]) { m.scale.set(m === u.shadow ? w + 0.16 : w, 1, body); m.position.z = -start; }
   u.head.position.z = -(start + body); u.headSh.position.z = -(start + body) + 0.12;
-  aimLine.position.copy(g2t(user.pos.x, user.pos.y, 0));
+  aimLine.position.copy(g2tS(user.pos.x, user.pos.y, 0));
   aimLine.rotation.y = Math.atan2(-aim.dir.x, aim.dir.y);
 }
 function render(dt) {
@@ -2954,7 +3014,7 @@ function render(dt) {
   for (const a of actors) a.sync(dt, S.t);
   espRender(dt);   // update 29: efectos de especiales (después de sync: tumbado / vuelo / resbalón)
   u30Render(dt);   // update 30: salto / estirada alta
-  ballMesh.position.copy(g2t(ball.pos.x, ball.pos.y, ball.pos.z));
+  ballMesh.position.copy(g2tS(ball.pos.x, ball.pos.y, ball.pos.z));
   // giro del balón: en el suelo rueda sin deslizar (ω = up×v / r, con transición tras el bote); en el aire conserva su giro
   const v = _wv.set(ball.vel.x, 0, -ball.vel.y);
   if (ball.owner && !ball.owner.keeper) v.set(ball.owner.vel.x, 0, -ball.owner.vel.y);
@@ -2968,7 +3028,7 @@ function render(dt) {
   const h = ball.pos.z - BR; ballShadow.scale.setScalar(Math.max(0.45, 1 + h * 0.05)); ballShadow.material.opacity = Math.max(0.12, 0.42 - h * 0.025);   // sombra: más grande y clara cuanto más alto
   // flecha de apuntado
   if (input.shootDown && ball.owner === user) {
-    aimArrow.visible = true; aimArrow.position.copy(g2t(user.pos.x, user.pos.y, 0.05));
+    aimArrow.visible = true; aimArrow.position.copy(g2tS(user.pos.x, user.pos.y, 0.05));
     aimArrow.rotation.y = Math.atan2(-user.face.x, user.face.y);
     aimArrow.scale.set(1, 1, 0.6 + 2.4 * input.charge);
     aimArrow.children[0].material.color.setHSL(0.13 - 0.13 * input.charge, 1, 0.55);
@@ -3115,7 +3175,8 @@ function renderPortraits() {
 }
 function cardHTML(key) {
   const c = CHARS.find((x) => x.key === key), t = STATS[key];
-  const bars = STAT_KEYS.map((k, i) => `<div class="cs ${i < 4 ? 'at' : 'de'}"><span>${STAT_NAMES[k].slice(0, 3)}</span><i><b style="width:${t[k]}%"></b></i><em>${t[k]}</em></div>`).join('');
+  const bars = STAT_KEYS.map((k, i) => `<div class="cs ${i < 4 ? 'at' : 'de'}"><span>${STAT_NAMES[k].slice(0, 3)}</span><i><b style="width:${t[k]}%"></b></i><em>${t[k]}</em></div>`).join('') +
+    `<div class="cs ef"><span>EFE</span><i><b style="width:${t.cur || 0}%"></b></i><em>${t.cur || 0}</em></div>`;   // update 31: EFECTO
   return `<div class="mlCard ${t.rareza}" data-k="${key}" style="--c:${c.color}">` +
     `<div class="mlFoto"><img src="${PORTRAITS[key] || c.card}" alt="" draggable="false"></div>` +
     `<div class="mlTop"><div class="mlMedia">${t.media}</div><div class="mlPos">${t.pos}</div></div><div class="mlRar">${t.rareza.toUpperCase()}</div>` +
@@ -3811,8 +3872,8 @@ btnAjAsist.addEventListener('click', () => setAimAssist(!AJ.aimAssist));
 setAimAssist(AJ.aimAssist);
 // update 30: cabezazos, salto automático, porteros mejorados y cambio de jugador (2 VS 2)
 const AJ30 = [['ajCabezazos', 'cabezazos', 'CABEZAZOS (SALTAR A BALONES ALTOS)'], ['ajSaltoAuto', 'saltoAuto', 'SALTO AUTOMÁTICO A BALONES ALTOS'],
-  ['ajPorteros', 'porteros', 'PORTEROS: SALTO Y ESTIRADA ALTA'], ['ajCambio', 'cambio', '2 VS 2: PASE SIN BALÓN = CAMBIAR DE JUGADOR']];
-function setAj30(id, k, txt, on) { AJ[k] = !!on; saveAjustes(); const b = document.getElementById(id); if (b) { b.textContent = txt + ': ' + (AJ[k] ? 'SÍ' : 'NO'); b.classList.toggle('on', AJ[k]); } }
+  ['ajPorteros', 'porteros', 'PORTEROS: SALTO Y ESTIRADA ALTA'], ['ajCabCirculo', 'cabCirculo', 'CABEZAZO SOLO DENTRO DEL CÍRCULO DE CAÍDA'], ['ajTrampa', 'trampaApunta', 'BALÓN TRAMPA: APUNTAS Y SIGUES CON TU BALÓN'], ['ajDiscos', 'discos2v2', '2 VS 2: CÍRCULOS AZUL (TU EQUIPO) / ROJO (RIVALES)'], ['ajCambio', 'cambio', '2 VS 2: PASE SIN BALÓN = CAMBIAR DE JUGADOR']];
+function setAj30(id, k, txt, on) { AJ[k] = !!on; saveAjustes(); if (k === 'discos2v2' && typeof applyTeamDiscs === 'function' && user) applyTeamDiscs(); const b = document.getElementById(id); if (b) { b.textContent = txt + ': ' + (AJ[k] ? 'SÍ' : 'NO'); b.classList.toggle('on', AJ[k]); } }
 for (const [id, k, txt] of AJ30) { const b = document.getElementById(id); if (b) b.addEventListener('click', () => setAj30(id, k, txt, !AJ[k])); setAj30(id, k, txt, AJ[k]); }
 document.getElementById('ajEspeciales').addEventListener('click', () => setEspeciales(!espOn()));
 setEspeciales(espOn());
@@ -3887,7 +3948,12 @@ const PASE_HOLD_MS = 280;              // mantener PASE más de esto = pase elev
 const headersOn = () => AJ.cabezazos !== false;
 const gkPlus = () => AJ.porteros !== false;
 const is2v2 = () => !S.practice && !!mateA && !!mateB;
-function fieldPlayers() { if (S.practice) return user ? [user] : []; return [user, mateA, rival, mateB].filter(Boolean); }
+const _fp = { k: null, l: [] };
+function fieldPlayers() {   // update 31: misma lista mientras no cambien los jugadores (antes: un array nuevo en cada llamada, ~20 por frame)
+  const p = !!S.practice;
+  if (_fp.k && _fp.k[0] === p && _fp.k[1] === user && _fp.k[2] === mateA && _fp.k[3] === rival && _fp.k[4] === mateB) return _fp.l;
+  _fp.k = [p, user, mateA, rival, mateB]; _fp.l = p ? (user ? [user] : []) : [user, mateA, rival, mateB].filter(Boolean); return _fp.l;
+}
 function foesOf(a) { return fieldPlayers().filter((x) => x.team !== a.team); }
 function mateOf(a) { if (!is2v2()) return null; return fieldPlayers().find((x) => x !== a && x.team === a.team) || null; }
 function nearestFoe(a, p) { p = p || a.pos; let b = null, bd = 1e9; for (const f of foesOf(a)) { const d = Math.hypot(f.pos.x - p.x, f.pos.y - p.y); if (d < bd) { bd = d; b = f; } } return b; }
@@ -3937,7 +4003,7 @@ function releasePass(a, tgt, lofted, m) {
     const inBox = m && Math.abs(goalCenter(a.team).y - tgt.y) < 13 && Math.abs(tgt.x) < 10;
     const zt = inBox ? HEAD_H + 0.2 : 0.8, T = THREE.MathUtils.clamp(L / 14, 0.7, 1.5), D = Math.max(1, L - off);
     const vz = (zt - ball.pos.z + 0.5 * GRAV * T * T) / T, vh = D / T * 1.06;   // +6 %: rozamiento del aire
-    ball.vel.set(d.x * vh, d.y * vh, vz);
+    { const ef = effectCurve(a, d, D, vh, 0.5, m ? m.pos : null); if (ef) { ball.fx.curve = ef; ball.vel.set(d.x * vh, d.y * vh, vz); } else ball.vel.set(d.x * vh, d.y * vh, vz); }   // update 31: EFECTO en el centro
     ball.w.set(0, 1, 0).cross(_wv.set(ball.vel.x, 0, -ball.vel.y)).multiplyScalar(-0.25 / BR);
   } else {
     const sp = THREE.MathUtils.clamp(9 + L * 0.55, 11, 22);
@@ -4067,14 +4133,21 @@ function ai2Raw(a, opp, dt) {
   a.wantTurbo = a.pos.distanceTo(cs) > 5 && a.energy > 0.35;
   return aiArrive(a, cs, 1.3, 0.35);
 }
+const AI_FAR_DT = 1 / 20, AI_STAT = { full: 0, skip: 0 };   // update 31: IA de bots lejos del balón a 20 Hz en 2 VS 2
 function botStep(a, playing, dt) {
   const opp = espFoe(a) || nearestFoe(a);
   let w = new V2();
   if (playing && a.freezeT <= 0 && a.slipT <= 0) {
-    w = is2v2() ? aiField(a, opp, dt, ai2Raw) : aiField(a, opp, dt);
+    if (is2v2()) {
+      a.aiAcc = (a.aiAcc || 0) + dt;
+      const far = ball.owner !== a && Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y) > 7 && !a.decoyChase;
+      if (!far || !a.aiW || a.aiAcc >= AI_FAR_DT) { w = aiField(a, opp, a.aiAcc, ai2Raw); a.aiW = (a.aiW || new V2()).copy(w); a.aiAcc = 0; AI_STAT.full++; }
+      else { w.copy(a.aiW); AI_STAT.skip++; }
+    } else w = aiField(a, opp, dt);
     const hp = headersOn() ? botHeaderPlan(a) : null;
     if (hp) { w = aiArrive(a, new V2(hp.x - (hp.vx || 0) * 0.05, hp.y - (hp.vy || 0) * 0.05), 0.8, 0.15); a.wantTurbo = hp.run > 2.5 && a.energy > 0.3; }
     w = espAiWish(a, w, dt);
+    w = trampaBot(a, w);   // update 31: balón trampa (perseguir el falso / chut al otro palo)
   }
   if (a.jumping) w.multiplyScalar(0.45);
   if (playing) espAI(a, opp, dt);
@@ -4084,9 +4157,92 @@ function botStep(a, playing, dt) {
   stepJump(a, dt);
 }
 
+// ---------- update 31: BALÓN TRAMPA apuntado ----------
+let trampa = null, trampaArrow = null;
+const _trc = new THREE.Raycaster(), _trv = new THREE.Vector2(), _trPl = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), _trh = new THREE.Vector3();
+function trampaDefault(a) { const gk = espGkFoe(a), gy = goalCenter(a.team).y, sd = gk && Math.abs(gk.pos.x) > 0.3 ? Math.sign(gk.pos.x) : 1; return { x: sd * (GW - 1.0), y: gy }; }
+function screenToField(cx, cy) {
+  const r = renderer.domElement.getBoundingClientRect(); _trv.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  _trc.setFromCamera(_trv, camera); if (!_trc.ray.intersectPlane(_trPl, _trh)) return null; return { x: _trh.x, y: -_trh.z };
+}
+function trampaStart(a) {
+  trampa = { a, t0: S.t, tgt: trampaDefault(a), held: true, x0: null, y0: null, drag: false };
+  if (!trampaArrow) {
+    const g = new THREE.Group(), m = new THREE.MeshBasicMaterial({ color: 0x3fd18b, transparent: true, opacity: 0.85, depthWrite: false });
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 1).rotateX(-Math.PI / 2).translate(0, 0, -0.5), m); body.name = 'cuerpo';
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.1, 3).rotateX(-Math.PI / 2).translate(0, 0, -0.55), m); head.scale.y = 0.05; head.name = 'punta';
+    g.add(body, head); g.renderOrder = 4; scene.add(g); trampaArrow = g;
+  }
+  trampaArrow.visible = true; showBanner('APUNTA EL BALÓN FALSO', 'bAzul', 900); LOG('trampa_apunta', a, {});
+}
+function trampaFire(tgt) {
+  if (!trampa) return; const a = trampa.a; trampa = null; if (trampaArrow) trampaArrow.visible = false;
+  espSpawnDecoy(a, tgt || trampaDefault(a)); espSfx.turtobola();
+}
+function trampaUpdate() {
+  if (!trampa) return;
+  const a = trampa.a;
+  if (S.mode !== 'play' || !a) { trampa = null; if (trampaArrow) trampaArrow.visible = false; return; }
+  if (S.t - trampa.t0 > 3.5) { trampaFire(trampa.tgt); return; }   // sin decidir: sale hacia el palo del portero
+  const dx = trampa.tgt.x - a.pos.x, dy = trampa.tgt.y - a.pos.y, L = Math.max(1.5, Math.min(14, Math.hypot(dx, dy)));
+  trampaArrow.position.copy(g2tS(a.pos.x, a.pos.y, 0.06)); trampaArrow.rotation.y = Math.atan2(-dx, dy);
+  trampaArrow.getObjectByName('cuerpo').scale.z = L - 1; trampaArrow.getObjectByName('punta').position.z = -(L - 1);
+}
+function trampaPointer(e, phase) {   // devuelve true si el evento es del balón trampa
+  if (!trampa) return false;
+  if (phase === 'move' && trampa.held && e.pointerId === trampa.pid) {
+    if (trampa.x0 === null) { trampa.x0 = e.clientX; trampa.y0 = e.clientY; }
+    if (Math.hypot(e.clientX - trampa.x0, e.clientY - trampa.y0) > 24) { trampa.drag = true; const p = screenToField(e.clientX, e.clientY); if (p) trampa.tgt = p; }
+    return true;
+  }
+  if (phase === 'up' && trampa.held && e.pointerId === trampa.pid) { trampa.held = false; if (trampa.drag) trampaFire(trampa.tgt); return true; }
+  if (phase === 'down' && !trampa.held) {
+    if (e.target === btnEspecial || btnEspecial.contains(e.target)) { trampaFire(trampa.tgt); return true; }   // 2º toque en ESPECIAL
+    if (e.target === renderer.domElement) { const p = screenToField(e.clientX, e.clientY); trampaFire(p || trampa.tgt); return true; }   // toque en el campo
+  }
+  return false;
+}
+window.addEventListener('pointermove', (e) => trampaPointer(e, 'move'));
+window.addEventListener('pointerup', (e) => trampaPointer(e, 'up'));
+window.addEventListener('pointerdown', (e) => { if (trampaPointer(e, 'down')) { e.stopPropagation(); } }, true);
+function trampaBot(a, w) {
+  if (a.decoyChase) {
+    const c = a.decoyChase, d = c.d;
+    if (S.t > c.until || !d || !d.alive) a.decoyChase = null;
+    else return aiArrive(a, new V2(d.pos.x, d.pos.y), 0.5, 0.1);   // pica: va a por el balón falso
+  }
+  if (a.trampaShot && S.t >= a.trampaShot.at) {
+    const t = a.trampaShot; a.trampaShot = null;
+    if (ball.owner === a && S.mode === 'play') { const gy = goalCenter(a.team).y; a.trampaShot = t; shoot(a, new THREE.Vector2(t.x - a.pos.x, gy - a.pos.y), 0.9, false); }
+  }
+  return w;
+}
+
 // ---------- SALTO Y CABEZAZO ----------
 const _ap = new THREE.Vector3(), _av = new THREE.Vector3(), _afx = { curve: 0, lift: 0, dip: 0 };
-// ¿llega el balón a la altura de la cabeza (saltando) cerca de este jugador antes de caer? -> punto, tiempo y altura de salto
+// update 31: círculo de caída (la marca blanca del suelo). Solo se puede cabecear estando DENTRO (usuario y bots)
+const _lp = { x: 0, y: 0, k: -1, t: -1 }, _lq = new THREE.Vector3(), _lv = new THREE.Vector3(), _lfx = { curve: 0, lift: 0, dip: 0 };
+function landPt() {
+  if (ball.owner || ball.pos.z <= BR + 0.05) return null;
+  const key = ball.kickN || 0;
+  if (_lp.t !== S.t || _lp.k !== key) {
+    // punto donde el balón BAJA a altura de remate (cabeza + medio salto); si nunca pasa por ahí, donde toca el césped
+    _lq.copy(ball.pos); _lv.copy(ball.vel); Object.assign(_lfx, ball.fx); const zh = HEAD_H + 0.45; let found = false;
+    for (let t = 0; t < 4; t += 1 / 60) {
+      airStep(_lq, _lv, 1 / 60, _lfx);
+      if (_lv.z < 0 && _lq.z <= zh) { found = true; break; }
+      if (_lq.z <= BR + 0.02) break;
+    }
+    if (found || _lq.z <= BR + 0.02) { _lp.x = _lq.x; _lp.y = _lq.y; } else { const l = predictFlight(ball.pos, ball.vel, null, 4, 1 / 60, ball.fx); _lp.x = l.x; _lp.y = l.y; }
+    _lp.t = S.t; _lp.k = key;
+  }
+  return _lp;
+}
+function inLandCircle(a, x, y) {
+  if (AJ.cabCirculo === false) return true;
+  const l = landPt(); if (!l) return false;
+  return Math.hypot((x === undefined ? a.pos.x : x) - l.x, (y === undefined ? a.pos.y : y) - l.y) <= LAND_R;
+}
 function aerialPlan(a, maxT = 1.0) {
   if (!a || ball.owner || S.mode !== 'play' || a.keeper) return null;
   if (ball.pos.z < BALL_LOW * 0.8 && ball.vel.z < 2) return null;
@@ -4098,7 +4254,7 @@ function aerialPlan(a, maxT = 1.0) {
     const need = _ap.z - HEAD_H;
     if (_ap.z > BALL_LOW + 0.05 && need < 0.95 && _av.z < 3) {
       const run = Math.hypot(_ap.x - a.pos.x, _ap.y - a.pos.y);
-      if (run < reach + sp * Math.max(0, t - 0.08)) return { t, x: _ap.x, y: _ap.y, z: _ap.z, vx: _av.x, vy: _av.y, jump: THREE.MathUtils.clamp(need + 0.08, 0.15, 0.95), run };
+      if (run < reach + sp * Math.max(0, t - 0.08) && inLandCircle(a, _ap.x, _ap.y)) return { t, x: _ap.x, y: _ap.y, z: _ap.z, vx: _av.x, vy: _av.y, jump: THREE.MathUtils.clamp(need + 0.08, 0.15, 0.95), run };
     }
   }
   return null;
@@ -4108,23 +4264,24 @@ function canJump(a) { return !a.keeper && !a.jumping && a.stun <= 0 && a.freezeT
 function startJump(a, plan, intent) {
   if (!canJump(a)) return false;
   const v0 = jumpV0(plan ? plan.jump : 0.6);
-  a.jumping = true; a.jumpZ = 0.001; a.jumpVz = v0; a.headDone = false; a.headIntent = intent || 'auto'; a.jumpQ = null;
+  a.jumpIn = inLandCircle(a); a.jumping = true; a.jumpZ = 0.001; a.jumpVz = v0; a.headDone = false; a.headIntent = intent || 'auto'; a.jumpQ = null;
   const apexT = v0 / GRAV, imp = ((a.meta.Header && a.meta.Header.impact) || 13) / 30;
   a.headTs = THREE.MathUtils.clamp(imp / apexT, 0.7, 2.4);
   a.play('Header', 0.05, true);
-  LOG('salto', a, { intent: a.headIntent, h: +(v0 * v0 / 2 / GRAV).toFixed(2) });
+  const _l = landPt(); LOG('salto', a, { intent: a.headIntent, h: +(v0 * v0 / 2 / GRAV).toFixed(2), dentro: a.jumpIn, dLand: _l ? +Math.hypot(a.pos.x - _l.x, a.pos.y - _l.y).toFixed(2) : -1 });
   return true;
 }
 function queueJump(a, plan, intent) {   // salta en el momento justo para que el punto más alto coincida con el balón
   const apexT = jumpV0(plan.jump) / GRAV;
-  if (plan.t <= apexT + 0.05) return startJump(a, plan, intent);
+  if (plan.t <= apexT + 0.05) return inLandCircle(a) ? startJump(a, plan, intent) : false;
   a.jumpQ = { at: S.t + plan.t - apexT, intent, plan }; a.headAssist = plan;
   return true;
 }
 function stepJump(a, dt) {
   if (a.jumpQ && S.t >= a.jumpQ.at) {
     const q = a.jumpQ; a.jumpQ = null; a.headAssist = null;
-    if (!ball.owner) startJump(a, aerialPlan(a, 0.7) || q.plan, q.intent);
+    if (!ball.owner && inLandCircle(a)) startJump(a, aerialPlan(a, 0.7) || q.plan, q.intent);
+    else LOG('cabeza_fuera_circulo', a, {});
   }
   if (a.jumpQ && ball.owner) { a.jumpQ = null; a.headAssist = null; }
   if (!a.jumping) return;
@@ -4134,6 +4291,7 @@ function stepJump(a, dt) {
 // contacto de cabeza (en el bucle de contacto con el balón)
 function u30HeadContact(a) {
   if (!headersOn() || ball.owner || !a.jumping || a.headDone) return false;
+  if (!a.jumpIn) return false;   // update 31: saltó fuera del círculo de caída
   if (ball.pos.z <= BALL_LOW) return false;
   const d = Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y), hz = HEAD_H + a.jumpZ;
   if (d > PR + BR + 0.4 || Math.abs(ball.pos.z - hz) > 0.75) return false;
@@ -4205,13 +4363,14 @@ function botHeaderPlan(a) {   // el bot ve venir un balón aéreo: va al punto y
   if (a.headKey !== key) { a.headKey = key; a.headWill = Math.random() < 0.85; }   // a veces calcula mal y no salta
   if (!a.headWill) return null;
   a.headPlan = p;
-  if (p.t < 0.9) queueJump(a, p, 'auto');
+  if (p.t < 0.9 && inLandCircle(a)) queueJump(a, p, 'auto');
   return p;
 }
 function userHeader(intent) {
   if (!user || S.mode !== 'play' || S.paused || ball.owner || !headersOn()) return false;
   if (user.jumping) { if (!user.headDone) user.headIntent = intent; return true; }
   const plan = aerialPlan(user, 1.2); if (!plan) return false;
+  if (!inLandCircle(user)) { LOG('cabeza_fuera_circulo', user, {}); return false; }
   return queueJump(user, plan, intent);
 }
 function u30UserWish(wish, playing, dt = 1 / 60) {
@@ -4321,7 +4480,7 @@ function swapControl() {
   if (!is2v2() || !mateA || S.mode !== 'play') return false;
   const o = user; user = mateA; mateA = o;
   const tri = o.marker; if (tri) { o.root.remove(tri); user.root.add(tri); user.marker = tri; o.marker = null; }
-  user.ring.material.color.setHex(0x3d8bff); mateA.ring.material.color.setHex(0x8fbcff);
+  user.ring.material.color.setHex(0x3d8bff); mateA.ring.material.color.setHex(0x8fbcff); applyTeamDiscs();
   for (const x of [user, mateA]) { x.aiS = null; x.jumpQ = null; x.headAssist = null; x.supP = null; }
   releaseShoot(true); aimEnd(null, true);
   espSetBtnLabel(); sfx.dribble(); LOG('cambio_jugador', user, {});
@@ -4367,8 +4526,9 @@ window.addEventListener('keyup', (e) => { if (e.code === 'KeyC') paseUp(); });
 // ---------- UI por frame ----------
 let possRing = null;
 function u30UI() {
+  trampaUpdate();
   if (editor.on) return;
-  const air = !!user && S.mode === 'play' && ball.owner !== user && headersOn() && !!(S.uAir || user.jumping || user.jumpQ);
+  const air = !!user && S.mode === 'play' && ball.owner !== user && headersOn() && !!((S.uAir && inLandCircle(user)) || user.jumping || user.jumpQ);
   if (acciones._air !== air) {
     acciones._air = air; acciones.classList.toggle('aereo', air); btnChutar.classList.toggle('cabeza', air);
     const t = btnChutar.querySelector('.btnTxt'); if (t) t.textContent = air ? 'CABEZA' : (AJ.swipeShot ? 'DESLIZA' : 'CHUTAR');
@@ -4385,8 +4545,31 @@ function u30UI() {
   // quién lleva el balón (2 VS 2): aro amarillo bajo el poseedor
   if (!possRing) { possRing = ring(0xffd23f, 1.25 * ESCALA); possRing.position.y = 0.035; possRing.visible = false; scene.add(possRing); }
   const o = ball.owner, show = is2v2() && o && !o.keeper;
-  possRing.visible = !!show;
+  possRing.visible = !!show && !discosOn();   // update 31: con círculos de equipo el poseedor late (sin aro amarillo)
+  teamDiscPulse(show ? o : null);
   if (show) { possRing.position.x = o.root.position.x; possRing.position.z = o.root.position.z; possRing.scale.setScalar(1 + 0.06 * Math.sin(S.t * 8)); }
+}
+// ---------- update 31: círculos sólidos de equipo en 2 VS 2 ----------
+const DISC_AZUL = 0x2f7dff, DISC_ROJO = 0xff3434;
+let discGeo = null, userDot = null;
+function discosOn() { return is2v2() && AJ.discos2v2 !== false; }
+function applyTeamDiscs() {
+  const on = discosOn();
+  if (!discGeo) discGeo = new THREE.CircleGeometry(0.95 * ESCALA, 40).rotateX(-Math.PI / 2);
+  for (const a of [user, rival, gkA, gkB, mateA, mateB]) {
+    if (!a) continue;
+    if (!a.disc) { a.disc = new THREE.Mesh(discGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false })); a.disc.position.y = 0.028; a.disc.renderOrder = 2; a.root.add(a.disc); }
+    a.disc.material.color.setHex(a.team === 0 ? DISC_AZUL : DISC_ROJO); a.disc.scale.setScalar(a.keeper ? 0.85 : 1);
+    a.disc.visible = on; a.ring.visible = !on;
+  }
+  // tú: mismo azul, con un borde blanco fino para distinguirte de tu compañero (además del triángulo)
+  if (!userDot) { userDot = new THREE.Mesh(new THREE.RingGeometry(0.95 * ESCALA * 0.86, 0.95 * ESCALA, 40).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthWrite: false })); userDot.position.y = 0.031; userDot.renderOrder = 3; }
+  if (userDot.parent) userDot.parent.remove(userDot);
+  if (on && user) user.root.add(userDot);
+}
+function teamDiscPulse(o) {
+  if (!discosOn()) return;
+  for (const a of [user, mateA, rival, mateB]) if (a && a.disc) { const k = a === o ? 1.08 + 0.05 * Math.sin(S.t * 8) : (a.keeper ? 0.85 : 1); a.disc.scale.setScalar(k); a.disc.material.opacity = a === o ? 0.92 : 0.8; }
 }
 function u30Render() {
   for (const a of actors) {
@@ -4443,13 +4626,15 @@ if (m2El) {
 // ---------- API de pruebas ----------
 Object.assign(window.__game, {
   setup2v2: async (uk, mk, rk, r2k) => { await campoReady; S.practice = false; S.comp = null; setupMatch(uk, rk, mk, r2k); startGame(); },
-  is2v2: () => is2v2(), fieldPlayers: () => fieldPlayers(), mateOf: (a) => mateOf(a),
+  is2v2: () => is2v2(), fieldPlayers: () => fieldPlayers(), AI_STAT, mateOf: (a) => mateOf(a),
   pass: (lofted) => userPass(!!lofted), pressPase: () => paseDown(), releasePase: () => paseUp(),
   header: (intent) => userHeader(intent || 'tiro'), aerialPlan: (a) => aerialPlan(a || user, 1.2),
   swap: () => swapControl(), passBall: (a, m, lofted) => passBall(a, m, lofted), startJump, doHeader,
   gkJump: (k, bz, tt) => startGkJump(k, bz, tt), startDive: (k, bx, bz) => startDive(k, bx, bz),
   open2v2, close2v2, play2v2, M2, ai2Raw,
 });
+Object.assign(window.__game, { cardHTML, shoot, THREE, effectCurve, applyTeamDiscs, discosOn, trampaFire: (x, y) => trampaFire(x === undefined ? null : { x, y }), screenToField, trampaPointer, landPt: () => { const l = landPt(); return l && { x: l.x, y: l.y }; }, inLandCircle: (a) => inLandCircle(a || user), LAND_R });   // update 31
+Object.defineProperty(window.__game, 'trampa', { get: () => trampa && { t0: trampa.t0, tgt: trampa.tgt, held: trampa.held, pid: trampa.pid }, configurable: true });
 Object.defineProperties(window.__game, {
   mateA: { get: () => mateA, configurable: true }, mateB: { get: () => mateB, configurable: true },
 });

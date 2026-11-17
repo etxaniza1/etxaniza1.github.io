@@ -652,3 +652,6 @@ body.horizontal #btnMenu2v2{font-size:clamp(12px,3.4vh,17px);padding:2px 10px 4p
 .coFinFoto.bdg{background:#14193a;overflow:hidden}
 .coFinFoto.bdg img{object-fit:cover}
 .coBtnBdg{width:1.5em;height:1.5em;border-radius:5px;border:2px solid #14193a;vertical-align:middle;margin:0 4px 0 2px;object-fit:cover}
+
+/* update 31: fila EFECTO en las cartas */
+.cs.ef b{background:#c78bff}.cs.ef span{color:#e3c6ff}
