@@ -554,7 +554,7 @@ body.practica #btnEspecial{display:none}
 .espMini{position:absolute;left:8px;right:8px;bottom:2px;height:4px;border-radius:3px;background:rgba(0,0,0,.35);overflow:hidden;pointer-events:none}
 .espMini b{display:block;height:100%;width:0;background:#ffd23f;border-radius:3px}
 .espMini.lleno b{background:#fff;box-shadow:0 0 6px #ffd23f;animation:espMiniP .8s ease-in-out infinite}
-@keyframes espMiniP{50%{background:#ffd23f}}
+@keyframes espMiniP{50%{opacity:.55}}   /* update 33: opacidad en vez de color */
 #banner.esp{font-size:40px;letter-spacing:1px}
 body.horizontal #banner.esp{font-size:34px}
 #espVelo,#espRuido{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .25s;z-index:3}
@@ -668,59 +668,69 @@ body.comboTR #btnRegate{display:none!important}
 #btnChutar.tiroPase .icono{color:#064f46}
 #btnChutar.tiroPase.cabeza{background:#ffb627}
 body.horizontal #btnChutar.tiroPase .btnTxt{font-size:clamp(10px, 3.1vmin, 13px)}
-/* ===== update 32: RÓTULOS (GOL, FUERA, PALO, PARADA…) estilo Brawl Stars ===== */
-#banner.r32{transform:none;transition:none;top:27%;font-family:"Lilita One",system-ui,sans-serif;font-weight:400;font-size:74px;letter-spacing:1px;-webkit-text-stroke:0;text-shadow:none;color:#fff;pointer-events:none;z-index:24;
+/* ===== update 33: RÓTULOS LIGEROS — elementos creados una vez y reutilizados; solo se animan transform/opacity (compositor); sin filter/blur ni sombras animadas ===== */
+#banner.r33{transform:none;transition:none;top:26%;font-family:"Lilita One",system-ui,sans-serif;font-weight:400;font-size:74px;letter-spacing:1px;-webkit-text-stroke:0;text-shadow:none;color:#fff;pointer-events:none;z-index:24;visibility:hidden;contain:layout style;
   --f1:#ffffff;--f2:#c9d3e6;--fx:#2f7dff;--ink:#0f1531}
-body.horizontal #banner.r32{font-size:clamp(40px, 15vmin, 70px);top:24%}
-#banner.r32.bAzul{--f1:#bfe6ff;--f2:#2f7dff;--fx:#2f7dff}
-#banner.r32.bRojo{--f1:#ffd0c8;--f2:#ff3434;--fx:#ff3434}
-#banner.r32.kGol{font-size:96px;--f1:#fff7b0;--f2:#ffb21e}
-body.horizontal #banner.r32.kGol{font-size:clamp(52px, 21vmin, 98px)}
-#banner.r32.kGol.bAzul{--f1:#ffffff;--f2:#2f7dff}#banner.r32.kGol.bRojo{--f1:#ffffff;--f2:#ff3434}
-#banner.r32.kFuera,#banner.r32.kPropia{--f1:#ffffff;--f2:#9aa6bf;--fx:#6b7591}
-#banner.r32.kPalo{--f1:#ffffff;--f2:#8e9bb3;--fx:#ffd23f}
-#banner.r32.kParada{--f1:#d9ffb8;--f2:#2fc35a}
-#banner.r32.kFinal,#banner.r32.kYa{--f1:#fff7b0;--f2:#ffb21e;--fx:#ffd23f}
-#banner.r32.kEsp{font-size:52px}
-body.horizontal #banner.r32.kEsp,#banner.r32.largo{font-size:clamp(28px, 9vmin, 48px)}
-#banner.r32 .rt{position:relative;display:inline-block;white-space:nowrap;line-height:1}
-#banner.r32 .rtW{display:inline-block;white-space:nowrap}
-#banner.r32 .rtSp{display:inline-block;width:.28em}
-#banner.r32 .rt i u{position:relative;text-decoration:none;color:var(--f2);
-  background:linear-gradient(180deg,var(--f1) 0%,var(--f1) 42%,var(--f2) 58%,var(--f2) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-#banner.r32 .rt i{position:relative;display:inline-block;font-style:normal;
-  animation:rtDrop .52s cubic-bezier(.2,1.6,.4,1) both;animation-delay:calc(var(--i) * 42ms);transform-origin:50% 90%}
-#banner.r32 .rt i::before{content:attr(data-c);position:absolute;left:0;top:0;-webkit-text-fill-color:var(--ink);color:var(--ink);-webkit-text-stroke:.16em var(--ink);
-  text-shadow:0 .1em 0 var(--ink),0 .16em .12em rgba(0,0,0,.45)}
-#banner.r32 .rt i::after{content:'';position:absolute;left:8%;right:8%;top:14%;height:16%;border-radius:40%;background:rgba(255,255,255,.55);filter:blur(1px);opacity:.75}
-#banner.r32 .rtFx{position:absolute;left:50%;top:50%;width:150vmax;height:150vmax;margin:-75vmax 0 0 -75vmax;z-index:-2;opacity:0;pointer-events:none;
-  background:repeating-conic-gradient(from 0deg,color-mix(in srgb,var(--fx) 55%,transparent) 0deg 9deg,transparent 9deg 22deg);
-  -webkit-mask:radial-gradient(circle,#000 0%,rgba(0,0,0,.6) 9%,transparent 24%);mask:radial-gradient(circle,#000 0%,rgba(0,0,0,.6) 9%,transparent 24%);
-  animation:rtRays 1.8s linear both}
-#banner.r32.kGol .rtFx{animation:rtRays 2.2s linear both;opacity:1}
-#banner.r32.kGol .rt{animation:rtPulse .42s ease-in-out .55s 4 alternate}
-#banner.r32.kFuera .rt,#banner.r32.kPropia .rt{animation:rtShake .42s ease .45s both}
-#banner.r32.kPalo .rt{animation:rtClang .5s ease .35s both}
-#banner.r32.kParada .rt i{animation-name:rtPunch;animation-duration:.42s}
-#banner.r32.kFuera .rtFx,#banner.r32.kPalo .rtFx,#banner.r32.kParada .rtFx,#banner.r32.kFinal .rtFx,#banner.r32.kYa .rtFx{opacity:.7}
-#banner.r32 .rtSub{display:inline-block;margin-top:.12em;font-size:.26em;letter-spacing:.06em;color:#fff;background:linear-gradient(180deg,color-mix(in srgb,var(--f2) 85%,#fff) 0%,var(--f2) 100%);
-  padding:.18em .8em .14em;border-radius:999px;border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink);text-shadow:0 2px 0 rgba(0,0,0,.35);animation:rtSub .4s cubic-bezier(.2,1.5,.4,1) .35s both}
-#banner.r32 .rtSub{display:table;margin-left:auto;margin-right:auto}
-#banner.r32.off .rt,#banner.r32.off .rtSub{animation:rtOut .3s ease-in both}
-#banner.r32.off .rtFx{animation:none;opacity:0;transition:opacity .25s}
-@keyframes rtDrop{0%{transform:translateY(-140%) scale(2.1) rotate(-14deg);opacity:0}55%{transform:translateY(8%) scale(.86,1.12) rotate(4deg);opacity:1}72%{transform:translateY(-6%) scale(1.1,.92) rotate(-2deg)}86%{transform:translateY(2%) scale(.97,1.03)}100%{transform:none;opacity:1}}
-@keyframes rtPunch{0%{transform:scale(0) rotate(-20deg);opacity:0}60%{transform:scale(1.35) rotate(6deg);opacity:1}80%{transform:scale(.92)}100%{transform:none}}
-@keyframes rtPulse{from{transform:scale(1) rotate(-1deg)}to{transform:scale(1.07) rotate(1deg)}}
-@keyframes rtShake{0%,100%{transform:none}20%{transform:translateX(-12px) rotate(-3deg)}40%{transform:translateX(10px) rotate(2deg)}60%{transform:translateX(-7px)}80%{transform:translateX(4px)}}
-@keyframes rtClang{0%{transform:none}15%{transform:translate(-9px,-4px) rotate(-5deg) scale(1.06)}35%{transform:translate(8px,3px) rotate(4deg)}55%{transform:translate(-5px,-2px) rotate(-2deg)}75%{transform:translate(3px,1px)}100%{transform:none}}
-@keyframes rtRays{0%{opacity:0;transform:rotate(0deg) scale(.4)}12%{opacity:1;transform:rotate(20deg) scale(1)}100%{opacity:.85;transform:rotate(110deg) scale(1.05)}}
-@keyframes rtSub{from{transform:translateY(60%) scale(.6);opacity:0}to{transform:none;opacity:1}}
-@keyframes rtOut{to{transform:translateY(-25%) scale(1.45);opacity:0;filter:blur(2px)}}
-#confeti{position:absolute;left:50%;top:32%;width:0;height:0;pointer-events:none;z-index:23}
-#confeti b{position:absolute;left:0;top:0;opacity:0;border-radius:2px;will-change:transform,opacity}
-#confeti.on b{animation:confe var(--d) cubic-bezier(.15,.7,.4,1) var(--dl) both}
-@keyframes confe{0%{transform:translate(0,0) scale(.3) rotate(0);opacity:1}22%{transform:translate(var(--bx),var(--by)) scale(1) rotate(calc(var(--r) * .3));opacity:1}
-  100%{transform:translate(calc(var(--bx) + var(--dx)),calc(var(--by) + 70vh)) rotate(var(--r));opacity:0}}
+#banner.r33.on{visibility:visible}
+body.horizontal #banner.r33{font-size:clamp(40px, 15vmin, 70px);top:24%}
+#banner.r33.bAzul{--f1:#cfeaff;--f2:#2f7dff;--fx:#2f7dff}#banner.r33.bRojo{--f1:#ffd6cf;--f2:#ff3434;--fx:#ff3434}
+#banner.r33.kGol{font-size:96px;--f1:#fff7b0;--f2:#ffb21e}body.horizontal #banner.r33.kGol{font-size:clamp(52px, 21vmin, 98px)}
+#banner.r33.kGol.bAzul{--f1:#ffffff;--f2:#2f7dff}#banner.r33.kGol.bRojo{--f1:#ffffff;--f2:#ff3434}
+#banner.r33.kFuera,#banner.r33.kPropia{--f1:#ffffff;--f2:#9aa6bf;--fx:#55607c}#banner.r33.kPalo{--f1:#ffffff;--f2:#8e9bb3;--fx:#e0a800}
+#banner.r33.kParada{--f1:#e2ffc8;--f2:#2fc35a;--fx:#1f9a45}#banner.r33.kFinal,#banner.r33.kYa{--f1:#fff7b0;--f2:#ffb21e;--fx:#e08a00}
+#banner.r33.kEsp{font-size:52px}body.horizontal #banner.r33.kEsp,#banner.r33.largo{font-size:clamp(28px, 9vmin, 48px)}
+#banner.r33 .rtB{position:absolute;left:0;right:0;top:.12em;height:.82em;background:linear-gradient(90deg,transparent 0%,var(--fx) 18%,var(--fx) 82%,transparent 100%);opacity:0;transform:scaleX(0)}
+#banner.r33 .rtB::after{content:"";position:absolute;left:12%;right:12%;top:0;height:.08em;background:rgba(255,255,255,.45)}
+#banner.r33 .rt{position:relative;display:inline-block;white-space:nowrap;line-height:1;opacity:0}
+#banner.r33 .rtI{position:relative;display:inline-block;color:var(--f2);background:linear-gradient(180deg,var(--f1) 0%,var(--f1) 44%,var(--f2) 58%,var(--f2) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+#banner.r33 .rtI::before{content:attr(data-t);position:absolute;left:0;top:0;z-index:-1;-webkit-text-fill-color:var(--ink);color:var(--ink);-webkit-text-stroke:.15em var(--ink);text-shadow:0 .1em 0 var(--ink)}
+#banner.r33 .rtSub{display:table;margin:.12em auto 0;font-size:.26em;letter-spacing:.06em;color:#fff;background:var(--f2);padding:.18em .8em .14em;border-radius:999px;border:3px solid var(--ink);box-shadow:0 4px 0 var(--ink);opacity:0}
+#banner.r33 .rtSub:empty{display:none}
+#banner.r33.on .rt,#banner.r33.on .rtB,#banner.r33.on .rtSub{will-change:transform,opacity}
+#banner.r33.on:not(.p1) .rt{animation:rtIn .5s cubic-bezier(.2,1.4,.4,1) both}
+#banner.r33.on:not(.p1).kGol .rt{animation:rtInGol 1.5s cubic-bezier(.2,1.2,.4,1) both}
+#banner.r33.on:not(.p1).kFuera .rt,#banner.r33.on:not(.p1).kPropia .rt{animation:rtInShake .8s ease-out both}
+#banner.r33.on:not(.p1).kPalo .rt{animation:rtInClang .8s ease-out both}
+#banner.r33.on:not(.p1).kParada .rt{animation:rtPunch .45s cubic-bezier(.2,1.4,.4,1) both}
+#banner.r33.on:not(.p1) .rtB{animation:rtBand .45s ease-out .05s both}
+#banner.r33.on:not(.p1) .rtSub{animation:rtSubIn .35s cubic-bezier(.2,1.5,.4,1) .3s both}
+#banner.r33.on.p1 .rt{animation:rtInB .5s cubic-bezier(.2,1.4,.4,1) both}
+#banner.r33.on.p1.kGol .rt{animation:rtInGolB 1.5s cubic-bezier(.2,1.2,.4,1) both}
+#banner.r33.on.p1.kFuera .rt,#banner.r33.on.p1.kPropia .rt{animation:rtInShakeB .8s ease-out both}
+#banner.r33.on.p1.kPalo .rt{animation:rtInClangB .8s ease-out both}
+#banner.r33.on.p1.kParada .rt{animation:rtPunchB .45s cubic-bezier(.2,1.4,.4,1) both}
+#banner.r33.on.p1 .rtB{animation:rtBandB .45s ease-out .05s both}
+#banner.r33.on.p1 .rtSub{animation:rtSubInB .35s cubic-bezier(.2,1.5,.4,1) .3s both}
+#banner.r33.on.off .rt,#banner.r33.on.off .rtSub,#banner.r33.on.off .rtB{animation:rtOut .3s ease-in both}
+@keyframes rtOut{from{opacity:1}to{transform:translateY(-20%) scale(1.35);opacity:0}}
+@keyframes rtIn{0%{transform:translateY(-35%) scale(2.2);opacity:0}45%{transform:scale(.88,1.1);opacity:1}65%{transform:scale(1.1,.94)}82%{transform:scale(.97,1.03)}100%{transform:none;opacity:1}}
+@keyframes rtInB{0%{transform:translateY(-35%) scale(2.2);opacity:0}45%{transform:scale(.88,1.1);opacity:1}65%{transform:scale(1.1,.94)}82%{transform:scale(.97,1.03)}100%{transform:none;opacity:1}}
+@keyframes rtInGol{0%{transform:translateY(-35%) scale(2.4);opacity:0}22%{transform:scale(.86,1.12);opacity:1}32%{transform:scale(1.12,.92)}42%{transform:none}56%{transform:scale(1.07)}70%{transform:none}84%{transform:scale(1.05)}100%{transform:none;opacity:1}}
+@keyframes rtInGolB{0%{transform:translateY(-35%) scale(2.4);opacity:0}22%{transform:scale(.86,1.12);opacity:1}32%{transform:scale(1.12,.92)}42%{transform:none}56%{transform:scale(1.07)}70%{transform:none}84%{transform:scale(1.05)}100%{transform:none;opacity:1}}
+@keyframes rtInShake{0%{transform:translateY(-35%) scale(2);opacity:0}40%{transform:scale(.92,1.08);opacity:1}55%{transform:translateX(-12px) rotate(-3deg)}67%{transform:translateX(10px) rotate(2deg)}79%{transform:translateX(-6px)}90%{transform:translateX(3px)}100%{transform:none;opacity:1}}
+@keyframes rtInShakeB{0%{transform:translateY(-35%) scale(2);opacity:0}40%{transform:scale(.92,1.08);opacity:1}55%{transform:translateX(-12px) rotate(-3deg)}67%{transform:translateX(10px) rotate(2deg)}79%{transform:translateX(-6px)}90%{transform:translateX(3px)}100%{transform:none;opacity:1}}
+@keyframes rtInClang{0%{transform:scale(2) rotate(-8deg);opacity:0}35%{transform:scale(.92) rotate(3deg);opacity:1}48%{transform:translate(-9px,-4px) rotate(-5deg) scale(1.06)}62%{transform:translate(8px,3px) rotate(4deg)}76%{transform:translate(-4px,-2px) rotate(-2deg)}100%{transform:none;opacity:1}}
+@keyframes rtInClangB{0%{transform:scale(2) rotate(-8deg);opacity:0}35%{transform:scale(.92) rotate(3deg);opacity:1}48%{transform:translate(-9px,-4px) rotate(-5deg) scale(1.06)}62%{transform:translate(8px,3px) rotate(4deg)}76%{transform:translate(-4px,-2px) rotate(-2deg)}100%{transform:none;opacity:1}}
+@keyframes rtPunch{0%{transform:scale(0) rotate(-16deg);opacity:0}55%{transform:scale(1.3) rotate(5deg);opacity:1}78%{transform:scale(.93)}100%{transform:none;opacity:1}}
+@keyframes rtPunchB{0%{transform:scale(0) rotate(-16deg);opacity:0}55%{transform:scale(1.3) rotate(5deg);opacity:1}78%{transform:scale(.93)}100%{transform:none;opacity:1}}
+@keyframes rtBand{0%{transform:scaleX(0);opacity:0}35%{transform:scaleX(1.04);opacity:1}100%{transform:scaleX(1);opacity:1}}
+@keyframes rtBandB{0%{transform:scaleX(0);opacity:0}35%{transform:scaleX(1.04);opacity:1}100%{transform:scaleX(1);opacity:1}}
+@keyframes rtSubIn{0%{transform:translateY(60%) scale(.6);opacity:0}100%{transform:none;opacity:1}}
+@keyframes rtSubInB{0%{transform:translateY(60%) scale(.6);opacity:0}100%{transform:none;opacity:1}}
+#confeti{position:absolute;left:50%;top:32%;width:0;height:0;pointer-events:none;z-index:23;visibility:hidden}
+#confeti.on{visibility:visible}
+#confeti s{position:absolute;left:0;top:0;width:0;height:0;opacity:0}
+#confeti b{position:absolute;width:10px;height:14px;margin:-7px 0 0 -5px;border-radius:2px;background:var(--c0)}
+#confeti b:nth-child(4n+1){background:var(--c1)}#confeti b:nth-child(4n+2){background:var(--c2)}#confeti b:nth-child(4n+3){background:var(--c3);border-radius:50%;width:9px;height:9px}
+#confeti.on s{will-change:transform,opacity;animation:cf1 1.7s cubic-bezier(.15,.75,.35,1) both}
+#confeti.on s:nth-child(2){animation-name:cf2;animation-duration:1.9s}#confeti.on s:nth-child(3){animation-name:cf3;animation-duration:1.5s}
+#confeti.p1.on s{animation-name:cf1B}#confeti.p1.on s:nth-child(2){animation-name:cf2B}#confeti.p1.on s:nth-child(3){animation-name:cf3B}
+@keyframes cf1{0%{transform:scale(.15);opacity:1}28%{transform:scale(1) rotate(6deg);opacity:1}75%{opacity:1}100%{transform:translateY(150px) scale(1.12) rotate(14deg);opacity:0}}
+@keyframes cf1B{0%{transform:scale(.15);opacity:1}28%{transform:scale(1) rotate(6deg);opacity:1}75%{opacity:1}100%{transform:translateY(150px) scale(1.12) rotate(14deg);opacity:0}}
+@keyframes cf2{0%{transform:scale(.1) rotate(20deg);opacity:1}32%{transform:scale(1.15) rotate(-4deg);opacity:1}75%{opacity:1}100%{transform:translateY(190px) scale(1.25) rotate(-16deg);opacity:0}}
+@keyframes cf2B{0%{transform:scale(.1) rotate(20deg);opacity:1}32%{transform:scale(1.15) rotate(-4deg);opacity:1}75%{opacity:1}100%{transform:translateY(190px) scale(1.25) rotate(-16deg);opacity:0}}
+@keyframes cf3{0%{transform:scale(.2) rotate(-25deg);opacity:1}25%{transform:scale(.8) rotate(3deg);opacity:1}70%{opacity:1}100%{transform:translateY(110px) scale(.95) rotate(10deg);opacity:0}}
+@keyframes cf3B{0%{transform:scale(.2) rotate(-25deg);opacity:1}25%{transform:scale(.8) rotate(3deg);opacity:1}70%{opacity:1}100%{transform:translateY(110px) scale(.95) rotate(10deg);opacity:0}}
 
 /* ================= update 32: marcador renovado ================= */
 #marcador.m32{border-radius:16px;box-shadow:0 4px 0 rgba(0,0,0,.4),0 0 0 2px rgba(255,255,255,.9),0 6px 14px rgba(0,0,0,.35);font-family:inherit}
@@ -739,15 +749,16 @@ body.horizontal #banner.r32.kEsp,#banner.r32.largo{font-size:clamp(28px, 9vmin, 
 #marcador.m32 .nom b{display:block;font-weight:900;overflow:hidden;text-overflow:ellipsis}
 #marcador.m32 .gol{font-size:27px;min-width:24px;line-height:1;-webkit-text-stroke:1.5px rgba(10,16,40,.55);text-shadow:0 2px 0 rgba(10,16,40,.6);font-variant-numeric:tabular-nums;display:inline-block}
 #marcador.m32 #reloj{background:linear-gradient(180deg,#26325a,#141b33);font-size:21px;padding:4px 12px 6px;letter-spacing:.5px;text-shadow:0 2px 0 #000}
-#marcador.m32 #reloj.poco{color:#ffd23f;animation:mRelPoco 1s ease-in-out infinite}
-@keyframes mRelPoco{50%{color:#ff6b4a}}
+#marcador.m32 #reloj.poco{color:#ffd23f}   /* update 33: sin animar color (repintaba cada frame) */
 #marcador.m32 #pausaIco{background:linear-gradient(180deg,#26325a,#141b33)}
 #marcador.m32 .espMini{left:7px;right:7px;bottom:3px;height:5px;background:rgba(0,0,0,.4);box-shadow:inset 0 1px 0 rgba(0,0,0,.4)}
 #marcador.m32 .espMini b{background:linear-gradient(90deg,#ffb31a,#ffe25c)}
 #marcador.m32 .gol.mPop{animation:mGolPop 1.1s cubic-bezier(.2,1.6,.4,1)}
-@keyframes mGolPop{0%{transform:scale(1)}18%{transform:scale(1.9) rotate(-8deg);color:#ffe25c}40%{transform:scale(.85)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
-#marcador.m32 .eq.mPop{animation:mEqFlash 1.1s ease-out}
-@keyframes mEqFlash{0%,30%{filter:brightness(1.6) saturate(1.2)}100%{filter:none}}
+@keyframes mGolPop{0%{transform:scale(1)}18%{transform:scale(1.9) rotate(-8deg)}40%{transform:scale(.85)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+#marcador.m32 .eq::after{content:"";position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+#marcador.m32 .eq.mPop::after{animation:mEqFlash 1.1s ease-out}
+#marcador.m32 .gol.mPop{will-change:transform}
+@keyframes mEqFlash{0%,25%{opacity:.45}100%{opacity:0}}   /* update 33: destello por opacidad (antes filter) */
 body.practica #marcador.m32 .mBad{display:none}
 
 /* ================= update 32: estadísticas del partido ================= */
@@ -781,3 +792,6 @@ body.practica #marcador.m32 .mBad{display:none}
 .msMvp small{font-size:9px;letter-spacing:2px}.msMvp b{font-size:14px}.msMvp span{font-size:10px;opacity:.8;white-space:nowrap}
 .msBtn{font:inherit;font-weight:900;font-size:15px;color:#fff;background:linear-gradient(180deg,#5dd96b,#2fa83e);border:3px solid #fff;border-radius:14px;padding:8px 20px;box-shadow:0 4px 0 #1d6b27;cursor:pointer;flex:none}
 .msBtn:active{transform:translateY(3px);box-shadow:0 1px 0 #1d6b27}
+
+/* update 33: minibarra de especial por transform (sin layout) */
+#marcador .espMini b{width:100% !important;transform-origin:left center;transform:scaleX(0)}
