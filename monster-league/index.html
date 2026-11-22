@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=38';
+  var V = 'v=39';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -24,7 +24,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=38">
+<link rel="stylesheet" href="style.css?v=39">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -115,6 +115,7 @@
         <span class="lbPerfTxt"><span class="lbFila1"><span class="lbNivel"><b id="lbNivel">1</b></span><span id="lbNombre">JUGADOR</span></span><span class="lbXp"><i id="lbXpBar"></i><em id="lbXpTxt">0/100</em></span></span>
       </button>
       <button id="lbCopasTot" class="lbCopas" aria-label="Copas"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg><b id="lbCopasN">0</b><span class="lbCopasBar"><i id="lbCopasBarI"></i></span><small id="lbRango">BRONCE</small></button>
+      <button id="lbCampo" class="lbCampo" aria-label="Elegir campo" data-c="estadio"><span class="lbCampoIco" aria-hidden="true"></span><span class="lbCampoTxt"><small>CAMPO</small><b id="lbCampoNom">ESTADIO</b></span></button>
       <div class="mTitulo"><h1>MONSTER LEAGUE</h1></div>
       <button id="lbMonedas" class="lbMonedas" aria-label="Monedas: mejorar cartas"><svg class="icoMoneda" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.6"/><circle class="in" cx="12" cy="12" r="6.6"/><path class="st" d="M12 7.6l1.35 2.75 3.03.44-2.19 2.13.52 3.02L12 14.52l-2.71 1.42.52-3.02-2.19-2.13 3.03-.44z"/></svg><b id="lbMonN">0</b><i class="lbMonMas">+</i></button>
       <button id="btnAjustes" class="mEngranaje" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"/></svg></button>
@@ -175,6 +176,7 @@
       <div class="alCuerpo"><div id="lbAlinCampo" class="alCampo"></div><div id="lbAlinElige" class="alElige"></div></div>
       <button class="lbCerrar ajBtn lbOk">LISTO</button>
     </div></div>
+    <div id="lbCampoPanel" class="lbPanel" aria-label="Elegir campo"><div class="lbPanelCaja"><div class="lbPanelTit">CAMPO</div><div id="lbCampoLista" class="lbCampoLista"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
     <div id="lbNovPanel" class="lbPanel" aria-label="Novedades"><div class="lbPanelCaja"><div class="lbPanelTit">NOVEDADES</div><div id="lbNovCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
     <div id="lbPerfPanel" class="lbPanel" aria-label="Perfil"><div class="lbPanelCaja"><div class="lbPanelTit">PERFIL</div><div id="lbPerfCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
   </div>
@@ -283,6 +285,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=38"></script>
+<script type="module" src="main.js?v=39"></script>
 </body>
 </html>

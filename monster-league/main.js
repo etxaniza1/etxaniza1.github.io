@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=39';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -33,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=38';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=39';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -316,6 +317,7 @@ function loadAjustes() {
   }
   delete a.turboRegate; delete a.patron; delete a.vistoTR32;
   a.tiroPase = a.tiroPase !== false;
+  a.campo = ['estadio', 'volcan', 'hielo', 'setas', 'aleatorio'].includes(a.campo) ? a.campo : 'estadio';   // update 39: campo elegido
   a.largoStat = a.largoStat !== false; delete a.altoCaida; a.ocultaCaida = a.ocultaCaida === true;   // update 33: indicador del chut alto como en v31 (completo + diana) por defecto; el corto de v32 es opcional; el ajuste antiguo de v32 se descarta   // update 32: chut alto según TIR (SÍ)   // update 32: TIRO/PASE   // update 32: TURBO + REGATE en un botón   // update 31: 2 VS 2 con círculos sólidos azul (tu equipo) / rojo (rivales)   // update 31: BALÓN TRAMPA apuntado (NO = como antes: chut automático + señuelo)   // update 31: cabezazo solo dentro del círculo de caída
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
@@ -404,6 +406,7 @@ function applyQuality(reason) {
   let acts = []; try { acts = actors; } catch (_) {}
   for (const a of acts) { if (a.shadow) { a.shadow.material.opacity = on ? 0.16 : 0.3; a.shadow.visible = !q.noCharShadow; } applyLOD(a); }
   OUTLINE_MAT.visible = AJ.quality !== 'baja';   // update 20: contorno caricatura apagado en Baja
+  try { if (campoDeco) campoDeco.group.traverse((o) => { if (o.isPoints) o.visible = AJ.quality !== 'baja'; }); } catch (_) {}   // update 39: partículas del campo fuera en Baja
   applyTextureQuality();
   window.__game && (window.__game.quality = { level: AJ.quality, pixelRatio: renderer.getPixelRatio(), shadows: on ? size : 0, soft: on && soft, shadowEvery: on ? shadowEvery : 0, lod: q.lod, fallbackSteps: QS.steps, prStep: QS.prStep, shadowLevel: QS.shadowLevel });
   try { updateFpsMeter(); } catch (_) {}
@@ -3306,6 +3309,7 @@ function precompileFx() {
 }
 function startGame() {
   if (!user) return;
+  campoAplicar();   // update 39: campo elegido (o aleatorio) para todos los modos
   tryLandscape();
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   actx?.resume?.();
@@ -3936,6 +3940,7 @@ function updateAimLine() {
 function render(dt) {
   updateNet(dt);
   if (S.mode === 'menu') { renderMenu(dt); return; }
+  if (campoDeco && campoDeco.update) campoDeco.update(dt, camera);   // update 39: partículas del campo (brasas, nieve, luciérnagas)
   for (const a of actors) a.sync(dt, S.t);
   espRender(dt);   // update 29: efectos de especiales (después de sync: tumbado / vuelo / resbalón)
   u30Render(dt);   // update 30: salto / estirada alta
@@ -4300,6 +4305,7 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
+  { t: 'CAMPOS NUEVOS', d: 'Juega en el VOLCÁN, en el HIELO o en el BOSQUE DE SETAS (o en el estadio de siempre). Elige el CAMPO arriba en el menú, o ALEATORIO.', c: '#ff8a1e' },   // update 39
   { t: 'TURBO Y REGATES', d: 'TURBO ya no regatea: mantén para esprintar. Los regates, con el botón REGATES (dibuja el patrón), siempre a mano.', c: '#19c9b0' },   // update 38
   { t: 'CARTAS CON NIVEL', d: 'Todas empiezan en BRONCE. Gana MONEDAS jugando y MEJORA tus cartas: PLATA, ORO, DIAMANTE y LEYENDA. Cada personaje crece a su manera.', c: '#ffd23f' },
   { t: 'PORTEROS DE VERDAD', d: 'BUTÓN y TURTOBOLA son solo porteros, con stats de portero y su especial bajo palos.', c: '#38c172' },
@@ -4441,7 +4447,23 @@ function lbMonedasPend() {
   b.appendChild(t); setTimeout(() => t.remove(), 2200);
   b.classList.remove('late'); void b.offsetWidth; b.classList.add('late');
 }
+// update 39: selector de CAMPO (estadio, volcán, hielo, setas, aleatorio). Se guarda en los ajustes (localStorage) y vale para todos los modos.
+const CAMPO_OPS = ['estadio', 'volcan', 'hielo', 'setas', 'aleatorio'];
+function campoUI() {
+  const c = AJ.campo || 'estadio', n = $id('lbCampoNom'), b = $id('lbCampo');
+  if (n) n.textContent = CAMPO_NOM[c]; if (b) b.dataset.c = c;
+  for (const t of document.querySelectorAll('.lbCampoOp')) { const on = t.dataset.c === c; t.classList.toggle('sel', on); t.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+}
+function setCampo(c) { if (!CAMPO_OPS.includes(c)) return false; AJ.campo = c; saveAjustes(); campoUI(); return true; }
+function campoBuildUI() {
+  const L = $id('lbCampoLista'); if (!L) return;
+  L.innerHTML = CAMPO_OPS.map((c) => `<button class="lbCampoOp" data-c="${c}" aria-label="${CAMPO_NOM[c]}"><span class="lbCampoVista"><b class="dec"></b><i class="mini"></i>${c === 'aleatorio' ? '<em>?</em>' : ''}</span><span class="lbCampoN">${CAMPO_NOM[c]}</span></button>`).join('');
+  for (const t of L.querySelectorAll('.lbCampoOp')) t.addEventListener('click', () => { setCampo(t.dataset.c); sfx.dribble && actx && sfx.dribble(); setTimeout(() => lbCerrar(), 160); });
+  $id('lbCampo').addEventListener('click', () => lbAbrir('lbCampoPanel'));
+  campoUI();
+}
 function lbBuild37() {
+  campoBuildUI();   // update 39
   $id('lbMonedas').addEventListener('click', () => abrirMejora());
   $id('lbBtnAlin').addEventListener('click', () => { alinTab = PERF.modo === '2v2' ? '2v2' : '1v1'; lbAbrir('lbAlin'); });
   $id('lbPersMejorar').addEventListener('click', () => abrirMejora(CHARS[sel].key));
@@ -4904,12 +4926,67 @@ if (giraEl) {
 }
 
 // ===================== INICIO =====================
-function setupField(campo) {
-  campoRoot = matte(campo.scene);
+// ===================== update 39: CAMPOS TEMÁTICOS (estadio, volcán, hielo, bosque de setas) =====================
+// Solo cambia el ASPECTO: el mismo campo.glb (césped, líneas, muros, porterías, red) recoloreado + decorado exterior de campos.js.
+// Geometría jugable, colisiones (constantes HW/HL/WX/WY/SIDE_X/GW/POST_X/GH/GD), red y cámara: idénticas.
+let campoGLTF = null, campoActual = null, campoDeco = null;
+const CROP_X = 22.8, CROP_Y = 30.5, CROP_H = 6.5;   // caja de lo jugable/visible del borde (vallas, porterías, banderines)
+function campoElegido() { const c = AJ.campo; return c === 'aleatorio' ? CAMPOS[(Math.random() * CAMPOS.length) | 0] : (CAMPOS.includes(c) ? c : 'estadio'); }
+function buildCampo(key) {
+  if (!campoGLTF) return;
+  if (!CAMPOS.includes(key) && !TEMAS[key]) key = 'estadio';
+  if (campoRoot) {   // fuera el campo anterior (y su red deformable)
+    scene.remove(campoRoot);
+    campoRoot.traverse((o) => { if (o.isMesh || o.isPoints) { if (o.name === 'Campo_Fusionado' || o.userData.deco) o.geometry.dispose(); } });
+    if (NET_FX.mesh) { scene.remove(NET_FX.mesh); NET_FX.mesh.geometry.dispose(); }
+    Object.assign(NET_FX, { mesh: null, base: null, imps: [] }); NET_MESHES.length = 0;
+  }
+  const T = TEMAS[key] || null;
+  const root = campoGLTF.scene.clone(true);
+  const mats = new Map();
+  root.traverse((o) => { if (!o.isMesh) return; const one = (m) => { let c = mats.get(m); if (!c) { c = m.clone(); mats.set(m, c); } return c; }; o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material); });
+  if (T) {
+    const quitar = []; root.traverse((o) => { if (o !== root && T.hide.test(o.name)) quitar.push(o); }); for (const o of quitar) o.removeFromParent();
+    for (const m of mats.values()) {
+      const c = T.colors[m.name]; if (c) m.color.set(c);
+    }
+    if (T.crop) {   // nodos mezclados (vallas + porterías + piezas del estadio): se queda solo lo que está junto al campo
+      root.updateMatrixWorld(true); const v = new THREE.Vector3(), lst = [];
+      root.traverse((o) => { if (o.isMesh) { for (let p = o; p && p !== root; p = p.parent) if (T.crop.test(p.name)) { lst.push(o); break; } } });
+      for (const o of lst) {
+        const g = o.geometry.clone(), P = g.attributes.position, ok = new Uint8Array(P.count);
+        for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); ok[i] = Math.abs(v.x) <= CROP_X && Math.abs(v.z) <= CROP_Y && v.y <= CROP_H ? 1 : 0; }
+        const src = g.index ? g.index.array : null, n = src ? src.length : P.count, out = [];
+        for (let t = 0; t < n; t += 3) { const a = src ? src[t] : t, b = src ? src[t + 1] : t + 1, c = src ? src[t + 2] : t + 2; if (ok[a] && ok[b] && ok[c]) out.push(a, b, c); }
+        // los postes (material 'white', dentro de la caja de las porterías) pasan a su propio material 'post' (color propio en cada tema)
+        if (o.material.name === 'white' && T.colors.post) {
+          const post = [], rest = [], inGoal = (i) => { v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); return Math.abs(v.x) < 5.9 && Math.abs(v.z) > 23.3 && Math.abs(v.z) < 27.4; };
+          for (let t = 0; t < out.length; t += 3) (inGoal(out[t]) && inGoal(out[t + 1]) && inGoal(out[t + 2]) ? post : rest).push(out[t], out[t + 1], out[t + 2]);
+          out.length = 0; out.push(...rest);
+          if (post.length) { const pg = g.clone(); pg.setIndex(post); const pm = o.material.clone(); pm.name = 'post'; pm.color.set(T.colors.post); const pmesh = new THREE.Mesh(pg, pm); pmesh.name = 'Postes'; pmesh.matrix.copy(o.matrix); pmesh.matrix.decompose(pmesh.position, pmesh.quaternion, pmesh.scale); o.parent.add(pmesh); }
+        }
+        g.setIndex(out); o.geometry = g;
+      }
+    }
+    if (T.glow) root.traverse((o) => { if (o.isMesh && !Array.isArray(o.material) && T.glow[o.material.name]) o.material = new THREE.MeshBasicMaterial({ color: T.glow[o.material.name], name: o.material.name }); });   // líneas que brillan (lava)
+  }
+  campoRoot = matte(root);
   shadowFlags(campoRoot, false, true);
   window.__game.campoMerged = mergeStatic(campoRoot);
   setupNet();
+  campoDeco = T ? buildDeco(THREE, key, { mergeStatic, ensureSmoothN, outlineMat: OUTLINE_MAT, baja: AJ.quality === 'baja' }) : null;
+  if (campoDeco) campoRoot.add(campoDeco.group);
   scene.add(campoRoot);
+  scene.background = new THREE.Color(T ? T.bg : '#a8d8f5');
+  if (camApron) camApron.material.color.set(T ? T.apron : 0xc4684e);
+  campoActual = key; window.__game.campoActual = key;
+  if (camClipPlane) applyCamClip(camCfg().layout === 'side');
+  try { applyQuality('campo'); } catch (_) {}
+}
+function campoAplicar() { const k = campoElegido(); if (k !== campoActual) buildCampo(k); }
+function setupField(campo) {
+  campoGLTF = campo;
+  buildCampo(campoElegido());
   // Recorte de la grada derecha: solo en cámaras de LADO (A/B/C). D/E/F ven el estadio entero.
   camClipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), WX + 3.0);
   renderer.localClippingEnabled = true;
@@ -4921,6 +4998,7 @@ function setupField(campo) {
   camApron.position.set(WX + 3.0 + 35, -0.03, 0);
   camApron.visible = false;
   scene.add(camApron);
+  if (TEMAS[campoActual]) camApron.material.color.set(TEMAS[campoActual].apron);   // update 39
   if (HORIZONTAL) applyCamClip(camCfg().layout === 'side');
   ballMesh = makeBall(); scene.add(ballMesh); shadowFlags(ballMesh, true, false);
   // silueta del balón cuando queda tapado por un jugador (la cámara es alta y el balón va delante del pie)
@@ -5958,7 +6036,8 @@ Object.assign(window.__game, {
 Object.assign(window.__game, { cardHTML, shoot, THREE, effectCurve, applyTeamDiscs, discosOn, trampaFire: (x, y) => trampaFire(x === undefined ? null : { x, y }), screenToField, trampaPointer, landPt: () => { const l = landPt(); return l && { x: l.x, y: l.y }; }, inLandCircle: (a) => inLandCircle(a || user), LAND_R });   // update 31
 Object.assign(window.__game, { MS_get, msShow, msHide, get MS() { return MS; }, marcadorSet, marcGol, CTRL, TR, applyComboTR, applyTiroPase, showBanner, ROT_LOG, confeti, lobStatK: (k) => lobStatK({ charKey: k }), tpOn });   // update 32
 Object.defineProperties(window.__game, { perf: { get: () => PERF, configurable: true }, rueda: { get: () => ({ pos: RUEDA.pos, target: RUEDA.target, sp: RUEDA.sp, n: RUEDA.items.length }), configurable: true } });   // update 35 (getters de verdad: Object.assign los congela)
-Object.assign(window.__game, { NOVEDADES, comboOn, patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
+Object.defineProperty(window.__game, 'campoDeco', { get: () => campoDeco, configurable: true });   // update 39
+Object.assign(window.__game, { buildCampo, setCampo, campoAplicar, CAMPO_OPS, CROP: { CROP_X, CROP_Y, CROP_H }, GEO: { HW, HL, WX, WY, SIDE_X, GW, POST_X, POST_R, GH, GD, NET_X, NET_Z, BR }, CAMS, CAMPOS, TEMAS, NOVEDADES, comboOn, patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
 Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS, GK_ONLY, GK_STATS, GK_STAT_KEYS, statsAt, progCurve, lvCost, LV_MAX, LV_REF, TIERS, tierDe, progMejorar, monedasPartido, monedasTitulo, MON_PARTIDO, MON_TITULO,
   rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, LOB_NERF, LOB_K_MAX, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
   progReload: () => { PROG = progLoad(); lbRender(); return PROG; }, alinReload: () => { ALIN = alinLoad(); return ALIN; },
