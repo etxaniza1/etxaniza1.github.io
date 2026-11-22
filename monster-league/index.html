@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=35';
+  var V = 'v=36';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -24,7 +24,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=35">
+<link rel="stylesheet" href="style.css?v=36">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -269,6 +269,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=35"></script>
+<script type="module" src="main.js?v=36"></script>
 </body>
 </html>
