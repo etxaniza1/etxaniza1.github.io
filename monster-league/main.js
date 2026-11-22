@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=40';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=41';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=40';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=41';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -4968,11 +4968,23 @@ function buildCampo(key) {
         g.setIndex(out); o.geometry = g;
       }
     }
+    // update 41: capas del suelo SEPARADAS en altura (sin cambiar el orden). En campo.glb 'ground' y 'path' están a la MISMA altura
+    // (-0.043: z-fighting puro) y grassRun/pavingDark/track/paving a 3–12 mm; el estadio lo tapa con el cuenco y las gradas,
+    // los temas no -> parpadeaba al moverse la cámara. Solo suelos planos (fuera de las líneas y del césped jugable, que no se tocan).
+    if (T.suelos) {
+      window.__game.campoSuelos = {}; root.updateMatrixWorld(true); const bb = new THREE.Box3(), ws = new THREE.Vector3();
+      root.traverse((o) => { if (!o.isMesh || Array.isArray(o.material)) return; const hy = T.suelos[o.material.name]; if (hy === undefined) return;
+        bb.setFromObject(o); if (bb.max.y - bb.min.y > 0.002) return;   // solo superficies planas
+        o.parent.getWorldScale(ws); o.position.y += (hy - bb.max.y) / (ws.y || 1); o.updateMatrix(); o.userData.sueloY = hy; window.__game.campoSuelos[o.material.name] = hy; });
+      root.updateMatrixWorld(true);
+    }
     if (T.glow) root.traverse((o) => { if (o.isMesh && !Array.isArray(o.material) && T.glow[o.material.name]) o.material = new THREE.MeshBasicMaterial({ color: T.glow[o.material.name], name: o.material.name }); });   // líneas que brillan (lava)
   }
   campoRoot = matte(root);
   shadowFlags(campoRoot, false, true);
   window.__game.campoMerged = mergeStatic(campoRoot);
+  window.__game.campoSuelos = T && T.suelos ? window.__game.campoSuelos : {};
+  { let tes = 0; campoRoot.traverse((o) => { if (o.isMesh && o.name === 'Campo_Fusionado') tes += teselarSuelo(o); }); window.__game.campoTeselado = tes; }   // update 41 (los 4 campos: en el estadio también saltaba el césped)
   setupNet();
   campoDeco = T ? buildDeco(THREE, key, { mergeStatic, ensureSmoothN, outlineMat: OUTLINE_MAT, baja: AJ.quality === 'baja' }) : null;
   if (campoDeco) campoRoot.add(campoDeco.group);
@@ -4982,6 +4994,44 @@ function buildCampo(key) {
   campoActual = key; window.__game.campoActual = key;
   if (camClipPlane) applyCamClip(camCfg().layout === 'side');
   try { applyQuality('campo'); } catch (_) {}
+}
+// update 41: los suelos de campo.glb son triángulos ENORMES (exterior 410 m, caminos 121 m, pavimento 84 m, césped 39–70 m) que
+// pasan por detrás de la cámara. Al recortarse contra el plano cercano su profundidad interpolada pierde precisión y una capa
+// de debajo "salta" por encima de la de arriba según se mueve la cámara (en el estadio lo tapan el cuenco y las gradas).
+// Se cortan los triángulos PLANOS (|h| < 0.2, normal hacia arriba) por una rejilla fija de 3 m (±72 m): cada arista compartida
+// se corta en los mismos puntos por los dos lados -> sin grietas (T-junctions) y con el mismo aspecto.
+function teselarSuelo(mesh, paso = 3, lim = 72) {
+  const g = mesh.geometry, P = g.attributes.position, N = g.attributes.normal, C = g.attributes.color, I = g.index; if (!I || !N) return 0;
+  const lines = []; for (let v = -lim; v <= lim + 1e-6; v += paso) lines.push(+v.toFixed(4));
+  const cells = (a, b) => { const out = []; let lo = -Infinity; for (const L of lines) { if (L > a && lo < b) out.push([lo, L]); lo = L; } if (lo < b) out.push([lo, Infinity]); return out.filter(([x0, x1]) => x1 > a && x0 < b); };
+  const nP = [], nN = [], nC = [], nI = [], keep = []; let nv = 0, cortados = 0;
+  const vtx = (i) => [P.getX(i), P.getY(i), P.getZ(i), N.getX(i), N.getY(i), N.getZ(i), C ? C.getX(i) : 1, C ? C.getY(i) : 1, C ? C.getZ(i) : 1];
+  const lerp = (a, b, t) => a.map((v, k) => v + (b[k] - v) * t);
+  const clip = (poly, ax, val, keepGreater) => { const out = []; for (let k = 0; k < poly.length; k++) { const A = poly[k], B = poly[(k + 1) % poly.length]; const ia = keepGreater ? A[ax] >= val : A[ax] <= val, ib = keepGreater ? B[ax] >= val : B[ax] <= val;
+    if (ia) out.push(A); if (ia !== ib) { const t = (val - A[ax]) / (B[ax] - A[ax]); const q = lerp(A, B, t); q[ax] = val; out.push(q); } } return out; };
+  for (let t = 0; t < I.count; t += 3) {
+    const ids = [I.getX(t), I.getX(t + 1), I.getX(t + 2)], v = ids.map(vtx);
+    const plano = v.every((q) => Math.abs(q[1]) < 0.2 && q[4] > 0.95);
+    const L = Math.max(...[[0, 1], [1, 2], [2, 0]].map(([a, b]) => Math.hypot(v[a][0] - v[b][0], v[a][2] - v[b][2])));
+    if (!plano || L <= paso) { keep.push(...ids); continue; }
+    cortados++;
+    const xs = v.map((q) => q[0]), zs = v.map((q) => q[2]);
+    for (const [x0, x1] of cells(Math.min(...xs), Math.max(...xs))) for (const [z0, z1] of cells(Math.min(...zs), Math.max(...zs))) {
+      let poly = v; if (x0 > -Infinity) poly = clip(poly, 0, x0, true); if (poly.length && x1 < Infinity) poly = clip(poly, 0, x1, false);
+      if (poly.length && z0 > -Infinity) poly = clip(poly, 2, z0, true); if (poly.length && z1 < Infinity) poly = clip(poly, 2, z1, false);
+      if (poly.length < 3) continue;
+      const base = nv; for (const q of poly) { nP.push(q[0], q[1], q[2]); nN.push(q[3], q[4], q[5]); nC.push(q[6], q[7], q[8]); nv++; }
+      for (let k = 1; k < poly.length - 1; k++) nI.push(base, base + k, base + k + 1);
+    }
+  }
+  if (!cortados) return 0;
+  const n0 = P.count, pos = new Float32Array((n0 + nv) * 3), nor = new Float32Array((n0 + nv) * 3), col = new Float32Array((n0 + nv) * 3);
+  for (let i = 0; i < n0; i++) { pos.set([P.getX(i), P.getY(i), P.getZ(i)], i * 3); nor.set([N.getX(i), N.getY(i), N.getZ(i)], i * 3); if (C) col.set([C.getX(i), C.getY(i), C.getZ(i)], i * 3); else col.fill(1, i * 3, i * 3 + 3); }
+  pos.set(nP, n0 * 3); nor.set(nN, n0 * 3); col.set(nC, n0 * 3);
+  const ng = new THREE.BufferGeometry(); ng.setAttribute('position', new THREE.BufferAttribute(pos, 3)); ng.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); if (C) ng.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const idx = keep.concat(nI.map((i) => i + n0)); ng.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
+  for (const k of Object.keys(g.attributes)) if (!ng.attributes[k]) console.warn('teselarSuelo: atributo sin copiar', k);
+  ng.computeBoundingSphere(); ng.computeBoundingBox(); g.dispose(); mesh.geometry = ng; return cortados;
 }
 function campoAplicar() { const k = campoElegido(); if (k !== campoActual) buildCampo(k); }
 function setupField(campo) {

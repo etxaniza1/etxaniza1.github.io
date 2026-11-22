@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=40';
+  var V = 'v=41';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -55,8 +55,8 @@ html,body{margin:0;background:#07080d}
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
-<link id="mainCss" rel="stylesheet" href="style.css?v=40" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
-<noscript><link rel="stylesheet" href="style.css?v=40"></noscript>
+<link id="mainCss" rel="stylesheet" href="style.css?v=41" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
+<noscript><link rel="stylesheet" href="style.css?v=41"></noscript>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -338,6 +338,6 @@ html,body{margin:0;background:#07080d}
     <div class="giraSub">Beast Strikers se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=40"></script>
+<script type="module" src="main.js?v=41"></script>
 </body>
 </html>
