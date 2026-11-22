@@ -32,14 +32,14 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=35';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=36';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
-const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote'];
+const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon'];
 const CHARS = [
-  { key: 'conazo', name: 'CONAZO', color: '#F2751A' },
+  { key: 'conazo', name: 'CONAZO', color: '#F2751A', toon: true },   // update 36: modelo nuevo (Tripo) -> toon con outline
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
-  { key: 'buton', name: 'BUTÓN', color: '#F8B715' },
+  { key: 'buton', name: 'BUTÓN', color: '#F8B715', toon: true },   // update 36: modelo nuevo (Tripo) -> toon con outline
   { key: 'lobo', name: 'LOBO', color: '#3B4FA8', toon: true },   // update 29: nuevo modelo Tripo (lobo de verdad)
   { key: 'zorro', name: 'ZORRO', color: '#E2552D', toon: true },
   { key: 'gecko', name: 'GECKO', color: '#58A83A', toon: true },
@@ -54,6 +54,10 @@ const CHARS = [
   { key: 'ladri', name: 'LADRI', color: '#C4502A', toon: true },           // update 29: Ladri el ladrillo (Tripo)
   { key: 'tubi', name: 'TUBI', color: '#D62839', toon: true },             // update 30: Tubi el desatascador (Tripo)
   { key: 'ajolote', name: 'AJOLOTE', color: '#E2559F', toon: true },        // update 34: Ajolote (Tripo por piezas)
+  { key: 'rubibot', name: 'RUBIBOT', color: '#4C3D8F', toon: true },        // update 36: robot mariposa (Tripo)
+  { key: 'frogetto', name: 'FROGETTO', color: '#2FA39A', toon: true },      // update 36: rana maga (Tripo)
+  { key: 'zora', name: 'ZORA', color: '#2BD96B', toon: true },              // update 36: loba eléctrica (Tripo)
+  { key: 'tiburon', name: 'TIBURÓN', color: '#6E9CC4', toon: true },        // update 36: tiburón (Tripo)
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`,
   badge: BADGES.includes(c.key) ? `assets/badges/${c.key}.webp?${ASSET_V}` : null, ...c }));
 // update 32: badges a prueba de fallos: precarga al arrancar; si una imagen de badge falla se reintenta una vez
@@ -89,6 +93,11 @@ const STATS = {   // update 31: rehechas. Más variedad: nadie es bueno en todo.
   ladri: { vel: 46, tir: 72, pre: 66, reg: 48, ent: 94, fis: 95, ref: 86, cur: 0, pos: 'DFC', lema: 'Muro de ladrillo: por aquí no pasa ni el aire' },
   tubi: { vel: 58, tir: 70, pre: 80, reg: 72, ent: 86, fis: 84, ref: 50, cur: 15, pos: 'MCD', lema: 'Ventosa: lo que toca, se queda pegado' },
   ajolote: { vel: 76, tir: 64, pre: 82, reg: 86, ent: 78, fis: 62, ref: 88, cur: 30, pos: 'CAR', lema: 'Regenerador: resbaladizo, incansable y siempre vuelve' },   // update 34
+  // update 36: personajes nuevos (EFECTO 0-50, ninguno por debajo de Conazo)
+  rubibot: { vel: 84, tir: 70, pre: 90, reg: 82, ent: 60, fis: 58, ref: 86, cur: 42, pos: 'MI', lema: 'Mariposa mecánica: vuela entre líneas y la pone con escuadra' },
+  frogetto: { vel: 68, tir: 76, pre: 86, reg: 74, ent: 72, fis: 64, ref: 93, cur: 48, pos: 'LIB', lema: 'Mago del área: lee la jugada antes de que pase' },
+  zora: { vel: 96, tir: 80, pre: 70, reg: 88, ent: 74, fis: 60, ref: 72, cur: 22, pos: 'LI', lema: 'Relámpago: arranca como un rayo y sube la banda sin parar' },
+  tiburon: { vel: 72, tir: 86, pre: 64, reg: 58, ent: 91, fis: 92, ref: 64, cur: 8, pos: 'LD', lema: 'Huele la sangre: va a por el balón y no lo suelta' },
 };
 const STAT_KEYS = ['vel', 'tir', 'pre', 'reg', 'ent', 'fis', 'ref'];
 const STAT_NAMES = { vel: 'VELOCIDAD', tir: 'TIRO', pre: 'PRECISIÓN', reg: 'REGATE', ent: 'ENTRADA', fis: 'FÍSICO', ref: 'REFLEJOS', cur: 'EFECTO' };
@@ -1389,7 +1398,7 @@ function releaseShoot(cancel) {
 
 // ===================== MECÁNICAS =====================
 function tryDash(a) {
-  if (!a || a.dashCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0) return false;
+  if (!a || a.toadT > 0 || a.dashCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0) return false;
   if (ball.owner === a) return false;
   if (a === user) { const md = moveDir(); if (md) a.face.copy(md); }
   a.dashT = DASH_T; a.dashCd = (a === user ? DASH_CD_USER : DASH_CD_AI) / a.sf.ent;
@@ -1432,24 +1441,41 @@ function tryDribble(a, forceDir) {
 // ↑→ bicicleta y salida en diagonal a la derecha avanzando, ↑← igual a la izquierda. Se pueden encadenar hasta 3 (p. ej. → ← = croqueta
 // ida y vuelta). Direcciones relativas a hacia dónde mira el jugador. Mientras dura el truco las entradas no le quitan el balón
 // (salvo al principio del amago de la bicicleta: si el rival entra pronto y no pica, se la lleva).
-const PAT = { roll: { dur: 0.40, lat: 1.75 }, back: { dur: 0.54 }, bici: { dur: 0.68, split: 0.44, ang: 0.72 }, cd: 1.5, max: 3 };
+const PAT = { roll: { dur: 0.40, lat: 1.75 }, back: { dur: 0.54 }, bici: { dur: 0.68, split: 0.44, ang: 0.72 }, cd: 1.1, max: 3, th: 26, buf: 0.7 };   // update 36: cd 1,5 -> 1,1; umbral de trazo 26 px; búfer 0,7 s
 const PAT_NAMES = { R: 'RUEDA ►', L: '◄ RUEDA', B: 'ARRASTRE ▼', SR: 'BICICLETA ►', SL: '◄ BICICLETA' };
-function patParse(dots) {   // dots: índices 0-8 (fila*3+col, fila 0 = arriba) -> fichas
+function patParse(dots) {   // dots: índices 0-8 (fila*3+col, fila 0 = arriba) -> fichas (se mantiene para compatibilidad)
   const dirs = [];
   for (let i = 1; i < dots.length; i++) {
     const r0 = Math.floor(dots[i - 1] / 3), c0 = dots[i - 1] % 3, r1 = Math.floor(dots[i] / 3), c1 = dots[i] % 3;
     const dy = Math.sign(r0 - r1), dx = Math.sign(c1 - c0);   // dy > 0 = arriba
-    if (dy && dx) { dirs.push(dy > 0 ? 'U' : 'D'); dirs.push(dx > 0 ? 'R' : 'L'); }   // diagonal = vertical + horizontal
-    else if (dy) dirs.push(dy > 0 ? 'U' : 'D'); else if (dx) dirs.push(dx > 0 ? 'R' : 'L');
+    dirs.push((dy > 0 ? 'U' : dy < 0 ? 'D' : '') + (dx > 0 ? 'R' : dx < 0 ? 'L' : ''));
   }
-  const d = dirs.filter((x, i) => i === 0 || x !== dirs[i - 1]), out = [];
+  return patParseDirs(dirs);
+}
+// update 36: lectura por DIRECCIONES (8 sectores) en vez de tocar puntos. Un trazo diagonal ↗/↖ = bicicleta; ↑ y luego →/← también;
+// las curvas (↑ ↗ →) cuentan como una sola bicicleta. ↓ (y ↘/↙) = arrastre. ↑ suelto no vale.
+function patParseDirs(dirs0) {
+  const d = dirs0.filter((x, i) => x && (i === 0 || x !== dirs0[i - 1])), out = [];
   for (let i = 0; i < d.length; i++) {
-    if (d[i] === 'U' && (d[i + 1] === 'R' || d[i + 1] === 'L')) { out.push(d[i + 1] === 'R' ? 'SR' : 'SL'); i++; }
-    else if (d[i] === 'R' || d[i] === 'L') out.push(d[i]);
-    else if (d[i] === 'D') out.push('B');
-    // 'U' suelto no es ningún truco
+    const x = d[i], n = d[i + 1];
+    if (x === 'U') {
+      if (n === 'R' || n === 'UR' || n === 'L' || n === 'UL') { out.push(n.endsWith('R') ? 'SR' : 'SL'); i++; if (n.length === 2 && d[i + 1] === n.slice(1)) i++; }
+      // 'U' suelto no es ningún truco
+    } else if (x === 'UR' || x === 'UL') {
+      out.push(x === 'UR' ? 'SR' : 'SL');
+      if (n === x.slice(1) || n === 'U') { i++; if (n === 'U' && d[i + 1] === x.slice(1)) i++; }
+    } else if (x === 'R' || x === 'L') out.push(x);
+    else if (x[0] === 'D') { if (out[out.length - 1] !== 'B') out.push('B'); }
   }
   return out.slice(0, PAT.max);
+}
+function patDir(dx, dy) {   // dx, dy en px de pantalla (dy > 0 = abajo) -> 'U','UR','R',... (diagonal solo si está a ±20° de 45°)
+  const a = Math.atan2(-dy, dx) * 180 / Math.PI;   // 0 = derecha, 90 = arriba
+  const k = ((a % 360) + 360) % 360;
+  const D = [[0, 'R'], [45, 'UR'], [90, 'U'], [135, 'UL'], [180, 'L'], [225, 'DL'], [270, 'D'], [315, 'DR'], [360, 'R']];
+  let best = 'R', bd = 1e9;
+  for (const [c, n] of D) { const dd = Math.abs(k - c) * (n.length === 2 ? 1.125 : 1); if (dd < bd) { bd = dd; best = n; } }   // diagonales algo más estrechas (±20°)
+  return best;
 }
 function patCan(a) { return !!a && ball.owner === a && !a.keeper && !a.pm && !(a.patCd > 0) && a.stun <= 0 && a.dribbleT <= 0 && a.dashT <= 0 && a.freezeT <= 0 && a.slipT <= 0 && a.chargeT <= 0 && !a.kickPending && !a.jumping; }
 function tryPattern(a, moves) {
@@ -1549,7 +1575,7 @@ function aiVsPattern(a, opp, target, d) {
 }
 // --- UI: botón + cuadrícula ---
 const btnPatron = document.getElementById('btnPatron'), patronGrid = document.getElementById('patronGrid'), cargaPatron = document.getElementById('cargaPatron');
-const PG = { id: null, sx: 0, sy: 0, gx: 0, gy: 0, s: 50, dots: [], els: [], hideT: 0 };
+const PG = { id: null, sx: 0, sy: 0, gx: 0, gy: 0, s: 50, dots: [], dirs: [], ax: 0, ay: 0, cell: 4, els: [], hideT: 0, buf: null };
 if (patronGrid) {
   const box = patronGrid.querySelector('.pgPuntos'); for (let i = 0; i < 9; i++) { const d = document.createElement('i'); d.dataset.i = i; box.appendChild(d); PG.els.push(d); }
 }
@@ -1564,52 +1590,74 @@ function pgDraw(fx, fy) {
   if (fx != null && last != null) { const [x, y] = pgDotXY(last); lv.setAttribute('x1', x); lv.setAttribute('y1', y); lv.setAttribute('x2', fx); lv.setAttribute('y2', fy); lv.style.display = ''; } else lv.style.display = 'none';
   PG.els.forEach((e, i) => e.classList.toggle('on', PG.dots.includes(i)));
 }
+function pgPreview() {   // update 36: nombre del truco en vivo mientras se desliza
+  const nm = patronGrid.querySelector('.pgNombre'), mv = patParseDirs(PG.dirs);
+  nm.textContent = mv.length ? mv.map((k) => PAT_NAMES[k]).join(' + ') : (PG.dirs.length ? '…' : '');
+  nm.classList.toggle('vivo', !!PG.dirs.length);
+}
 function pgStart(e) {
   if (PG.id !== null || e.pointerId === joyId) return;
   if (S.mode !== 'play' || S.paused || !user || editor.on) return;
   e.preventDefault(); e.stopPropagation();
   PG.id = e.pointerId; try { btnPatron.setPointerCapture(e.pointerId); } catch (_) {}
   const ar = appRect(), W = ar.width, H = ar.height;
-  PG.s = THREE.MathUtils.clamp(Math.min(W, H) * 0.13, 38, 62);
-  PG.sx = e.clientX; PG.sy = e.clientY;
-  // la cuadrícula se dibuja dentro de la pantalla; el dedo empieza siempre en el punto central (lectura relativa)
-  const m = PG.s * 1.45; PG.gx = THREE.MathUtils.clamp(e.clientX - ar.left, m, W - m); PG.gy = THREE.MathUtils.clamp(e.clientY - ar.top - PG.s * 0.2, m, H - m);
+  PG.s = THREE.MathUtils.clamp(Math.min(W, H) * 0.17, 48, 82);   // update 36: rejilla más grande
+  PG.sx = e.clientX; PG.sy = e.clientY; PG.ax = e.clientX; PG.ay = e.clientY; PG.dirs = []; PG.cell = 4;
+  // update 36: la rejilla se centra donde pulsa el dedo (solo se desplaza lo justo para caber en pantalla)
+  const m = PG.s * 1.5; PG.gx = THREE.MathUtils.clamp(e.clientX - ar.left, m, Math.max(m, W - m)); PG.gy = THREE.MathUtils.clamp(e.clientY - ar.top, m, Math.max(m, H - m));
   PG.dots = [4]; clearTimeout(PG.hideT);
   patronGrid.style.setProperty('--s', PG.s + 'px');
-  patronGrid.className = 'on'; patronGrid.querySelector('.pgNombre').textContent = '';
+  patronGrid.className = 'on'; const nm = patronGrid.querySelector('.pgNombre'); nm.textContent = ''; nm.classList.remove('vivo');
   for (let i = 0; i < 9; i++) { const [x, y] = pgDotXY(i); PG.els[i].style.left = x + 'px'; PG.els[i].style.top = y + 'px'; }
   const fo = patronGrid.querySelector('.pgFondo'); if (fo) { fo.style.left = PG.gx + 'px'; fo.style.top = PG.gy + 'px'; }
   btnPatron.classList.add('pulsado'); pgDraw(PG.gx, PG.gy);
 }
+const PG_STEP = { U: [-1, 0], D: [1, 0], L: [0, -1], R: [0, 1], UR: [-1, 1], UL: [-1, -1], DR: [1, 1], DL: [1, -1] };
+function pgFeed(x, y) {   // un punto del dedo: cuando se aleja PAT.th px del ancla se lee la dirección dominante de ese tramo
+  const dx = x - PG.ax, dy = y - PG.ay;
+  if (Math.hypot(dx, dy) < PAT.th) return false;
+  const dir = patDir(dx, dy); PG.ax = x; PG.ay = y;
+  if (PG.dirs[PG.dirs.length - 1] === dir || PG.dirs.length >= 12) return false;
+  PG.dirs.push(dir);
+  const [dr, dc] = PG_STEP[dir], r = THREE.MathUtils.clamp(Math.floor(PG.cell / 3) + dr, 0, 2), c = THREE.MathUtils.clamp((PG.cell % 3) + dc, 0, 2), nc = r * 3 + c;
+  if (nc === PG.cell) { PG.cell = 4; PG.dots.push(4); }   // se sale de la rejilla: vuelve al centro para seguir dibujando
+  else { PG.cell = nc; PG.dots.push(nc); }
+  return true;
+}
 function pgMove(e) {
   if (e.pointerId !== PG.id) return;
   const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null, list = evs && evs.length ? evs : [e];
-  let fx = 0, fy = 0;
-  for (const ev of list) {
-    fx = PG.gx + (ev.clientX - PG.sx); fy = PG.gy + (ev.clientY - PG.sy);
-    for (let i = 0; i < 9; i++) {
-      const [x, y] = pgDotXY(i), last = PG.dots[PG.dots.length - 1];
-      if (i === last || Math.hypot(fx - x, fy - y) > PG.s * 0.36) continue;
-      // de una esquina/lado al opuesto pasando por el medio: se añade el punto intermedio (como en el móvil)
-      const lr = Math.floor(last / 3), lc = last % 3, r = Math.floor(i / 3), c = i % 3;
-      if (Math.abs(lr - r) === 2 || Math.abs(lc - c) === 2) { const mid = ((lr + r) / 2) * 3 + (lc + c) / 2; if (Number.isInteger(mid) && mid !== last) PG.dots.push(mid); }
-      if (PG.dots.length < 12) PG.dots.push(i);
-    }
-  }
-  pgDraw(fx, fy);
+  let ch = false;
+  for (const ev of list) ch = pgFeed(ev.clientX, ev.clientY) || ch;
+  if (ch) pgPreview();
+  const last = list[list.length - 1], ar = appRect(), [lx, ly] = pgDotXY(PG.cell);
+  pgDraw(lx + (last.clientX - PG.ax) - 0 * ar.left, ly + (last.clientY - PG.ay));
 }
 function pgEnd(e, cancel) {
   if (PG.id === null || (e && e.pointerId !== PG.id)) return;
   PG.id = null; btnPatron.classList.remove('pulsado');
-  const moves = patParse(PG.dots);
-  let ok = false;
-  if (!cancel && moves.length) { if (e) markAction('patron', e); ok = tryPattern(user, moves); }
+  if (e && !cancel && e.clientX != null) { if (pgFeed(e.clientX, e.clientY)) pgPreview(); }
+  const moves = patParseDirs(PG.dirs);
+  let ok = false, cola = false;
+  if (!cancel && moves.length) {
+    if (e) markAction('patron', e);
+    ok = tryPattern(user, moves);
+    // update 36: búfer: si se suelta durante el enfriamiento o el truco anterior, se ejecuta en cuanto se pueda (máx. PAT.buf s)
+    if (!ok && user && ball.owner === user && (user.patCd > 0 || user.pm || user.dribbleT > 0 || user.dashT > 0 || user.kickPending)) { PG.buf = { moves, t: PAT.buf }; cola = true; }
+  }
   pgDraw(null, null);
-  const nm = patronGrid.querySelector('.pgNombre');
-  nm.textContent = ok ? moves.map((k) => PAT_NAMES[k]).join(' + ') : (cancel || PG.dots.length < 2 ? '' : moves.length ? 'ESPERA…' : 'NO VALE');
-  patronGrid.className = 'on suelta ' + (ok ? 'ok' : PG.dots.length < 2 || cancel ? 'nada' : 'mal');
-  if (!ok && !cancel && PG.dots.length >= 2) LOG('patron_fallido', user, { dots: PG.dots.join(''), m: moves.join('+') });
-  PG.hideT = setTimeout(() => { patronGrid.className = ''; }, ok ? 420 : 520);
+  const nm = patronGrid.querySelector('.pgNombre'); nm.classList.remove('vivo');
+  nm.textContent = ok || cola ? moves.map((k) => PAT_NAMES[k]).join(' + ') : (cancel || !PG.dirs.length ? '' : moves.length ? 'ESPERA…' : 'NO VALE');
+  patronGrid.className = 'on suelta ' + (ok ? 'ok' : cola ? 'ok cola' : !PG.dirs.length || cancel ? 'nada' : 'mal');
+  if (!ok && !cola && !cancel && PG.dirs.length) LOG('patron_fallido', user, { dirs: PG.dirs.join(' '), m: moves.join('+') });
+  if (cola) LOG('patron_cola', user, { m: moves.join('+') });
+  PG.hideT = setTimeout(() => { patronGrid.className = ''; }, ok || cola ? 460 : 560);
+}
+function pgBufUpdate(dt) {   // update 36: ejecuta el truco que quedó en el búfer
+  if (!PG.buf) return;
+  PG.buf.t -= dt;
+  if (PG.buf.t <= 0 || !user || ball.owner !== user || S.mode !== 'play') { PG.buf = null; return; }
+  if (patCan(user)) { const m = PG.buf.moves; PG.buf = null; tryPattern(user, m); }
 }
 if (btnPatron) {
   btnPatron.addEventListener('pointerdown', pgStart);
@@ -2336,6 +2384,10 @@ const ESPECIALES = {
   murcielago: { name: 'VUELO NOCTURNO', desc: 'Oscurece la pantalla del rival y vuela por encima de las entradas.', col: '#ff4d6d' },
   ladri: { name: 'MURO', desc: 'Levanta un muro de ladrillo delante de su portería durante 5 s.', col: '#e0683a' },
   ajolote: { name: 'REGENERACIÓN', desc: 'Se regenera al instante: se quita cualquier efecto malo (congelado, lento, mareo, resbalón, ciego...), recarga el TURBO al 100 % y durante 4 s el turbo no se gasta y las entradas le resbalan (piel viscosa). Se puede usar aunque esté aturdido.', col: '#ff7ac8' },   // update 34
+  rubibot: { name: 'PULSO EMP', desc: 'Descarga electromagnética: el rival cercano se queda sin TURBO ni ESPECIAL (a cero), no los recarga en 3 s y suelta el balón.', need: 'cerca', rango: 7.5, col: '#b59bff' },   // update 36
+  frogetto: { name: 'HECHIZO SAPO', desc: 'Convierte al rival en un sapito 2,5 s: encoge, va lento, no puede hacer entradas ni coger el balón.', need: 'cerca', rango: 10, col: '#5dffb4' },   // update 36
+  zora: { name: 'RAYO', desc: 'Se teletransporta 6,5 m como un rayo (con el balón si lo lleva) y aturde a quien esté en el camino.', col: '#3dff7a' },   // update 36
+  tiburon: { name: 'REMOLINO', desc: 'Abre un remolino a los pies del rival: lo arrastra hacia el centro, lo frena y le hace perder el balón.', col: '#4fc3ff' },   // update 36
   tubi: { name: 'VENTOSA', desc: 'Dispara el desatascador: se pega al rival 1,5 s y, si lleva el balón, se lo trae. Luego nadie se lo quita en 3 s.', need: 'cerca', rango: 9, col: '#ff4f5e' },   // update 30
 };
 const ESP = { fx: [], obst: [], zonas: [], decoys: [], lengua: null, tex: {}, usos: [] };
@@ -2343,7 +2395,7 @@ const espOn = () => AJ.especiales !== false;
 const espFoe = (a) => S.practice ? null : is2v2() ? espFoe2(a) : (a === user ? rival : a === rival ? user : null);   // update 30: 2 VS 2 -> el que lleva el balón o el más cercano
 const espGkFoe = (a) => a.team === 0 ? gkB : gkA;
 const espGkOwn = (a) => a.team === 0 ? gkA : gkB;
-function espReset(a) { Object.assign(a, { stickT: 0, freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0, regenT: 0 }); }
+function espReset(a) { Object.assign(a, { stickT: 0, freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0, regenT: 0, toadT: 0, empT: 0 }); if (a._toadS && a._toadS !== 1) { a._toadS = 1; if (a.model) a.model.scale.setScalar(ESCALA * (a.charScale || 1)); } }
 // ---- texturas generadas (una vez) ----
 function espTex(k) {
   if (ESP.tex[k]) return ESP.tex[k];
@@ -2430,6 +2482,10 @@ const espSfx = {
   ladri: () => { [0, 0.12, 0.24, 0.36].forEach((d) => { espNoise(0.12, { f: 300, vol: 0.18, type: 'lowpass', delay: d }); espTone(120, 0.1, { type: 'square', vol: 0.06, f2: 60, delay: d }); }); },
   tubi: () => { espTone(260, 0.12, { type: 'square', vol: 0.05, f2: 900 }); espTone(170, 0.4, { type: 'sine', vol: 0.12, f2: 420, vib: 18, vibF: 12, delay: 0.04 }); },
   ajolote: () => { [0, 0.07, 0.15, 0.22, 0.3].forEach((d, i) => espTone(380 + i * 140, 0.09, { type: 'sine', vol: 0.09, f2: 900 + i * 180, delay: d })); espNoise(0.5, { f: 900, f2: 2600, q: 2, vol: 0.06, delay: 0.05 }); espTone(660, 0.6, { type: 'triangle', vol: 0.05, f2: 1320, att: 0.2, delay: 0.3 }); },   // update 34: burbujas
+  rubibot: () => { espTone(1800, 0.05, { type: 'square', vol: 0.05 }); espTone(120, 0.5, { type: 'sawtooth', vol: 0.09, f2: 40 }); espNoise(0.45, { f: 3000, f2: 400, q: 1.5, vol: 0.09 }); },   // update 36
+  frogetto: () => { [0, 0.08, 0.16, 0.24].forEach((d, i) => espTone(900 + i * 260, 0.12, { type: 'sine', vol: 0.06, delay: d })); espTone(140, 0.22, { type: 'square', vol: 0.08, f2: 90, delay: 0.32, vib: 20, vibF: 30 }); },   // conjuro + ¡croac!
+  zora: () => { espNoise(0.25, { f: 5000, f2: 800, q: 0.7, vol: 0.16 }); espTone(2400, 0.18, { type: 'sawtooth', vol: 0.05, f2: 300 }); espNoise(0.5, { f: 200, q: 0.8, vol: 0.12, type: 'lowpass', delay: 0.06 }); },
+  tiburon: () => { espNoise(1.0, { f: 500, f2: 1600, q: 2.5, vol: 0.12 }); espTone(90, 0.8, { type: 'sine', vol: 0.12, f2: 60, vib: 6, vibF: 5 }); },
   plop: () => { espNoise(0.08, { f: 600, vol: 0.2, type: 'lowpass' }); espTone(520, 0.14, { type: 'sine', vol: 0.15, f2: 150 }); },
   puf: () => espNoise(0.3, { f: 1500, f2: 300, vol: 0.1 }),
 };
@@ -2648,6 +2704,61 @@ const ESP_FN = {
     ESP.ventosa = { a, foe, t: 0, g, band, hit: false, pull: false };
     return true;
   },
+  // ---- update 36 ----
+  rubibot(a, foe) {   // PULSO EMP: turbo y especial del rival a cero, 3 s sin recargar, suelta el balón
+    if (!foe) return false;
+    foe.esp = 0; foe.energy = 0; foe.empT = 3.0; foe.stun = Math.max(foe.stun, 0.45); foe.dashT = 0; foe.kickPending = null; foe.sprinting = false;
+    if (ball.owner === foe) { const d = foe.pos.clone().sub(a.pos).normalize(); ball.owner = null; ball.vel.set(d.x * 3, d.y * 3, 3.2); ball.noCatch = foe; ball.noCatchT = 0.6; }
+    for (let i = 0; i < 3; i++) setTimeout(() => espShock(a.pos.x, a.pos.y, i === 1 ? 0xff7ad9 : 0x9b7bff, 8, 0.5, 0.15 + i * 0.4, 0.12), i * 110);
+    espPuffs(foe.pos.x, foe.pos.y, 1.2, 0xb59bff, 8, 1.2, 1.4, 0.5);
+    espIcon(foe, 'EMP', '#b59bff', 1.6, 1.5);
+    if (foe === user) espRuido(0.4);
+    LOG('emp', a, {}); return true;
+  },
+  frogetto(a, foe) {   // HECHIZO SAPO
+    if (!foe) return false;
+    foe.toadT = 2.5; foe.dashT = 0; foe.kickPending = null; foe.dribbleT = 0; foe.pm = null; foe.pmQ = null;
+    if (ball.owner === foe) { ball.owner = null; ball.vel.set(foe.face.x * 2.5, foe.face.y * 2.5, 2.4); }
+    ball.noCatch = foe; ball.noCatchT = 2.5;
+    espPuffs(foe.pos.x, foe.pos.y, 1.0, 0x8a5cff, 12, 1.6, 1.6, 0.7); espPuffs(foe.pos.x, foe.pos.y, 1.4, 0x5dffb4, 6, 1.2, 1.2, 0.6);
+    const s = espSprite(espTex('soft'), 0x5dffb4, 0.9, 1, true), p0 = g2t(a.pos.x, a.pos.y, 1.8), p1 = g2t(foe.pos.x, foe.pos.y, 1.2);
+    espFx(s, 0.3, (k, o) => { o.position.lerpVectors(p0, p1, k); o.position.y += Math.sin(Math.PI * k) * 2; });
+    espIcon(foe, 'CROAC', '#5dffb4', 2.5, 1.5);
+    LOG('sapo', a, {}); return true;
+  },
+  zora(a, foe) {   // RAYO: teletransporte 6,5 m (con balón) y aturde a quien esté en el camino
+    const md = a === user ? moveDir() : null;
+    let dir = md ? md.clone() : a.face.clone();
+    if (a !== user) { dir = goalCenter(a.team).sub(a.pos); if (foe && ball.owner !== a) dir = (ball.owner === foe ? foe.pos : new THREE.Vector2(ball.pos.x, ball.pos.y)).clone().sub(a.pos); }
+    if (dir.lengthSq() < 1e-6) dir.set(0, a.team === 0 ? 1 : -1);
+    dir.normalize();
+    const p0 = a.pos.clone(), p1 = a.pos.clone().addScaledVector(dir, 6.5);
+    p1.x = THREE.MathUtils.clamp(p1.x, -HW + 0.8, HW - 0.8); p1.y = THREE.MathUtils.clamp(p1.y, -HL + 2.5, HL - 2.5);   // dentro del campo (nunca dentro de la portería)
+    const seg = p1.clone().sub(p0), L2 = Math.max(1e-6, seg.lengthSq());
+    a.pos.copy(p1); a.vel.copy(dir).multiplyScalar(5); a.face.copy(dir); a.dashT = 0; a.dribbleT = 0;
+    if (a.root) a.root.position.copy(g2tS(a.pos.x, a.pos.y, 0));
+    if (foe) {
+      const t = THREE.MathUtils.clamp(foe.pos.clone().sub(p0).dot(seg) / L2, 0, 1), dd = foe.pos.distanceTo(p0.clone().addScaledVector(seg, t));
+      if (dd < 1.5) { foe.stun = Math.max(foe.stun, 0.9); foe.kickPending = null; foe.dashT = 0; if (ball.owner === foe) giveBall(a); espIcon(foe, 'ZAS', '#3dff7a', 1.1, 1.4); LOG('rayo_golpe', a, {}); }
+    }
+    const n = 9;
+    for (let i = 0; i <= n; i++) { const k = i / n, j = i === 0 || i === n ? 0 : (Math.random() - 0.5) * 1.1; espPuffs(p0.x + seg.x * k - dir.y * j, p0.y + seg.y * k + dir.x * j, 1.0 + Math.random() * 0.6, i % 2 ? 0xeaffd0 : 0x3dff7a, 2, 0.6, 0.9, 0.35, 0.15); }
+    espShock(p0.x, p0.y, 0x3dff7a, 2.6, 0.4); espShock(p1.x, p1.y, 0xeaffd0, 3.2, 0.45);
+    LOG('rayo', a, { L: +Math.sqrt(L2).toFixed(2) }); return true;
+  },
+  tiburon(a, foe) {   // REMOLINO a los pies del rival (o delante si está lejos)
+    let p = foe && foe.pos.distanceTo(a.pos) < 15 ? foe.pos.clone() : a.pos.clone().addScaledVector(a.face, 4);
+    p.x = THREE.MathUtils.clamp(p.x, -WX + 2, WX - 2); p.y = THREE.MathUtils.clamp(p.y, -WY + 2, WY - 2);
+    const g = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const m = new THREE.Mesh(new THREE.RingGeometry(0.55 + i * 0.75, 0.85 + i * 0.75, 40, 1, i * 0.6, Math.PI * 1.45), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x4fc3ff : 0xd8f4ff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
+      m.rotation.x = -Math.PI / 2; m.renderOrder = 3; g.add(m);
+    }
+    g.position.copy(g2tS(p.x, p.y, 0.06)); g.scale.setScalar(0.01);
+    espAddZona({ kind: 'remolino', x: p.x, y: p.y, r: 3.4, t: 3.0, life: 3.0, team: a.team, mesh: g });
+    espPuffs(p.x, p.y, 0.3, 0xbfeaff, 10, 1.4, 1.2, 0.6);
+    LOG('remolino', a, {}); return true;
+  },
   ladri(a) {   // muro delante de su portería, 5 s
     const s = a.team === 0 ? -1 : 1, y = s * (HL - 3.2), W2 = GW + 1.2;
     const geo = new THREE.BoxGeometry(W2 * 2, 2.4, 0.7); const tx = espTex('brick').clone(); tx.needsUpdate = true; tx.repeat.set(W2 * 2 / 2.6, 1.2);
@@ -2677,6 +2788,7 @@ function espRuido(t) { const el = document.getElementById('espRuido'); if (!el) 
 // ---- multiplicador de velocidad por estados ----
 function espSpeedMul(a) {
   let m = 1;
+  if (a.toadT > 0) m *= 0.62;   // update 36: sapito
   if (a.slowT > 0) m *= 0.45;
   if (a.ghostT > 0) m *= 1.55;
   if (a.flyT > 0) m *= 1.15;
@@ -2713,6 +2825,10 @@ function espAI(a, opp, dt) {
     case 'murcielago': want = (myBall && d < 6) || (oppBall && opp === user && d < 8); break;
     case 'ladri': want = oppBall && oppToGoal < 22; break;
     case 'ajolote': want = a.stun > 0.25 || a.freezeT > 0.25 || a.slowT > 0.3 || a.invertT > 0.3 || a.blindT > 0.3 || a.slipT > 0.3 || (myBall && d < 5 && a.energy < 0.35) || (oppBall && d < 9 && a.energy < 0.25); break;   // update 34
+    case 'rubibot': want = d < 7 && (oppBall || (opp && opp.esp > 0.7 && d < 5)); break;   // update 36
+    case 'frogetto': want = (oppBall && d < 9.5) || (opp && opp.esp > 0.9 && d < 6); break;
+    case 'zora': want = (myBall && d < 5.5 && dG > 9 && dG < 48) || (oppBall && d > 3 && d < 6.5); break;
+    case 'tiburon': want = oppBall && d < 11; break;
     case 'tubi': want = (oppBall && d > 1.5 && d < 8.5) || (myBall && d < 3 && dG < 24); break;
   }
   if (want && Math.random() < 0.7) espUse(a, true);
@@ -2722,8 +2838,10 @@ function espUpdate(dt, playing) {
   const fld = fieldPlayers();   // update 30: 2 VS 2
   for (const a of fld) {
     if (!a) continue;
-    if (playing && espOn() && a.esp < 1) { a.esp = Math.min(1, a.esp + dt / ESP_T); if (a.esp >= 1 && a === user) espSfx.listo(); }
-    for (const k of ['stickT', 'slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd', 'regenT']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
+    if (playing && espOn() && a.esp < 1 && !(a.empT > 0)) { a.esp = Math.min(1, a.esp + dt / ESP_T); if (a.esp >= 1 && a === user) espSfx.listo(); }
+    for (const k of ['stickT', 'slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd', 'regenT', 'toadT', 'empT']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
+    if (a.empT > 0) { a.energy = 0; a.sprinting = false; if ((a._empT = (a._empT || 0) - dt) <= 0) { a._empT = 0.12; espPuffs(a.pos.x + (Math.random() - 0.5), a.pos.y + (Math.random() - 0.5), 0.6 + Math.random() * 1.4, Math.random() < 0.5 ? 0xb59bff : 0xffffff, 1, 0.3, 0.8, 0.25, 0.1); } }   // update 36: PULSO EMP
+    { const tgt = a.toadT > 0 ? 0.55 : 1; if (a.model && (a._toadS || 1) !== tgt) { a._toadS = THREE.MathUtils.clamp((a._toadS || 1) + Math.sign(tgt - (a._toadS || 1)) * dt * 4, 0.55, 1); a.model.scale.setScalar(ESCALA * (a.charScale || 1) * a._toadS); } }   // update 36: HECHIZO SAPO
     if (a.regenT > 0 && (a._bubT = (a._bubT || 0) - dt) <= 0) { a._bubT = 0.09; const s = espSprite(espTex('burbuja'), Math.random() < 0.3 ? 0xffb3e0 : 0xbff4ff, 0.25 + Math.random() * 0.3, 0.9); const ox = (Math.random() - 0.5) * 1.2, oy = (Math.random() - 0.5) * 1.2; s.position.copy(g2tS(a.pos.x + ox, a.pos.y + oy, 0.3 + Math.random() * 1.4)); espFx(s, 0.8, (k, o, dt) => { o.position.y += 2.2 * dt; o.material.opacity = 0.9 * (1 - k); }); }   // update 34: burbujas mientras se regenera
     if (a._ghostOn && a.ghostT <= 0) espGhostVis(a, false);
     if (a.ghostT > 0 && (a._trailT = (a._trailT || 0) - dt) <= 0) { a._trailT = 0.05; espPuffs(a.pos.x, a.pos.y, 1.1, 0x2a2f6a, 1, 0.5, 1.6, 0.45, 0.1); }
@@ -2743,6 +2861,12 @@ function espUpdate(dt, playing) {
     for (const z of ESP.zonas) {
       if (z.team === a.team || z.r <= 0) continue;
       const inside = Math.hypot(a.pos.x - z.x, a.pos.y - z.y) < z.r;
+      if (z.kind === 'remolino' && inside) {   // update 36: REMOLINO -> arrastra al centro, frena y le quita el balón cerca del centro
+        const dx = z.x - a.pos.x, dy = z.y - a.pos.y, L = Math.hypot(dx, dy);
+        if (L > 0.05) { const pull = 3.6 * dt * Math.min(1, L * 0.8); a.pos.x += dx / L * pull; a.pos.y += dy / L * pull; }
+        a.slowT = Math.max(a.slowT, 0.25);
+        if (ball.owner === a && L < 1.9 && !z.robado) { z.robado = true; const an = Math.random() * Math.PI * 2; ball.owner = null; ball.vel.set(Math.cos(an) * 5, Math.sin(an) * 5, 2.5); ball.noCatch = a; ball.noCatchT = 0.8; a.kickPending = null; espIcon(a, '@', '#4fc3ff', 1.0, 1.5); LOG('remolino_roba', a, {}); }
+      }
       if (z.kind === 'nube' && inside) { if (a.slowT <= 0) espIcon(a, 'puaj', '#b6d84a', 1.0, 1.6); a.slowT = Math.max(a.slowT, 0.6); }
       if (z.kind === 'charco' && inside && a.slipCd <= 0 && a.slipT <= 0 && a.flyT <= 0) {
         a.slipT = 1.1; a.slipCd = 2.2; a.slipSpin = 0;
@@ -2765,6 +2889,8 @@ function espUpdate(dt, playing) {
     if (z.kind === 'charco') z.mesh.scale.setScalar(Math.max(0.01, (1 - Math.pow(1 - ini, 3)) * (0.5 + 0.5 * fin)));
     if (z.mesh && (z.kind === 'nube' || z.kind === 'fetida')) { z.mesh.children.forEach((s) => { if (s.isSprite) { s.material.opacity = 0.72 * ini * fin; s.position.y += Math.sin(S.t * 1.7 + s.userData.ph) * 0.004; s.material.rotation = Math.sin(S.t * 0.8 + s.userData.ph) * 0.4; } else s.material.opacity = 0.5 * ini * fin; }); }
     if (z.kind === 'charco') z.mesh.material.opacity = fin;
+    if (z.kind === 'remolino') { z.mesh.rotation.y += dt * 5.5; z.mesh.scale.setScalar(Math.max(0.01, (1 - Math.pow(1 - ini, 3)) * (0.6 + 0.4 * fin))); z.mesh.children.forEach((m, i) => { m.material.opacity = 0.8 * fin; m.rotation.z += dt * (1.5 + i); });
+      if (!ball.owner) { const dx = z.x - ball.pos.x, dy = z.y - ball.pos.y, L = Math.hypot(dx, dy); if (L < z.r && L > 0.3 && ball.pos.z < 1) { ball.vel.x += dx / L * 9 * dt; ball.vel.y += dy / L * 9 * dt; } } }
     if (z.kind === 'fetida' && (z.gk.fetidaT <= 0)) z.t = Math.min(z.t, 0.6);
     if (z.t <= 0) { if (z.mesh) { scene.remove(z.mesh); espDispose(z.mesh); } ESP.zonas.splice(i, 1); }
   }
@@ -3431,6 +3557,7 @@ function update(dt) {
     else if (!aim.shown && performance.now() - aim.t0 > AIM_SHOW_MS) { showAimJoy(true); aim.el.classList.add('apuntando'); }
   }
   if (PG.id !== null && (ball.owner !== user || S.mode !== 'play')) pgEnd(null, true);   // update 35: sin balón el patrón se cancela
+  pgBufUpdate(dt);   // update 36
   // --- UI botones ---
   const hasBall = ball.owner === user;
   if (!editor.on) {
@@ -3822,6 +3949,7 @@ function buildMenuUI() {
   mCartas.classList.toggle('muchas', CHARS.length > 8);   // update 22: 11 personajes -> rejilla de 6 columnas (2 filas)
   mCartas.classList.toggle('muchisimas', CHARS.length > 12);   // update 29: 15 personajes -> 8 columnas
   mCartas.classList.toggle('nueveCol', CHARS.length > 16);   // update 34: 17 personajes -> 9 columnas (2 filas, sin una carta suelta en una 3ª fila)
+  mCartas.classList.toggle('onceCol', CHARS.length > 18);   // update 36: 21 personajes -> 11 columnas (2 filas: 11 + 10)
   CHARS.forEach((c, i) => {
     const d = document.createElement('div'); d.className = 'carta'; d.style.setProperty('--c', c.color);
     if (c.badge) d.classList.add('conBadge');
@@ -3950,6 +4078,10 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
+  { t: '4 PERSONAJES NUEVOS', d: 'RUBIBOT (PULSO EMP), FROGETTO (HECHIZO SAPO), ZORA (RAYO) y TIBURÓN (REMOLINO). Cada uno con su intro.', c: '#3dff7a' },
+  { t: 'BUTÓN Y CONAZO', d: 'Modelos nuevos con intro propia. Mismas stats y especiales.', c: '#ffb020' },
+  { t: 'REGATES MÁS FÁCILES', d: 'Botón más grande: desliza en cualquier dirección (vale una diagonal ↗ / ↖ para la bicicleta) y ves el nombre del truco en vivo.', c: '#2fd6c3' },
+  { t: 'EDITAR CONTROLES', d: 'Arreglado: GUARDAR ya se puede pulsar.', c: '#5ea0ff' },
   { t: 'NUEVO LOBBY', d: 'Copas por modo, nivel de perfil y rueda de personajes: desliza para cambiar.', c: '#ffd23f' },
   { t: 'REGATES POR PATRÓN', d: 'Botón REGATES: dibuja en la rejilla 3×3 y suelta. → ← ↓ y bicicletas ↑→ / ↑←.', c: '#2fd6c3' },
   { t: 'SAQUE DE BANDA', d: 'Si el balón sale por la banda o la línea de fondo, conduciendo o suelto, se reanuda el juego.', c: '#5ea0ff' },
@@ -4647,9 +4779,19 @@ function storeCenterFromDom(id) {
   d.x = +(((r.left + r.right) / 2 - ar.left) / ar.width).toFixed(4);
   d.y = +(((r.top + r.bottom) / 2 - ar.top) / ar.height).toFixed(4);
 }
+// update 36: la barra del editor (GUARDAR, RESTABLECER, CANCELAR…) manda aunque otro elemento quede encima (antes la zona del joystick,
+// con z-index 34 al editar, tapaba GUARDAR en horizontal y no dejaba pulsarlo)
+function edBarHit(e) {
+  const bar = document.querySelector('.edBarra'); if (!bar) return null;
+  const r = bar.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return null;
+  return document.elementsFromPoint(e.clientX, e.clientY).find((el) => bar.contains(el)) || bar;
+}
 window.addEventListener('pointerdown', (e) => {
   if (!editor.on) return;
   if (e.target.closest && e.target.closest('.edBarra')) return;
+  const bh = edBarHit(e);
+  if (bh) { e.preventDefault(); e.stopPropagation(); editor.barPress = bh.closest('button'); return; }
   e.preventDefault(); e.stopPropagation();
   const t = e.target.closest && e.target.closest('.btnAccion, #joyBase');
   const id = t ? ctrlIdOf(t) : null;
@@ -4668,6 +4810,10 @@ window.addEventListener('pointermove', (e) => {
 }, true);
 const edUp = (e) => {
   if (!editor.on) return;
+  if (editor.barPress) {   // update 36: botón de la barra pulsado a través de otro elemento -> click al soltar encima
+    const b = editor.barPress; editor.barPress = null;
+    if (e.type === 'pointerup' && !(e.target.closest && e.target.closest('.edBarra'))) { const r = b.getBoundingClientRect(); if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) { e.stopPropagation(); b.click(); return; } }
+  }
   if (editor.drag && e.pointerId === editor.drag.pid) { storeCenterFromDom(editor.drag.id); editor.drag = null; }
   if (!(e.target.closest && e.target.closest('.edBarra'))) e.stopPropagation();
 };
@@ -5479,7 +5625,7 @@ Object.assign(window.__game, {
 Object.assign(window.__game, { cardHTML, shoot, THREE, effectCurve, applyTeamDiscs, discosOn, trampaFire: (x, y) => trampaFire(x === undefined ? null : { x, y }), screenToField, trampaPointer, landPt: () => { const l = landPt(); return l && { x: l.x, y: l.y }; }, inLandCircle: (a) => inLandCircle(a || user), LAND_R });   // update 31
 Object.assign(window.__game, { MS_get, msShow, msHide, get MS() { return MS; }, marcadorSet, marcGol, CTRL, TR, applyComboTR, applyTiroPase, showBanner, ROT_LOG, confeti, lobStatK: (k) => lobStatK({ charKey: k }), tpOn });   // update 32
 Object.defineProperties(window.__game, { perf: { get: () => PERF, configurable: true }, rueda: { get: () => ({ pos: RUEDA.pos, target: RUEDA.target, sp: RUEDA.sp, n: RUEDA.items.length }), configurable: true } });   // update 35 (getters de verdad: Object.assign los congela)
-Object.assign(window.__game, { patParse, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, throwIn, QUALITY });   // update 35
+Object.assign(window.__game, { patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, throwIn, QUALITY });   // update 35
 Object.assign(window.__game, { effectPlan, EF_THETA, gkCurveCross: (lineY, s) => { const r = gkCurveCross(lineY, s); return r && { tt: r.tt, x: r.x, z: r.z }; } });   // update 34
 Object.defineProperty(window.__game, 'trampa', { get: () => trampa && { t0: trampa.t0, tgt: trampa.tgt, held: trampa.held, pid: trampa.pid }, configurable: true });
 Object.defineProperties(window.__game, {
@@ -5520,5 +5666,5 @@ Object.defineProperty(window.__game, 'BADGES', { get: () => BADGES, configurable
 Object.defineProperty(window.__game, 'BADGE_ERR', { get: () => BADGE_ERR, configurable: true });   // update 32
 Object.defineProperty(window.__game, 'sel', { get: () => sel, configurable: true });
 // update 29 (pruebas): especiales
-Object.assign(window.__game, { ESPECIALES, ESP, ESP_T, espUse: (who) => espUse(who === 'rival' ? rival : user), espCanUse: (who) => espCanUse(who === 'rival' ? rival : user),
+Object.assign(window.__game, { espSpeedMul, ESPECIALES, ESP, ESP_T, espUse: (who) => espUse(who === 'rival' ? rival : user), espCanUse: (who) => espCanUse(who === 'rival' ? rival : user),
   espCharge: (who, v = 1) => { const a = who === 'rival' ? rival : user; if (a) a.esp = v; }, setEspeciales: (on) => setEspeciales(on), espClear: () => espClear() });
