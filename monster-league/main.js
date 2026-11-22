@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=39';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=40';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=39';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=40';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -836,7 +836,7 @@ function applyToon(model, key) {
 // ===================== CARGA =====================
 const loader = new GLTFLoader();
 loader.setMeshoptDecoder(MeshoptDecoder);
-const load = (u) => new Promise((res, rej) => loader.load(u, res, undefined, rej));
+const load = (u, onP) => new Promise((res, rej) => loader.load(u, res, onP, rej));   // update 40: onP = progreso (pantalla de carga)
 function matte(root) {
   root.traverse((o) => {
     if (o.isMesh) {
@@ -4946,7 +4946,7 @@ function buildCampo(key) {
   const mats = new Map();
   root.traverse((o) => { if (!o.isMesh) return; const one = (m) => { let c = mats.get(m); if (!c) { c = m.clone(); mats.set(m, c); } return c; }; o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material); });
   if (T) {
-    const quitar = []; root.traverse((o) => { if (o !== root && T.hide.test(o.name)) quitar.push(o); }); for (const o of quitar) o.removeFromParent();
+    const quitar = []; root.traverse((o) => { if (o !== root && T.hide.test(o.name)) quitar.push(o); else if (T.hideMat && o.isMesh && !Array.isArray(o.material) && T.hideMat.test(o.material.name)) quitar.push(o); }); for (const o of quitar) o.removeFromParent();   // update 40: también fuera los parches de desgaste (césped liso)
     for (const m of mats.values()) {
       const c = T.colors[m.name]; if (c) m.color.set(c);
     }
@@ -6037,6 +6037,7 @@ Object.assign(window.__game, { cardHTML, shoot, THREE, effectCurve, applyTeamDis
 Object.assign(window.__game, { MS_get, msShow, msHide, get MS() { return MS; }, marcadorSet, marcGol, CTRL, TR, applyComboTR, applyTiroPase, showBanner, ROT_LOG, confeti, lobStatK: (k) => lobStatK({ charKey: k }), tpOn });   // update 32
 Object.defineProperties(window.__game, { perf: { get: () => PERF, configurable: true }, rueda: { get: () => ({ pos: RUEDA.pos, target: RUEDA.target, sp: RUEDA.sp, n: RUEDA.items.length }), configurable: true } });   // update 35 (getters de verdad: Object.assign los congela)
 Object.defineProperty(window.__game, 'campoDeco', { get: () => campoDeco, configurable: true });   // update 39
+Object.defineProperty(window.__game, 'campoRoot', { get: () => campoRoot, configurable: true });   // update 40: para el escaneo del terreno de juego
 Object.assign(window.__game, { buildCampo, setCampo, campoAplicar, CAMPO_OPS, CROP: { CROP_X, CROP_Y, CROP_H }, GEO: { HW, HL, WX, WY, SIDE_X, GW, POST_X, POST_R, GH, GD, NET_X, NET_Z, BR }, CAMS, CAMPOS, TEMAS, NOVEDADES, comboOn, patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
 Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS, GK_ONLY, GK_STATS, GK_STAT_KEYS, statsAt, progCurve, lvCost, LV_MAX, LV_REF, TIERS, tierDe, progMejorar, monedasPartido, monedasTitulo, MON_PARTIDO, MON_TITULO,
   rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, LOB_NERF, LOB_K_MAX, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
@@ -6058,10 +6059,15 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
 (async function init() {
   const cargando = document.getElementById('cargando');
   applyQuality('init');
+  const BOOT = window.__boot || null;   // update 40: pantalla de carga BEAST STRIKERS (index.html)
   try {
     cargando.textContent = 'Cargando personajes…';
+    if (BOOT) BOOT.set(0.06);
     META = await (await fetch(`assets/anim_meta.json?${ASSET_V}`)).json();
-    const gl = await Promise.all(ALL_CHARS.map((c) => load(c.file)));
+    if (BOOT) BOOT.set(0.08);
+    const fr = ALL_CHARS.map(() => 0), bootUpd = () => { if (BOOT) BOOT.set(0.08 + 0.84 * fr.reduce((a, b) => a + b, 0) / fr.length); };
+    const gl = await Promise.all(ALL_CHARS.map((c, i) => load(c.file, (e) => { if (e && e.lengthComputable && e.total) { fr[i] = Math.min(0.99, e.loaded / e.total); bootUpd(); } }).then((g) => { fr[i] = 1; bootUpd(); return g; })));
+    if (BOOT && BOOT.css) await BOOT.css;   // style.css llega en segundo plano: se espera antes de maquetar el menú
     ALL_CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
     buildMenuChars(); renderPortraits(); buildMenuUI();
@@ -6070,12 +6076,14 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     openMenu();
     window.__game.menuReady = true;
     requestAnimationFrame(frame);
+    if (BOOT) { BOOT.set(0.96); requestAnimationFrame(() => requestAnimationFrame(() => BOOT.done())); }   // fundido cuando el menú ya está pintado
     campoReady = load('assets/campo.glb?' + ASSET_V).then((campo) => { setupField(campo); window.__game.ready = true; });
     await campoReady;
   } catch (err) {
     console.error(err);
     cargando.classList.remove('oculto');
     cargando.textContent = 'Error cargando: ' + err.message;
+    if (BOOT) BOOT.fail('Error cargando: ' + err.message);
   }
 })();
 
