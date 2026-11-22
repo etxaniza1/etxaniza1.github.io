@@ -1,4 +1,5 @@
 // update 39: campos temáticos (VOLCÁN, HIELO, BOSQUE DE SETAS).
+// update 40: el terreno de juego (dentro de las vallas) es LISO en todos: sin losas, grietas, placas ni manchas; solo el césped de campo.glb recoloreado + líneas.
 // SOLO ASPECTO: colores de campo.glb (suelo, líneas, vallas, porterías, red) + decorado exterior low-poly.
 // Nada jugable cambia: el campo, las vallas, las porterías y la red son los mismos del estadio (la física va por constantes en main.js).
 // Rendimiento móvil: todo el decorado se FUSIONA en 3 mallas (props con contorno toon, planos, brillos) + cielo + partículas.
@@ -8,21 +9,23 @@ export const CAMPO_NOM = { estadio: 'ESTADIO', volcan: 'VOLCÁN', hielo: 'HIELO'
 const HIDE = /^(Grada_|Texto_|Publicidad_|Marcador|Banquillos_|PortaBalones_|Arboles|Bordillo|Muros|Porteria_Propia_Marco)/;
 const CROP = /^Banderines/;   // vallas + porterías + banderines (y restos de gradas que se recortan)
 const GRASS = (a, b, run, wear) => ({ grassA: a, grassB: b, grassRun: run, grassWear: wear });
+const LISO = /^grassWear$/;   // update 40: parches de desgaste del césped fuera en los temas (se leían como manchas/relieve)
+const nada = () => {};   // update 40: pieza anulada (dentro del campo)
 export const TEMAS = {
   dbg: { hide: HIDE, crop: CROP, bg: '#000000', apron: '#000000', colors: { blue: '#0000ff', red: '#ff0000', white: '#00ff00', paving: '#ff88cc', pavingDark: '#8800ff', track: '#884400', ground: '#556600', path: '#ffffff', net: '#888888' } },
   volcan: {
-    hide: HIDE, crop: CROP, bg: '#3a1410', apron: '#2a2224', sky: ['#120606', '#5a1a0e', '#c2471b'],
+    hide: HIDE, crop: CROP, hideMat: LISO, bg: '#3a1410', apron: '#2a2224', sky: ['#120606', '#5a1a0e', '#c2471b'],
     colors: { ...GRASS('#3b3336', '#353033', '#2e292b', '#443a3a'), blue: '#2c2528', red: '#3d3336', white: '#4a4043', post: '#e7d3b3', net: '#e9dccb',
       paving: '#352d30', pavingDark: '#2a2326', track: '#4a2216', ground: '#231c1e', path: '#2d2427' },
     glow: { line: '#ff8a1e' },
   },
   hielo: {
-    hide: HIDE, crop: CROP, bg: '#1b2c5a', apron: '#dfeaf5', sky: ['#081233', '#1f3a7a', '#5d86c9'],
+    hide: HIDE, crop: CROP, hideMat: LISO, bg: '#1b2c5a', apron: '#dfeaf5', sky: ['#081233', '#1f3a7a', '#5d86c9'],
     colors: { ...GRASS('#d5e1ed', '#cad8e6', '#cfdcea', '#c2d1e1'), line: '#2f6fe0', blue: '#4f9fe0', red: '#86c8f2', white: '#f4f9ff', post: '#ffffff', net: '#ffffff',
       paving: '#e2ecf6', pavingDark: '#cbdcee', track: '#9fc6e8', ground: '#eef4fa', path: '#d6e4f2' },
   },
   setas: {
-    hide: HIDE, crop: CROP, bg: '#2c1d55', apron: '#2b4d22', sky: ['#120a2c', '#3b2470', '#8a5bc0'],
+    hide: HIDE, crop: CROP, hideMat: LISO, bg: '#2c1d55', apron: '#2b4d22', sky: ['#120a2c', '#3b2470', '#8a5bc0'],
     colors: { ...GRASS('#4f8f2e', '#467f29', '#3f7425', '#5a9a38'), line: '#f3f0d8', blue: '#5c3a22', red: '#6e4a2c', white: '#8a6640', post: '#7a5232', net: '#f4efe0',
       paving: '#3b6a2b', pavingDark: '#325c24', track: '#5b4630', ground: '#284a20', path: '#4a3b28' },
   },
@@ -166,14 +169,14 @@ function volcan(T, k, r) {
   const g = G(k, T);
   const ROCK = ['#2b2427', '#332b2e', '#3c3336', '#463c3e'];
   const rock = () => ROCK[(r() * ROCK.length) | 0];
-  // grietas de lava en el suelo del campo (finas y tenues: no se confunden con las líneas)
+  // grietas de lava en el suelo del campo — update 40: FUERA (campo liso). Se siguen consumiendo los mismos números aleatorios para que el decorado exterior quede idéntico a v39. (finas y tenues: no se confunden con las líneas)
   for (let n = 0; n < 22; n++) {
     let x = -18 + r() * 36, y = -26 + r() * 52, a = r() * Math.PI * 2; const pts = [[x, y]];
     for (let s = 0; s < 4 + ((r() * 4) | 0); s++) { a += (r() - 0.5) * 1.4; const l = 0.8 + r() * 1.6; x += Math.cos(a) * l; y += Math.sin(a) * l; pts.push([x, y]); }
-    if (pts.every((p) => Math.abs(p[0]) < 20.8 && Math.abs(p[1]) < 27.6)) k.add('glow', ribbon(T, pts, 0.07, 0.011), '#5c2410', 0, 0, 0);
+    if (pts.every((p) => Math.abs(p[0]) < 20.8 && Math.abs(p[1]) < 27.6)) nada('glow', ribbon(T, pts, 0.07, 0.011), '#5c2410', 0, 0, 0);
   }
-  // losas de basalto (manchas algo más oscuras/claras)
-  for (let n = 0; n < 70; n++) { const x = -20 + r() * 40, y = -27 + r() * 54; k.add('flat', blobGeo(T, 1.3 + r() * 1.6, 6, 0.3, r), r() < 0.5 ? '#302a2d' : '#3e3638', x, y, 0.005, { ry: r() * 6 }); }
+  // losas de basalto — update 40: FUERA (campo liso). Se siguen consumiendo los mismos números aleatorios para que el decorado exterior quede idéntico a v39. (manchas algo más oscuras/claras)
+  for (let n = 0; n < 70; n++) { const x = -20 + r() * 40, y = -27 + r() * 54; nada('flat', blobGeo(T, 1.3 + r() * 1.6, 6, 0.3, r), r() < 0.5 ? '#302a2d' : '#3e3638', x, y, 0.005, { ry: r() * 6 }); }
   // almenas de roca sobre las vallas (bandas y fondo rival; el fondo propio NO se sube: taparía tu red)
   for (const s of [-1, 1]) for (let y = -27.5; y <= 27.5; y += 2.05) { const hh = 0.8 + r() * 0.5; k.add('prop', g.box, rock(), s * WALL_X, y, 0.95, { s: [0.95, hh, 1.45], ry: (r() - 0.5) * 0.08 }); }
   for (let x = -20.5; x <= 20.6; x += 2.05) { const hh = 0.8 + r() * 0.5; k.add('prop', g.box, rock(), x, WALL_Y, 0.95, { s: [1.45, hh, 0.95] }); }
@@ -195,7 +198,7 @@ function volcan(T, k, r) {
     for (let n = 0; n < 34; n++) { const x = s * (24.2 + r() * 5.5), y = -40 + r() * 76, sz = 0.35 + r() * 0.8; k.add('prop', g.ico, rock(), x, y, sz * 0.3, { s: [sz, sz * 0.7, sz], ry: r() * 6 }); }
     for (const y of [-14, 3, 20]) gargola(T, k, g, s * 28, y, faceTo(s * 28, y, 0, y), 1);
     // grietas de lava en el suelo exterior
-    for (let n = 0; n < 10; n++) { let x = s * (25 + r() * 4), y = -35 + r() * 68, a = r() * 6; const pts = [[x, y]]; for (let q = 0; q < 4; q++) { a += (r() - 0.5) * 1.2; x += Math.cos(a) * 1.4; y += Math.sin(a) * 1.4; pts.push([x, y]); } k.add('glow', ribbon(T, pts, 0.16, 0.02), '#e3540f', 0, 0, 0); }
+    for (let n = 0; n < 10; n++) { let x = s * (25 + r() * 4), y = -35 + r() * 68, a = r() * 6; const pts = [[x, y]]; for (let q = 0; q < 4; q++) { a += (r() - 0.5) * 1.2; x += Math.cos(a) * 1.4; y += Math.sin(a) * 1.4; pts.push([x, y]); } (pts.every((p) => Math.abs(p[0]) >= 23) ? k.add : nada).call(k, 'glow', ribbon(T, pts, 0.16, 0.02), '#e3540f', 0, 0, 0); }   // update 40: ninguna grieta entra por dentro de las vallas
   }
   // agujas y peñascos de roca volcánica más allá de los ríos
   for (const s of [-1, 1]) for (let n = 0; n < 30; n++) {
@@ -237,12 +240,12 @@ function gargola(T, k, g, x, y, ry, s) {
 function hielo(T, k, r) {
   const g = G(k, T);
   const ICE = ['#7fc2ee', '#93cff3', '#6bb5e8', '#a6daf6'], ice = () => ICE[(r() * ICE.length) | 0];
-  // placas de hielo en el campo (solo visuales: debajo de las líneas)
+  // placas de hielo en el campo — update 40: FUERA (campo liso). Se siguen consumiendo los mismos números aleatorios para que el decorado exterior quede idéntico a v39. (solo visuales: debajo de las líneas)
   for (const [x, y, R] of [[-10, 9.5, 3.0], [10.5, 11, 2.7], [-10.5, -9.5, 2.8], [10, -10.5, 3.1], [-15.5, 1, 1.5], [15.5, -1.5, 1.4]]) {
     const ry = r() * 6;
-    k.add('flat', blobGeo(T, R * 1.06, 18, 0.12, r), '#9cc8e8', x, y, 0.005, { ry });
-    k.add('flat', blobGeo(T, R, 18, 0.1, r), '#b5d9f1', x, y, 0.007, { ry });
-    for (let q = 0; q < 4; q++) { let px = x + (r() - 0.5) * R, py = y + (r() - 0.5) * R, a = r() * 6; const pts = [[px, py]]; for (let s = 0; s < 3; s++) { a += (r() - 0.5) * 1.5; px += Math.cos(a) * R * 0.3; py += Math.sin(a) * R * 0.3; pts.push([px, py]); } if (pts.every((p) => Math.hypot(p[0] - x, p[1] - y) < R * 0.85)) k.add('flat', ribbon(T, pts, 0.07, 0.009), '#e8f6ff', 0, 0, 0); }
+    nada('flat', blobGeo(T, R * 1.06, 18, 0.12, r), '#9cc8e8', x, y, 0.005, { ry });
+    nada('flat', blobGeo(T, R, 18, 0.1, r), '#b5d9f1', x, y, 0.007, { ry });
+    for (let q = 0; q < 4; q++) { let px = x + (r() - 0.5) * R, py = y + (r() - 0.5) * R, a = r() * 6; const pts = [[px, py]]; for (let s = 0; s < 3; s++) { a += (r() - 0.5) * 1.5; px += Math.cos(a) * R * 0.3; py += Math.sin(a) * R * 0.3; pts.push([px, py]); } if (pts.every((p) => Math.hypot(p[0] - x, p[1] - y) < R * 0.85)) nada('flat', ribbon(T, pts, 0.07, 0.009), '#e8f6ff', 0, 0, 0); }
   }
   // bloques de hielo sobre las vallas (bandas y fondo rival)
   const blk = (x, y, along) => { const hh = 0.75 + r() * 0.6, L = 1.35 + r() * 0.35; k.add('prop', g.box, ice(), x, y, 0.95, { s: along ? [0.95, hh, L] : [L, hh, 0.95], ry: (r() - 0.5) * 0.1 }); k.add('prop', g.box, '#f6fbff', x, y, 0.95 + hh, { s: along ? [1.02, 0.14, L * 0.9] : [L * 0.9, 0.14, 1.02] }); };
@@ -291,8 +294,8 @@ function munyeco(T, k, g, x, y, h, ry, s, r) {
 function setas(T, k, r) {
   const g = G(k, T);
   const CAPS = ['#e2382d', '#2f7fe6', '#8b52dc', '#f2892b', '#e2382d', '#2f7fe6'];
-  // musgo: manchas más claras/oscuras en el campo
-  for (let n = 0; n < 40; n++) { const x = -20 + r() * 40, y = -27 + r() * 54; k.add('flat', blobGeo(T, 0.8 + r() * 1.4, 12, 0.25, r), r() < 0.5 ? '#4a872b' : '#539335', x, y, 0.005, { ry: r() * 6 }); }
+  // musgo: manchas más claras/oscuras en el campo — update 40: FUERA (campo liso). Se siguen consumiendo los mismos números aleatorios para que el decorado exterior quede idéntico a v39.
+  for (let n = 0; n < 40; n++) { const x = -20 + r() * 40, y = -27 + r() * 54; nada('flat', blobGeo(T, 0.8 + r() * 1.4, 12, 0.25, r), r() < 0.5 ? '#4a872b' : '#539335', x, y, 0.005, { ry: r() * 6 }); }
   // troncos con musgo sobre las vallas (bandas y fondo rival)
   const logC = '#6b4528', moss = ['#5f9a35', '#6fae3d', '#4f8a2b'];
   for (const s of [-1, 1]) {

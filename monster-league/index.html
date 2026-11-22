@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, shrink-to-fit=no">
-<meta name="theme-color" content="#1b2440">
+<meta name="theme-color" content="#07080d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="format-detection" content="telephone=no">
@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=39';
+  var V = 'v=40';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -20,16 +20,69 @@
   } catch (e) {}
 })();
 </script>
-<title>Monster League · Prototipo</title>
+<title>Beast Strikers</title>
+<meta name="application-name" content="Beast Strikers">
+<meta name="apple-mobile-web-app-title" content="Beast Strikers">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/favicon-16.png">
+<style id="bootCss">
+/* update 40: pantalla de carga BEAST STRIKERS (inline: pinta en el primer fotograma, antes de style.css, main.js y los GLB) */
+@font-face{font-family:"Lilita One";src:url(vendor/fonts/LilitaOne-Regular.ttf) format("truetype");font-display:swap}
+html,body{margin:0;background:#07080d}
+#boot{position:fixed;inset:0;z-index:2147483000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:min(2.2vh,14px);overflow:hidden;color:#fff;font-family:"Lilita One",system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  background:radial-gradient(ellipse 55% 60% at 28% 55%,rgba(46,220,90,.16),transparent 70%),radial-gradient(ellipse 55% 60% at 72% 55%,rgba(40,140,255,.18),transparent 70%),radial-gradient(ellipse 80% 70% at 50% 45%,#141826,#07080d 75%);
+  transition:opacity .38s ease,visibility 0s linear .38s;-webkit-user-select:none;user-select:none;touch-action:none}
+#boot.fuera{opacity:0;visibility:hidden;pointer-events:none}
+#boot::before{content:"";position:absolute;inset:-50%;background:repeating-conic-gradient(from 0deg,rgba(255,255,255,.035) 0 6deg,transparent 6deg 18deg);animation:bootRay 40s linear infinite;pointer-events:none}
+@keyframes bootRay{to{transform:rotate(360deg)}}
+#boot .bIco{position:relative;width:min(34vh,46vw,230px);aspect-ratio:1;border-radius:22%;background:#000 url(data:image/webp;base64,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) center/cover;
+  box-shadow:0 0 0 4px #ffcf3a,0 0 0 8px #1a1305,0 10px 0 8px #0d0a03,0 0 46px 10px rgba(255,190,40,.28);animation:bootPop .5s cubic-bezier(.2,1.6,.4,1) both}
+@keyframes bootPop{from{transform:scale(.6);opacity:0}}
+#boot .bTit{position:relative;margin-top:min(1.6vh,10px);font-size:min(9vh,11vw,58px);line-height:1;letter-spacing:.02em;font-style:italic;transform:skew(-4deg);
+  color:#fff;-webkit-text-stroke:min(.9vh,5px) #000;paint-order:stroke fill;text-shadow:0 min(.8vh,5px) 0 #000,0 0 22px rgba(255,200,60,.35)}
+#boot .bTit b{font-weight:400;color:#ffd23f}
+#boot .bBar{position:relative;width:min(62vw,420px);height:min(4.4vh,26px);border-radius:999px;background:#0b0d16;box-shadow:inset 0 0 0 3px #000,0 0 0 2px #2b3148,0 4px 0 2px #000;overflow:hidden}
+#boot .bFill{position:absolute;left:3px;top:3px;bottom:3px;width:3%;max-width:calc(100% - 6px);border-radius:999px;transition:width .25s ease-out;
+  background:repeating-linear-gradient(-45deg,rgba(255,255,255,.18) 0 10px,transparent 10px 20px),linear-gradient(#ffe36a,#ffb21e 55%,#f08d10);background-size:28px 28px,100% 100%;animation:bootStripe .8s linear infinite;box-shadow:inset 0 -3px 0 rgba(0,0,0,.18),inset 0 2px 0 rgba(255,255,255,.45)}
+@keyframes bootStripe{to{background-position:28px 0,0 0}}
+#boot .bPct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:min(3.2vh,17px);color:#fff;-webkit-text-stroke:3px #000;paint-order:stroke fill}
+#boot .bTip{position:relative;max-width:80vw;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-weight:700;font-size:min(3vh,14px);color:#aeb6d6;text-align:center}
+#boot .bTip i{font-style:normal;color:#ffd23f}
+#boot.error .bFill{background:#e84040;animation:none}
+@media (max-height:420px){#boot{gap:6px}#boot .bIco{width:min(40vh,40vw)}}
+</style>
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=39">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+<link id="mainCss" rel="stylesheet" href="style.css?v=40" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
+<noscript><link rel="stylesheet" href="style.css?v=40"></noscript>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
 </head>
 <body>
+<div id="boot" role="progressbar" aria-label="Cargando Beast Strikers" aria-valuemin="0" aria-valuemax="100" aria-valuenow="3">
+  <div class="bIco"></div>
+  <div class="bTit">BEAST <b>STRIKERS</b></div>
+  <div class="bBar"><div class="bFill"></div><div class="bPct">3%</div></div>
+  <div class="bTip"></div>
+</div>
+<script>
+// update 40: progreso real de la carga. main.js llama a __boot.set(0..1) según los archivos (bytes) y __boot.done() cuando el menú está listo.
+(function () {
+  var el = document.getElementById('boot'), fill = el.querySelector('.bFill'), pct = el.querySelector('.bPct'), tip = el.querySelector('.bTip');
+  var TIPS = ['Mantén <i>TURBO</i> para esprintar.', 'Carga el <i>ESPECIAL</i> y suéltalo en el momento justo.', '<i>CHUT ALTO</i> para superar al portero.', 'Elige campo en el menú: <i>Estadio, Volcán, Hielo o Setas</i>.', 'Mejora a tus bestias en <i>PERSONAJES</i>.', 'Pasa el balón: dos bestias corren más que una.'];
+  tip.innerHTML = TIPS[(Math.random() * TIPS.length) | 0];
+  var B = window.__boot = { p: 0.03, t0: performance.now(), log: [], hecho: false,
+    set: function (f) { f = Math.max(B.p, Math.min(1, f)); if (f === B.p) return; B.p = f; var n = Math.round(f * 100);
+      fill.style.width = 'calc(' + n + '% - 6px)'; pct.textContent = n + '%'; el.setAttribute('aria-valuenow', n); B.log.push([Math.round(performance.now() - B.t0), n]); },
+    done: function () { if (B.hecho) return; B.hecho = true; el.style.pointerEvents = 'none'; B.set(1); B.tDone = performance.now(); setTimeout(function () { el.classList.add('fuera'); setTimeout(function () { el.style.display = 'none'; B.oculto = true; }, 420); }, 120); },
+    fail: function (msg) { el.classList.add('error'); tip.textContent = msg; } };
+  // style.css va en segundo plano (no bloquea el primer pintado); main.js lo espera antes de maquetar el menú
+  B.css = new Promise(function (res) { if (window.__cssOk) res(); else window.__cssCb = res; });
+})();
+</script>
 <div id="app">
   <canvas id="c"></canvas>
   <div id="hud">
@@ -116,7 +169,7 @@
       </button>
       <button id="lbCopasTot" class="lbCopas" aria-label="Copas"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg><b id="lbCopasN">0</b><span class="lbCopasBar"><i id="lbCopasBarI"></i></span><small id="lbRango">BRONCE</small></button>
       <button id="lbCampo" class="lbCampo" aria-label="Elegir campo" data-c="estadio"><span class="lbCampoIco" aria-hidden="true"></span><span class="lbCampoTxt"><small>CAMPO</small><b id="lbCampoNom">ESTADIO</b></span></button>
-      <div class="mTitulo"><h1>MONSTER LEAGUE</h1></div>
+      <div class="mTitulo"><h1>BEAST STRIKERS</h1></div>
       <button id="lbMonedas" class="lbMonedas" aria-label="Monedas: mejorar cartas"><svg class="icoMoneda" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.6"/><circle class="in" cx="12" cy="12" r="6.6"/><path class="st" d="M12 7.6l1.35 2.75 3.03.44-2.19 2.13.52 3.02L12 14.52l-2.71 1.42.52-3.02-2.19-2.13 3.03-.44z"/></svg><b id="lbMonN">0</b><i class="lbMonMas">+</i></button>
       <button id="btnAjustes" class="mEngranaje" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"/></svg></button>
     </div>
@@ -270,7 +323,7 @@
   </div>
   <div id="pantalla">
     <div class="caja">
-      <h1>MONSTER<br>LEAGUE</h1>
+      <h1>BEAST<br>STRIKERS</h1>
       <div id="resultado"></div>
       <button id="btnJugar">JUGAR OTRA VEZ</button>
       <button id="btnMenu">CAMBIAR PERSONAJE</button>
@@ -282,9 +335,9 @@
   <div class="giraCaja">
     <div class="giraIcono" aria-hidden="true"><div class="giraPhone"></div></div>
     <div class="giraTitulo">GIRA EL MÓVIL</div>
-    <div class="giraSub">Monster League se juega en horizontal</div>
+    <div class="giraSub">Beast Strikers se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=39"></script>
+<script type="module" src="main.js?v=40"></script>
 </body>
 </html>
