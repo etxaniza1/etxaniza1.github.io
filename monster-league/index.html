@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=34';
+  var V = 'v=35';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -24,7 +24,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=34">
+<link rel="stylesheet" href="style.css?v=35">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -64,6 +64,13 @@
         <span class="btnTxt">REGATE</span>
       </div>
     </div>
+    <div id="btnPatron" class="btnAccion patron" role="button" aria-label="Regates por patrón">
+      <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="cargaPatron" cx="50" cy="50" r="46" class="cargaAro"/></svg>
+      <div class="btnInner">
+        <svg class="icono icoPatron" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12V4.5h7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/><g><circle cx="4.5" cy="4.5" r="2"/><circle cx="12" cy="4.5" r="2.4"/><circle cx="19.5" cy="4.5" r="2.4"/><circle cx="4.5" cy="12" r="2"/><circle cx="12" cy="12" r="2.4"/><circle cx="19.5" cy="12" r="2"/><circle cx="4.5" cy="19.5" r="2"/><circle cx="12" cy="19.5" r="2"/><circle cx="19.5" cy="19.5" r="2"/></g></svg>
+        <span class="btnTxt">REGATES</span>
+      </div>
+    </div>
     <div id="cargaBarra" aria-hidden="true"><div class="fill"></div><div class="zona"></div><span class="lbl">CARGA</span></div>
     <div id="btnAlto" class="btnAccion alto" role="button" aria-label="Chut alto">
       <svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="aro"/><circle id="cargaAlto" cx="50" cy="50" r="46" class="cargaAro"/></svg>
@@ -96,20 +103,63 @@
   </div>
   <div id="swipeZona" aria-hidden="true"></div>
   <canvas id="swipeTrail" aria-hidden="true"></canvas>
+  <div id="patronGrid" aria-hidden="true"><div class="pgFondo"></div><svg class="pgSvg"><polyline class="pgSombra"/><polyline class="pgLinea"/><line class="pgVivo"/></svg><div class="pgPuntos"></div><div class="pgNombre"></div></div>
   <div id="aimJoy" aria-hidden="true"><div id="aimCancel">✕</div><div id="aimKnob"></div></div>
   <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: tiro / pase (mantén para cargar) · SHIFT: turbo · E: regate / entrada · Q: chut alto · R: especial · C: pase (2 VS 2) · X: saltar / cabezazo · ESC: pausa</div>
-  <div id="menu">
-    <button id="btnAjustes" class="mEngranaje" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"/></svg></button>
-    <div class="mTitulo"><h1>MONSTER<br> LEAGUE</h1></div>
-    <div id="mCartaGrande"></div>
-    <div id="menuStage" aria-label="Personaje (arrastra para girar)"></div>
+  <div id="menu" class="lobby">
+    <div class="lbVineta" aria-hidden="true"></div>
+    <div id="menuStage" aria-label="Personaje (toca para elegir, arrastra para girar)"></div>
+    <div class="lbTop">
+      <button id="lbPerfil" class="lbPerfil" aria-label="Perfil">
+        <span class="lbAvatar"><img id="lbAvatarImg" alt="" draggable="false"></span>
+        <span class="lbPerfTxt"><span class="lbFila1"><span class="lbNivel"><b id="lbNivel">1</b></span><span id="lbNombre">JUGADOR</span></span><span class="lbXp"><i id="lbXpBar"></i><em id="lbXpTxt">0/100</em></span></span>
+      </button>
+      <button id="lbCopasTot" class="lbCopas" aria-label="Copas"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg><b id="lbCopasN">0</b><span class="lbCopasBar"><i id="lbCopasBarI"></i></span><small id="lbRango">BRONCE</small></button>
+      <div class="mTitulo"><h1>MONSTER LEAGUE</h1></div>
+      <button id="btnAjustes" class="mEngranaje" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"/></svg></button>
+    </div>
+    <div class="lbCol lbColIzq">
+      <button id="btnMenuTienda" class="lbBtn cTienda"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16l-1.4 11H5.4z"/><path class="ln" d="M8.5 9V7a3.5 3.5 0 0 1 7 0v2"/></svg><span>TIENDA</span></button>
+      <button id="lbBtnPers" class="lbBtn cPers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20c.6-4 3.2-6.2 6.5-6.2s5.9 2.2 6.5 6.2z"/><circle cx="17" cy="7" r="2.6" opacity=".75"/><path d="M15.5 12.5c3 .2 5 2 5.6 5.5h-4" opacity=".75"/></svg><span>PERSONAJES</span></button>
+      <button id="btnMenuCartas" class="lbBtn cCartas"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="11" height="15" rx="2" transform="rotate(-8 8 12)"/><rect x="10" y="4" width="11" height="15" rx="2" opacity=".75"/></svg><span>CARTAS</span></button>
+    </div>
+    <div class="lbCol lbColDer">
+      <button id="lbBtnNov" class="lbBtn cNov"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4l3 .5L9 20h2.5l-1.5-5 9 3V6L8 10z"/><path class="ln" d="M20.5 9.5v5"/></svg><span>NOVEDADES</span><i class="lbPunto"></i></button>
+      <button id="lbBtnCopas" class="lbBtn cCopas"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg><span>COPAS</span></button>
+    </div>
+    <div class="lbPlaca"><div id="mNombre">CONAZO</div><div id="mEsp"></div></div>
+    <div id="lbRueda" aria-label="Elige personaje (desliza)"><div class="lbRuedaPista"></div><div id="lbRuedaItems"></div></div>
     <button id="mPrev" class="mFlecha izq" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button>
     <button id="mNext" class="mFlecha der" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
-    <div class="mDerecha">
-      <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="mNombre">CONAZO</div><div id="mEsp"></div></div>
-      <div id="mCartas"></div>
-      <div class="mAbajo"><div class="mFilaVs"><div id="mVs"></div><button id="btnMenu2v2">2 VS 2</button></div><button id="btnMenuCartas">CARTAS</button><button id="btnMenuTienda">TIENDA</button><button id="btnMenuPractica">PRÁCTICA</button><div class="mFila"><button id="btnMenuTorneo" class="mModo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8M10.5 13h3v3h-3zM8 16h8l1 4H7z"/></svg>TORNEO</button><button id="btnMenuJugar">JUGAR</button><button id="btnMenuLiga" class="mModo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h16M4 20h10"/></svg>LIGA</button></div></div>
+    <div class="lbJugar">
+      <div id="mVs"></div>
+      <div class="lbJugarFila">
+        <button id="lbModo" class="lbModo" aria-label="Elegir modo"><span id="lbModoIco" class="lbModoIco"></span><span class="lbModoTxt"><small>MODO</small><b id="lbModoNom">1 VS 1</b></span><span class="lbModoCopas"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg><b id="lbModoCopas">0</b></span></button>
+        <button id="btnMenuJugar">JUGAR</button>
+      </div>
     </div>
+    <div id="lbModos" class="lbPanel" aria-label="Modos de juego"><div class="lbPanelCaja">
+      <div class="lbPanelTit">ELIGE MODO</div>
+      <div class="lbModosLista">
+        <button id="lbM1v1" class="lbModoCard" data-modo="1v1"></button>
+        <button id="btnMenu2v2" class="lbModoCard" data-modo="2v2"></button>
+        <button id="btnMenuLiga" class="lbModoCard mModo" data-modo="liga"></button>
+        <button id="btnMenuTorneo" class="lbModoCard mModo" data-modo="torneo"></button>
+        <button id="btnMenuPractica" class="lbModoCard" data-modo="practica"></button>
+      </div>
+      <button class="lbCerrar ajBtn ajVolver">VOLVER</button>
+    </div></div>
+    <div id="lbPers" class="lbPanel" aria-label="Personajes"><div class="lbPanelCaja lbPersCaja">
+      <div id="mCartaGrande"></div>
+      <div class="mDerecha">
+        <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="lbPersNom"></div><div id="lbPersEsp"></div></div>
+        <div id="mCartas"></div>
+        <div class="lbPersBot"><button class="lbCerrar ajBtn ajVolver">VOLVER</button><button id="lbPersOk" class="ajBtn lbOk">ELEGIR</button></div>
+      </div>
+    </div></div>
+    <div id="lbCopasPanel" class="lbPanel" aria-label="Copas"><div class="lbPanelCaja"><div class="lbPanelTit"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg> COPAS</div><div id="lbCopasCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
+    <div id="lbNovPanel" class="lbPanel" aria-label="Novedades"><div class="lbPanelCaja"><div class="lbPanelTit">NOVEDADES</div><div id="lbNovCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
+    <div id="lbPerfPanel" class="lbPanel" aria-label="Perfil"><div class="lbPanelCaja"><div class="lbPanelTit">PERFIL</div><div id="lbPerfCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
   </div>
   <div id="pausa">
     <div class="pausaCaja">
@@ -173,6 +223,8 @@
       <button id="ajCambio" class="ajBtn ajToggle">2 VS 2: PASE SIN BALÓN = CAMBIAR DE JUGADOR: NO</button>
       <button id="ajTurboRegate" class="ajBtn ajToggle">TURBO + REGATE EN UN BOTÓN: SÍ</button>
       <div id="ajTurboRegateNota" class="ajNota"><b>Mantén</b> TURBO = sprint · <b>desliza</b> desde TURBO y suelta = <b>regate</b> en esa dirección (NO = botones separados)</div>
+      <button id="ajPatron" class="ajBtn ajToggle">BOTÓN REGATES POR PATRÓN (3×3): SÍ</button>
+      <div id="ajPatronNota" class="ajNota">Toca REGATES y <b>dibuja</b> desde el punto central; se ejecuta al <b>soltar</b> · → rodar derecha · ← rodar izquierda · ↓ rodar atrás · ↑→ bicicleta derecha · ↑← bicicleta izquierda · se pueden encadenar (hasta 3)</div>
       <button id="ajTiroPase" class="ajBtn ajToggle">BOTÓN TIRO/PASE (CHUT SUAVE Y CONTROLADO): SÍ</button>
       <div id="ajTiroPaseNota" class="ajNota">TIRO/PASE = balón controlado (≈15 m/s) · NO = CHUTAR potente de antes · CHUT ALTO y deslizamiento no cambian</div>
       <button id="ajLargoStat" class="ajBtn ajToggle">CHUT ALTO SEGÚN LA STAT TIR: SÍ</button>
@@ -217,6 +269,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=34"></script>
+<script type="module" src="main.js?v=35"></script>
 </body>
 </html>
