@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=36';
+  var V = 'v=37';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -24,7 +24,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" href="assets/cards/conazo.png">
-<link rel="stylesheet" href="style.css?v=36">
+<link rel="stylesheet" href="style.css?v=37">
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -116,6 +116,7 @@
       </button>
       <button id="lbCopasTot" class="lbCopas" aria-label="Copas"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg><b id="lbCopasN">0</b><span class="lbCopasBar"><i id="lbCopasBarI"></i></span><small id="lbRango">BRONCE</small></button>
       <div class="mTitulo"><h1>MONSTER LEAGUE</h1></div>
+      <button id="lbMonedas" class="lbMonedas" aria-label="Monedas: mejorar cartas"><svg class="icoMoneda" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.6"/><circle class="in" cx="12" cy="12" r="6.6"/><path class="st" d="M12 7.6l1.35 2.75 3.03.44-2.19 2.13.52 3.02L12 14.52l-2.71 1.42.52-3.02-2.19-2.13 3.03-.44z"/></svg><b id="lbMonN">0</b><i class="lbMonMas">+</i></button>
       <button id="btnAjustes" class="mEngranaje" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"/></svg></button>
     </div>
     <div class="lbCol lbColIzq">
@@ -126,6 +127,7 @@
     <div class="lbCol lbColDer">
       <button id="lbBtnNov" class="lbBtn cNov"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4l3 .5L9 20h2.5l-1.5-5 9 3V6L8 10z"/><path class="ln" d="M20.5 9.5v5"/></svg><span>NOVEDADES</span><i class="lbPunto"></i></button>
       <button id="lbBtnCopas" class="lbBtn cCopas"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg><span>COPAS</span></button>
+      <button id="lbBtnAlin" class="lbBtn cAlin"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="2.5" width="17" height="19" rx="2.5"/><path class="ln" d="M3.5 12h17M9 21.5v-3.2h6v3.2"/><circle cx="12" cy="16.4" r="1.9"/><circle cx="8.2" cy="7.2" r="1.9"/><circle cx="15.8" cy="7.2" r="1.9"/></svg><span>ALINEACIÓN</span></button>
     </div>
     <div class="lbPlaca"><div id="mNombre">CONAZO</div><div id="mEsp"></div></div>
     <div id="lbRueda" aria-label="Elige personaje (desliza)"><div class="lbRuedaPista"></div><div id="lbRuedaItems"></div></div>
@@ -154,10 +156,25 @@
       <div class="mDerecha">
         <div class="mInfo"><div class="mElige">ELIGE TU PERSONAJE</div><div id="lbPersNom"></div><div id="lbPersEsp"></div></div>
         <div id="mCartas"></div>
-        <div class="lbPersBot"><button class="lbCerrar ajBtn ajVolver">VOLVER</button><button id="lbPersOk" class="ajBtn lbOk">ELEGIR</button></div>
+        <div class="lbPersBot"><button class="lbCerrar ajBtn ajVolver">VOLVER</button><button id="lbPersMejorar" class="ajBtn lbMej">MEJORAR</button><button id="lbPersOk" class="ajBtn lbOk">ELEGIR</button></div>
       </div>
     </div></div>
     <div id="lbCopasPanel" class="lbPanel" aria-label="Copas"><div class="lbPanelCaja"><div class="lbPanelTit"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg> COPAS</div><div id="lbCopasCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
+    <div id="lbMejora" class="lbPanel" aria-label="Mejorar carta"><div class="lbPanelCaja lbMejCaja">
+      <div id="lbMejCarta" class="lbMejCarta"></div>
+      <div class="lbMejDer">
+        <div class="lbPanelTit">MEJORAR CARTA</div>
+        <div class="mjNomFila"><button id="lbMejPrev" class="mjFl" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button><div id="lbMejNom"></div><button id="lbMejNext" class="mjFl" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button></div>
+        <div id="lbMejInfo"></div>
+        <div class="lbMejBot"><button class="lbCerrar ajBtn ajVolver">VOLVER</button><button id="lbMejBtn" class="ajBtn lbMejBtn">MEJORAR</button></div>
+      </div>
+    </div></div>
+    <div id="lbAlin" class="lbPanel" aria-label="Alineación"><div class="lbPanelCaja lbAlinCaja">
+      <div class="lbPanelTit">ALINEACIÓN</div>
+      <div class="alTabs"><button class="alTab" data-al="1v1">1 VS 1</button><button class="alTab" data-al="2v2">2 VS 2</button></div>
+      <div class="alCuerpo"><div id="lbAlinCampo" class="alCampo"></div><div id="lbAlinElige" class="alElige"></div></div>
+      <button class="lbCerrar ajBtn lbOk">LISTO</button>
+    </div></div>
     <div id="lbNovPanel" class="lbPanel" aria-label="Novedades"><div class="lbPanelCaja"><div class="lbPanelTit">NOVEDADES</div><div id="lbNovCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
     <div id="lbPerfPanel" class="lbPanel" aria-label="Perfil"><div class="lbPanelCaja"><div class="lbPanelTit">PERFIL</div><div id="lbPerfCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
   </div>
@@ -184,7 +201,7 @@
     <div id="colLista"></div>
     <button id="colPrev" class="mFlecha izq" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 4L7 12l8 8"/></svg></button>
     <button id="colNext" class="mFlecha der" aria-label="Siguiente"><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg></button>
-    <div class="colAbajo"><button id="colCerrar" class="ajBtn ajVolver">VOLVER</button><button id="colElegir" class="ajBtn">ELEGIR</button></div>
+    <div class="colAbajo"><button id="colCerrar" class="ajBtn ajVolver">VOLVER</button><button id="colMejorar" class="ajBtn colMej">MEJORAR</button><button id="colElegir" class="ajBtn">ELEGIR</button></div>
   </div>
   <div id="m2v2" aria-label="2 contra 2">
     <div class="m2Caja">
@@ -269,6 +286,6 @@
     <div class="giraSub">Monster League se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=36"></script>
+<script type="module" src="main.js?v=37"></script>
 </body>
 </html>

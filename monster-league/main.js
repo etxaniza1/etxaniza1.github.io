@@ -15,7 +15,8 @@ const HORIZONTAL = !VERTICAL;
 const CAM_MODE = (P.get('camara') || (HORIZONTAL ? 'G' : 'A')).toUpperCase();
 if (HORIZONTAL) document.body.classList.add('horizontal');
 const HW = 19, HL = 24;                    // medio ancho / medio largo entre líneas (campo v5 38×48 m)
-const WX = 21.2, WY = 28.0;                // cara interior de las vallas (RUN_X 2.2 / RUN_Y 3.3)
+const WX = 21.2, WY = 28.0;
+const SIDE_X = HW;                        // update 37: pared invisible de banda (centro del balón / límite de jugadores de campo)                // cara interior de las vallas (RUN_X 2.2 / RUN_Y 3.3)
 const GW = 5.0, POST_X = 5.28, POST_R = 0.28, GH = 4.0, GD = 2.8;   // v6: portería de caja (techo horizontal)
 const NET_X = POST_X - 0.11, NET_Z = GH - 0.08;   // caras interiores de la red (laterales / techo)
 const BR = 0.35;                           // radio del balón (un pelín mayor que el 0,30 del glb para que se lea en móvil)
@@ -32,11 +33,11 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=36';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=37';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
-const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon'];
-const CHARS = [
+const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
+const ALL_CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A', toon: true },   // update 36: modelo nuevo (Tripo) -> toon con outline
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
   { key: 'buton', name: 'BUTÓN', color: '#F8B715', toon: true },   // update 36: modelo nuevo (Tripo) -> toon con outline
@@ -58,8 +59,14 @@ const CHARS = [
   { key: 'frogetto', name: 'FROGETTO', color: '#2FA39A', toon: true },      // update 36: rana maga (Tripo)
   { key: 'zora', name: 'ZORA', color: '#2BD96B', toon: true },              // update 36: loba eléctrica (Tripo)
   { key: 'tiburon', name: 'TIBURÓN', color: '#6E9CC4', toon: true },        // update 36: tiburón (Tripo)
+  { key: 'mushom', name: 'MUSHOM', color: '#8B3FD9', toon: true },          // update 37: seta misteriosa (Tripo)
+  { key: 'cacutu', name: 'CACUTU', color: '#3F7D3A', toon: true },          // update 37 (t83u): cactus con bombín (Tripo)
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`,
   badge: BADGES.includes(c.key) ? `assets/badges/${c.key}.webp?${ASSET_V}` : null, ...c }));
+// update 37: Butón y Turtobola son SOLO PORTEROS: fuera de la selección de campo (rueda, rejilla, liga, torneo, rivales IA)
+const GK_ONLY = ['buton', 'turtobola'];
+const CHARS = ALL_CHARS.filter((c) => !GK_ONLY.includes(c.key));      // jugadores de campo (lo que se elige)
+const GK_CHARS = ALL_CHARS.filter((c) => GK_ONLY.includes(c.key));    // porteros
 // update 32: badges a prueba de fallos: precarga al arrancar; si una imagen de badge falla se reintenta una vez
 // (sin caché) y, si vuelve a fallar, se muestra la carta del personaje (nunca un hueco vacío)
 const BADGE_ERR = [];
@@ -68,9 +75,9 @@ document.addEventListener('error', (e) => {
   const m = /assets\/badges\/([a-z]+)\.webp/.exec(i.getAttribute('src') || ''); if (!m) return;
   BADGE_ERR.push(m[1]);
   if (!i.dataset.reint) { i.dataset.reint = '1'; i.src = `assets/badges/${m[1]}.webp?${ASSET_V}&r=${Date.now()}`; return; }
-  const c = CHARS.find((x) => x.key === m[1]); if (c && c.card) i.src = c.card;
+  const c = ALL_CHARS.find((x) => x.key === m[1]); if (c && c.card) i.src = c.card;
 }, true);
-const BADGE_PRE = CHARS.filter((c) => c.badge).map((c) => { const im = new Image(); im.decoding = 'async'; im.src = c.badge; return im; });
+const BADGE_PRE = ALL_CHARS.filter((c) => c.badge).map((c) => { const im = new Image(); im.decoding = 'async'; im.src = c.badge; return im; });
 // ===================== STATS DE PERSONAJE (update 17) =====================
 // Escala 1-100. ATAQUE: vel (velocidad), tir (potencia de tiro), pre (precisión/control), reg (regate).
 // DEFENSA: ent (entrada/robo), fis (físico: aguantar entradas y choques), ref (reflejos: su portero).
@@ -98,6 +105,8 @@ const STATS = {   // update 31: rehechas. Más variedad: nadie es bueno en todo.
   frogetto: { vel: 68, tir: 76, pre: 86, reg: 74, ent: 72, fis: 64, ref: 93, cur: 48, pos: 'LIB', lema: 'Mago del área: lee la jugada antes de que pase' },
   zora: { vel: 96, tir: 80, pre: 70, reg: 88, ent: 74, fis: 60, ref: 72, cur: 22, pos: 'LI', lema: 'Relámpago: arranca como un rayo y sube la banda sin parar' },
   tiburon: { vel: 72, tir: 86, pre: 64, reg: 58, ent: 91, fis: 92, ref: 64, cur: 8, pos: 'LD', lema: 'Huele la sangre: va a por el balón y no lo suelta' },
+  mushom: { vel: 70, tir: 74, pre: 88, reg: 84, ent: 66, fis: 62, ref: 90, cur: 38, pos: 'MD', lema: 'Seta misteriosa: aparece entre esporas y te deja mareado' },   // update 37
+  cacutu: { vel: 60, tir: 72, pre: 78, reg: 64, ent: 88, fis: 91, ref: 70, cur: 18, pos: 'PIV', lema: 'Pivote espinoso: planta la maceta en el centro y nadie se le acerca sin pincharse' },   // update 37 (t83u)
 };
 const STAT_KEYS = ['vel', 'tir', 'pre', 'reg', 'ent', 'fis', 'ref'];
 const STAT_NAMES = { vel: 'VELOCIDAD', tir: 'TIRO', pre: 'PRECISIÓN', reg: 'REGATE', ent: 'ENTRADA', fis: 'FÍSICO', ref: 'REFLEJOS', cur: 'EFECTO' };
@@ -110,9 +119,123 @@ for (const k in STATS) {
 }
 // update 31: rango más amplio (stats 40-99): 75 -> ×1, 97 -> ×(1+amp), 53 -> ×(1-amp), 42 -> ×(1-1,5·amp)
 function statF(v, amp = 0.15) { return THREE.MathUtils.clamp(1 + amp * (v - 75) / 22, 1 - 1.5 * amp, 1 + 1.1 * amp); }
+// ===================== CARTAS Y PROGRESIÓN (update 37) =====================
+// STATS de arriba = la IDENTIDAD de cada personaje (su forma de jugar). Cada carta sube de nivel 0 a LV_MAX con MONEDAS:
+// nivel 0 = BRONCE (media 56-60), LV_MAX = LEYENDA (media 90-96, más alta cuanto mejor es su identidad). La media sube regular por nivel.
+// Perfil de crecimiento propio: sus puntos fuertes crecen antes y llegan más lejos; los flojos crecen tarde y poco (nadie se
+// vuelve bueno en todo). EFECTO: crece hasta su valor de identidad y ahí se queda (Zorro sigue con el EFECTO máximo).
+const LV_MAX = 30, LV_REF = 'ref';
+const TIERS = [{ k: 'bronce', n: 'BRONCE', min: 0 }, { k: 'plata', n: 'PLATA', min: 65 }, { k: 'oro', n: 'ORO', min: 75 }, { k: 'diamante', n: 'DIAMANTE', min: 85 }, { k: 'leyenda', n: 'LEYENDA', min: 90 }];
+const tierDe = (m) => { let i = 0; while (i + 1 < TIERS.length && m >= TIERS[i + 1].min) i++; return TIERS[i]; };
+// porteros (solo Butón y Turtobola): stats propias de portero, mapeadas a lo que ya usa la IA del portero
+const GK_STAT_KEYS = ['est', 'ref', 'col', 'sal', 'saq'];
+const GK_STAT_NAMES = { est: 'ESTIRADA', ref: 'REFLEJOS', col: 'COLOCACIÓN', sal: 'SALTO', saq: 'SAQUE' };
+const GK_STATS = {
+  buton: { est: 76, ref: 82, col: 90, sal: 84, saq: 93, lema: 'Un armario bajo palos: siempre bien colocado y saca como un cañón' },
+  turtobola: { est: 92, ref: 94, col: 80, sal: 70, saq: 64, lema: 'Caparazón blindado: reflejos imposibles, pero saca flojito' },
+};
+const isGK = (k) => GK_ONLY.includes(k);
+const statKeysOf = (k) => isGK(k) ? GK_STAT_KEYS : STAT_KEYS;
+const baseOf = (k) => isGK(k) ? GK_STATS[k] : STATS[k];
+const avgA = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+function mediaDe(vals) { const top3 = [...vals].sort((a, b) => b - a).slice(0, 3); return Math.round(0.55 * avgA(top3) + 0.45 * avgA(vals)); }
+for (const k in GK_STATS) { const t = GK_STATS[k]; t.media = mediaDe(GK_STAT_KEYS.map((x) => t[x])); t.pos2 = 'POR'; }
+const PROG_CURVE = {};   // key -> { min:{}, max:{}, e:{} }
+function progCurve(k) {
+  if (PROG_CURVE[k]) return PROG_CURVE[k];
+  const ks = statKeysOf(k), b = baseOf(k), bm = mediaDe(ks.map((x) => b[x]));
+  const order = [...ks].sort((x, y) => b[y] - b[x]), rank = {}; order.forEach((x, i) => { rank[x] = i; });
+  const n = ks.length, w = {}, e = {};
+  for (const x of ks) {
+    const r = rank[x];
+    w[x] = r < 3 ? 1 : r < n - 2 ? 0.62 : 0.34;          // cuánto puede crecer cada stat por encima de su identidad
+    e[x] = r < 2 ? 0.7 : r < 4 ? 0.9 : r < n - 2 ? 1.15 : 1.5;   // forma de la curva: fuertes antes, flojas tarde
+  }
+  const tMin = THREE.MathUtils.clamp(57 + (bm - 70) * 0.15, 56, 60), tMax = THREE.MathUtils.clamp(90 + (bm - 70) * 0.3, 90, 96);
+  const solve = (f, target) => { let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (f(m) < target) lo = m; else hi = m; } return (lo + hi) / 2; };
+  const mkMax = (q) => { const o = {}; for (const x of ks) o[x] = Math.min(99, Math.round(b[x] + (99 - b[x]) * q * w[x])); return o; };
+  const mkMin = (q) => { const o = {}; for (const x of ks) o[x] = Math.max(30, Math.round(b[x] - (b[x] - 30) * q)); return o; };
+  const max = mkMax(solve((q) => mediaDe(ks.map((x) => mkMax(q)[x])), tMax));
+  const min = mkMin(solve((q) => -mediaDe(ks.map((x) => mkMin(q)[x])), -tMin));
+  return (PROG_CURVE[k] = { ks, min, max, e, base: b });
+}
+// stats de un personaje a un nivel. Cada stat sigue su forma (u^e: fuertes antes, flojas tarde) y el "tiempo" u(L) se ajusta
+// por personaje para que la MEDIA suba de forma regular (lineal) de bronce (nivel 0) a leyenda (nivel LV_MAX).
+// lv = 'ref' -> su carta de identidad (STATS de siempre; solo para las pruebas de regresión antiguas)
+function statsAtU(C, u) { const o = {}; for (const x of C.ks) o[x] = Math.round(C.min[x] + (C.max[x] - C.min[x]) * Math.pow(u, C.e[x])); return o; }
+function progU(k, lv) {
+  const C = progCurve(k); C.u = C.u || [];
+  if (C.u[lv] !== undefined) return C.u[lv];
+  const m0 = mediaDe(C.ks.map((x) => C.min[x])), m1 = mediaDe(C.ks.map((x) => C.max[x])), tgt = m0 + (m1 - m0) * lv / LV_MAX;
+  const f = (u) => { const o = {}; for (const x of C.ks) o[x] = C.min[x] + (C.max[x] - C.min[x]) * Math.pow(u, C.e[x]); return mediaDe(C.ks.map((x) => o[x])); };
+  let lo = 0, hi = 1; for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (f(m) < tgt) lo = m; else hi = m; }
+  return (C.u[lv] = lv <= 0 ? 0 : lv >= LV_MAX ? 1 : (lo + hi) / 2);
+}
+function statsAt(k, lv) {
+  const C = progCurve(k), ref = lv === 'ref';
+  if (!ref) lv = THREE.MathUtils.clamp(Math.round(+lv || 0), 0, LV_MAX);
+  const o = ref ? Object.fromEntries(C.ks.map((x) => [x, C.base[x]])) : statsAtU(C, progU(k, lv));
+  if (!isGK(k)) {
+    const cb = C.base.cur || 0; o.cur = ref ? cb : Math.round(cb * (0.6 + 0.4 * lv / LV_MAX));   // EFECTO: crece hasta su identidad (Zorro, el máximo)
+    o.atq = Math.round(avgA([o.vel, o.tir, o.pre, o.reg])); o.def = Math.round(avgA([o.ent, o.fis, o.ref]));
+  }
+  o.media = mediaDe(C.ks.map((x) => o[x])); const T = tierDe(o.media); o.rareza = T.k; o.tier = T.n;
+  o.pos = isGK(k) ? 'POR' : C.base.pos; o.lema = C.base.lema; o.lv = ref ? '—' : lv;
+  return o;
+}
+// coste en MONEDAS para pasar del nivel L al L+1 (curva suave: 20 -> ~550)
+const lvCost = (L) => L >= LV_MAX ? Infinity : Math.round(20 * Math.pow(1.12, L) / 5) * 5;
+// guardado: niveles + monedas. Clave nueva -> todos (también los jugadores de antes) empiezan en BRONCE (nivel 0)
+const PROG_KEY = 'ml_cartas_v1', MON_BIENVENIDA = 100;
+function progLoad() {
+  let p = null; try { p = JSON.parse(localStorage.getItem(PROG_KEY) || 'null'); } catch (e) {}
+  if (!p || typeof p !== 'object' || p.v !== 1) p = { v: 1, lv: {}, mon: MON_BIENVENIDA, ganadas: 0 };
+  const lv = {}; for (const c of ALL_CHARS) lv[c.key] = THREE.MathUtils.clamp(Math.round(+(p.lv || {})[c.key] || 0), 0, LV_MAX);
+  p.lv = lv; p.mon = Math.max(0, Math.round(+p.mon || 0)); p.ganadas = Math.max(0, Math.round(+p.ganadas || 0));
+  return p;
+}
+let PROG = progLoad();
+function progSave() { try { localStorage.setItem(PROG_KEY, JSON.stringify(PROG)); } catch (e) {} }
+// solo pruebas de regresión antiguas (?lvref=1): todos juegan con su carta de identidad ('ref' = STATS), como antes de la update 37
+const LV_REF_MODE = /[?&]lvref=1/.test(location.search);
+const progLv = (k) => LV_REF_MODE ? 'ref' : (PROG.lv[k] || 0);
+function progMejorar(k) {
+  const L = PROG.lv[k] || 0, c = lvCost(L);
+  if (L >= LV_MAX || PROG.mon < c) return null;
+  const antes = statsAt(k, L);
+  PROG.mon -= c; PROG.lv[k] = L + 1; progSave();
+  const desp = statsAt(k, L + 1);
+  LOG('mejora', null, { k, lv: L + 1, coste: c, media: desp.media, tier: desp.tier });
+  return { k, lv: L + 1, coste: c, antes, desp, subeTier: antes.rareza !== desp.rareza };
+}
+// MONEDAS por partido: victoria 40, empate 25, derrota 15, +5 por gol (hasta 5); título de liga 250, de torneo 300
+const MON_PARTIDO = { v: 40, e: 25, d: 15, gol: 5, golMax: 5 }, MON_TITULO = { liga: 250, torneo: 300 };
+function monedasPartido(gu, gr) {
+  const m = (gu > gr ? MON_PARTIDO.v : gu === gr ? MON_PARTIDO.e : MON_PARTIDO.d) + MON_PARTIDO.gol * Math.min(MON_PARTIDO.golMax, Math.max(0, gu | 0));
+  PROG.mon += m; PROG.ganadas += m; progSave(); LOG('monedas', null, { m, total: PROG.mon }); return m;
+}
+function monedasTitulo(tipo) { const m = MON_TITULO[tipo] || 0; if (m) { PROG.mon += m; PROG.ganadas += m; progSave(); } return m; }
+// nivel de los rivales de la IA: parecido al tuyo según el modo (sin trampas: como mucho +2)
+//  amistoso / 2 VS 2 / liga: tu nivel −1..+1 (fijo por rival) · torneo: cuartos −1, semis 0, final +1 · práctica: el tuyo
+function rivalLv(base, rk) {
+  if (LV_REF_MODE) return 'ref';
+  const h = [...rk].reduce((s, ch) => s + ch.charCodeAt(0), 0) % 3 - 1;
+  let off = h;
+  if (S.practice) off = 0;
+  else if (S.comp && S.comp.type === 'torneo') off = (S.comp.ronda | 0) - 1;
+  return THREE.MathUtils.clamp(Math.round(base) + off, 0, Math.min(LV_MAX, Math.round(base) + 2));
+}
+// update 37: las stats en partido salen del NIVEL actual de la carta (a.lv; sin nivel -> identidad 'ref')
 function actorStats(a) {
-  const t = STATS[a.charKey] || STATS.conazo;
-  return { t, vel: statF(t.vel), tir: statF(t.tir, 0.12), reg: statF(t.reg), ent: statF(t.ent), fis: statF(t.fis), ref: statF(t.ref), jitterDeg: (100 - t.pre) * 0.09, cur: (t.cur || 0) / 100, lejos: statF(t.tir, 0.10) };
+  const k = STATS[a.charKey] ? a.charKey : 'conazo', lv = a.lv ?? 'ref';
+  if (isGK(k) && a.keeper) {   // portero de verdad: stats de portero -> IA del portero
+    const g = statsAt(k, lv), t = Object.assign({}, STATS[k], { tir: g.saq, pre: g.saq, ref: g.ref, gk: g, media: g.media, rareza: g.rareza });
+    return { t, vel: 1, tir: statF(g.saq, 0.12), reg: 1, ent: 1, fis: statF(90), ref: statF(g.ref), jitterDeg: (100 - g.saq) * 0.09, cur: 0, lejos: statF(g.saq, 0.10),
+      est: statF(g.est), pos: statF(g.col, 0.2), sal: statF(g.sal, 0.08), saq: statF(g.saq, 0.2) };
+  }
+  const t = isGK(k) ? STATS[k] : Object.assign({}, STATS[k], statsAt(k, lv));
+  return { t, vel: statF(t.vel), tir: statF(t.tir, 0.12), reg: statF(t.reg), ent: statF(t.ent), fis: statF(t.fis), ref: statF(t.ref), jitterDeg: (100 - t.pre) * 0.09, cur: (t.cur || 0) / 100, lejos: statF(t.tir, 0.10),
+    est: statF(t.ref), pos: 1, sal: 1, saq: 1 };
 }
 const GLB = {};          // key -> gltf
 let META = {};           // key -> metadatos de animación
@@ -683,7 +806,7 @@ function setOutlinePx(w, h, px = TOON.px) { TOON.outline.value.set((2 * px) / Ma
 const _dbs = new THREE.Vector2();
 function syncOutline() { renderer.getDrawingBufferSize(_dbs); setOutlinePx(_dbs.x, _dbs.y, TOON.px * Math.max(1, renderer.getPixelRatio() * 0.85)); }
 function applyToon(model, key) {
-  const c = CHARS.find((x) => x.key === key); if (!c || !c.toon) return model;
+  const c = ALL_CHARS.find((x) => x.key === key); if (!c || !c.toon) return model;
   const skinned = []; model.traverse((o) => { if (o.isSkinnedMesh && !o.userData.outline) skinned.push(o); });
   for (const o of skinned) {
     ensureSmoothN(o.geometry);
@@ -753,7 +876,7 @@ class Actor {
     this.body = new THREE.Group();
     const model = applyToon(matte(SkeletonUtils.clone(GLB[charKey].scene)), charKey);
     model.traverse((o) => { if (o.isSkinnedMesh) o.frustumCulled = false; });
-    this.charScale = (CHARS.find((c) => c.key === charKey) || {}).scale || 1;   // multiplicador por personaje (todos 1: alturas igualadas en el modelado)
+    this.charScale = (ALL_CHARS.find((c) => c.key === charKey) || {}).scale || 1;   // multiplicador por personaje (todos 1: alturas igualadas en el modelado)
     model.scale.setScalar(ESCALA * this.charScale);
     this.model = model; model.userData.actorRef = this;
     applyLOD(this);   // menos triángulos en partida según calidad (el menú usa el modelo completo)
@@ -1170,6 +1293,7 @@ function aimEnd(e, cancelAll) {
   if (!cancelAll && !aim.cancel) {
     if (kind === 'chutar') { if (quick) quickShot(); else aimedShot(aim.dir, aim.power); }
     else if (kind === 'alto') aimedLob(quick ? lobDir() : aim.dir, quick ? 0 : aim.power);   // update 16: carga = distancia del mini-joystick al centro; toque = vaselina mínima
+    else if (kind === 'entrada') { if (quick) { if (!tryDash(user)) bufferAction('entrada'); } else if (tryDash(user, aim.dir)) LOG('entrada_dir', user, { dir: [+aim.dir.x.toFixed(2), +aim.dir.y.toFixed(2)] }); }   // update 37
     else if (aim.combo) { if (!quick && aim.dragged) { TR.n++; tryDribble(user, aim.dir); LOG('regate_desliz', user, {}); } }   // update 32: TURBO+REGATE
     else { if (quick) tryDribble(user); else tryDribble(user, aim.dir); }
   } else if (aim.cancel) LOG('apuntado_cancelado', user, { kind });
@@ -1194,10 +1318,12 @@ function bindAim(el, kind) {
       return;
     }
     if (aim.id !== null) return;
-    if (S.mode !== 'play' || !user || ball.owner !== user || user.kickPending) { bufferAction(kind); return; }   // aún sin balón: toque rápido en buffer
+    if (kind === 'entrada') {   // update 37: ENTRADA con mini-joystick (sin balón). Con balón o fuera de juego: como antes (buffer)
+      if (S.mode !== 'play' || !user || S.paused || ball.owner === user) { markAction('entrada', e); el.classList.add('pulsado'); instIds.add(e.pointerId); if (!doAction('entrada')) bufferAction('entrada'); return; }
+    } else if (S.mode !== 'play' || !user || ball.owner !== user || user.kickPending) { bufferAction(kind); return; }   // aún sin balón: toque rápido en buffer
     const r = btnRect(el);
     Object.assign(aim, { id: e.pointerId, kind, el, cx: r.left + r.width / 2, cy: r.top + r.height / 2, t0: performance.now(), dragged: false, shown: false, dx: 0, dy: 0, R: aimRadius(el), power: 0, cancel: false, active: true, rawAng: undefined, onGoal: false });
-    const md = moveDir(); aim.dir.copy(md || (kind !== 'regate' ? goalCenter(user.team).sub(user.pos).normalize() : user.face));
+    const md = moveDir(); aim.dir.copy(md || (kind === 'entrada' ? user.face : kind !== 'regate' ? goalCenter(user.team).sub(user.pos).normalize() : user.face));
     try { el.setPointerCapture(e.pointerId); } catch (_) {}
     el.classList.add('pulsado');
   });
@@ -1215,7 +1341,7 @@ for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo, btnEspeci
 bindAim(btnChutar, 'chutar');
 bindAim(btnRegate, 'regate');
 bindAim(btnAlto, 'alto');
-bindHold(btnEntrada, (e) => { btnEntrada.classList.add('pulsado'); markAction('entrada', e); if (!doAction('entrada')) bufferAction('entrada'); }, () => btnEntrada.classList.remove('pulsado'));
+bindAim(btnEntrada, 'entrada');   // update 37: ENTRADA direccionable (arrastrar = dirección con flecha en el campo; toque = entrada automática de antes; al centro = cancelar)
 bindHold(btnEspecial, (e) => { markAction('especial', e); btnEspecial.classList.add('pulsado'); if (S.mode === 'play' && !S.paused) { espUse(user); if (trampa && trampa.held) trampa.pid = e && e.pointerId; } }, () => btnEspecial.classList.remove('pulsado'));   // update 29 (+31 balón trampa apuntado)
 // update 32: TURBO + REGATE en UN botón (opción AJ.turboRegate, SÍ por defecto; NO = botones separados como antes).
 // Mantener = turbo (sprint). Con balón, deslizar desde el botón y soltar = regate hacia esa dirección (aparece el mini joystick
@@ -1397,10 +1523,11 @@ function releaseShoot(cancel) {
 }
 
 // ===================== MECÁNICAS =====================
-function tryDash(a) {
-  if (!a || a.toadT > 0 || a.dashCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0) return false;
+function tryDash(a, forceDir) {
+  if (!a || a.toadT > 0 || a.mareoT > 0 || a.dashCd > 0 || a.stun > 0 || a.dribbleT > 0 || a.dashT > 0 || a.freezeT > 0 || a.slipT > 0 || a.chargeT > 0) return false;
   if (ball.owner === a) return false;
-  if (a === user) { const md = moveDir(); if (md) a.face.copy(md); }
+  if (forceDir && forceDir.lengthSq() > 0.01) { a.face.copy(forceDir).normalize(); a.yaw = Math.atan2(a.face.x, -a.face.y); }   // update 37: entrada apuntada
+  else if (a === user) { const md = moveDir(); if (md) a.face.copy(md); }
   a.dashT = DASH_T; a.dashCd = (a === user ? DASH_CD_USER : DASH_CD_AI) / a.sf.ent;
   a.dashSp = DASH_SPEED * a.sf.ent;
   a.vel.copy(a.face).multiplyScalar(a.dashSp);   // impulso inmediato
@@ -1809,7 +1936,7 @@ function moveActor(a, wish, speed, dt) {
   else if (a.scaredT > 0 && a.stun <= 0) { a.vel.lerp(a.scaredDir.clone().multiplyScalar(5.5), 1 - Math.exp(-10 * dt)); a.face.copy(a.scaredDir).multiplyScalar(-1); }   // AULLIDO: recula asustado
   else if (a.diveT > 0) {
     a.diveT -= dt; const el = a.diveDur - a.diveT;
-    if (el < 0.38) a.vel.copy(a.diveDir).multiplyScalar(7.5 * a.sf.ref * (1 - el / 0.5)); else a.vel.multiplyScalar(Math.exp(-8 * dt));
+    if (el < 0.38) a.vel.copy(a.diveDir).multiplyScalar(7.5 * (a.keeper ? a.sf.est * (a.shellT > 0 ? GK_SHELL_K : 1) : a.sf.ref) * (1 - el / 0.5)); else a.vel.multiplyScalar(Math.exp(-8 * dt));
   } else if (a.stun > 0) { a.stun -= dt; a.vel.multiplyScalar(Math.exp(-6 * dt)); if (a.pm) patEnd(a, true); }
   else if (a.pm && patStep(a, dt)) { /* update 35: truco del patrón */ }
   else if (a.dribbleT > 0) { a.dribbleT -= dt; a.vel.copy(a.face).multiplyScalar(a.dribSp); }
@@ -1826,11 +1953,15 @@ function moveActor(a, wish, speed, dt) {
   a.dribbleCd = Math.max(0, a.dribbleCd - dt);
   if (a.patCd > 0) a.patCd = Math.max(0, a.patCd - dt);
   a.kickT = Math.max(0, a.kickT - dt);
-  a.pos.addScaledVector(a.vel, dt);
-  if (a.slipT > 0 || a.chargeT > 0) { const m0 = PR; if (Math.abs(a.pos.x) > WX - m0 - 0.05 || Math.abs(a.pos.y) > WY - m0 - 0.05) { a.chargeT = 0; if (a.slipV) a.slipV.multiplyScalar(-0.4); } }
+  if (a.mareoT > 0) {   // update 37: ESPORAS de Mushom -> se tambalea en zigzag y va más lento
+    const ang = Math.sin(S.t * 6.5 + (a.team ? 1.3 : 0)) * 0.95, c = Math.cos(ang), sn = Math.sin(ang);
+    a.pos.x += (a.vel.x * c - a.vel.y * sn) * dt * 0.72; a.pos.y += (a.vel.x * sn + a.vel.y * c) * dt * 0.72;
+    if ((a._mareoP = (a._mareoP || 0) - dt) <= 0) { a._mareoP = 0.22; espPuffs(a.pos.x, a.pos.y, 1.9, 0xc77dff, 1, 0.5, 0.5, 0.25); }
+  } else a.pos.addScaledVector(a.vel, dt);
+  if (a.slipT > 0 || a.chargeT > 0) { const m0 = PR; if (Math.abs(a.pos.x) > SIDE_X - m0 - 0.05 || Math.abs(a.pos.y) > WY - m0 - 0.05) { a.chargeT = 0; if (a.slipV) a.slipV.multiplyScalar(-0.4); } }
   // límites: vallas y porterías
   const m = PR;
-  a.pos.x = THREE.MathUtils.clamp(a.pos.x, -WX + m, WX - m);
+  a.pos.x = THREE.MathUtils.clamp(a.pos.x, -SIDE_X + m, SIDE_X - m);   // update 37: la banda es una pared (nadie sale del campo por los lados)
   a.pos.y = THREE.MathUtils.clamp(a.pos.y, -WY + m, WY - m);
   if (Math.abs(a.pos.y) > HL - m) {
     const lim = POST_X + POST_R + m;
@@ -1902,12 +2033,16 @@ function predictFlight(pos, vel, out, maxT = 5, h = 1 / 120, fx) {
 const ALTO_CHARGE_S = 1.1, ALTO_PERFECT = [0.45, 0.6];
 // update 32: el CHUT LARGO depende de la stat TIR de la carta (k 0-1, interpolación suave): k = 1 (TIR alto) = la 'trompa de elefante'
 // de siempre (larga, potente); k = 0 (TIR bajo) = vaselina suave: salida alta y lenta que no llega lejos aunque cargues al máximo.
+// update 37: NERF del chut alto/largo: TIR 99 rinde como antes TIR 70 (potencia, distancia y precisión) y escala proporcional hacia
+// abajo (TIR equivalente = 30 + (TIR − 30)·40/69); con 30 o menos sigue siendo malo. El indicador usa esta misma función.
+const LOB_NERF = (t) => t <= 30 ? t : 30 + (t - 30) * 40 / 69;
 function lobStatK(a) {
-  const t = a && STATS[a.charKey] ? STATS[a.charKey].tir : 80;
+  const t = LOB_NERF(a && a.sf && a.sf.t ? a.sf.t.tir : a && STATS[a.charKey] ? STATS[a.charKey].tir : 80);
   // update 35: curva nueva (antes 54->0 y 60->0,05: con 60 la vaselina era corta). Ahora <=30 = vaselina corta (0), 45 ~0,46,
   // 54 ~0,68, 60 ~0,80 (lejos y bien), 70 ~0,94, >=80 = 1 (máximo)
   const x = THREE.MathUtils.clamp((t - 30) / (80 - 30), 0, 1); return 1 - Math.pow(1 - x, 1.75);
 }
+const LOB_K_MAX = () => lobStatK({ sf: { t: { tir: 99 } } });   // update 37: tope (TIR 99 nerfeado = antes TIR 70)
 function lobParams(c, k = 1) {
   c = THREE.MathUtils.clamp(c, 0, 1); k = THREE.MathUtils.clamp(k, 0, 1);
   const vHi = 10 + 23 * c, vLo = 8.5 + 2.8 * c;
@@ -1918,7 +2053,7 @@ function lobParams(c, k = 1) {
   return { c, k, v, ang, h: v * Math.cos(ang), vz: v * Math.sin(ang) };
 }
 function shootLob(a, dir, c) {
-  const lp = lobParams(c, AJ.largoStat === false ? 1 : lobStatK(a));
+  const lp = lobParams(c, AJ.largoStat === false ? LOB_K_MAX() : lobStatK(a));
   shoot(a, dir, 0.3 + 0.7 * lp.c, false, lp.vz, lp.h);
   LOG('chut_alto', a, { k: +lp.k.toFixed(2), c: +lp.c.toFixed(2), v: +lp.v.toFixed(1), ang: Math.round(THREE.MathUtils.radToDeg(lp.ang)) });
 }
@@ -2046,15 +2181,9 @@ function stepBall(dt, prev) {
       b.lineEvent = (Math.abs(xc) < GW && zc < GH) ? { type: 'gol', s } : { type: 'fuera', s, z: zc };
     }
   }
-  // update 35: línea de BANDA (el balón entero fuera, a ras o por el aire) -> saque de banda. Antes rebotaba en la valla y seguía en juego
-  // (y se podía conducir por fuera del campo). Las vallas siguen parando el balón después.
-  for (const sx of [1, -1]) {
-    const xl = sx * (HW + BR);
-    if ((prev.x - xl) * sx < 0 && (b.pos.x - xl) * sx >= 0 && !b.lineEvent && Math.abs(b.pos.y) < HL + BR) {
-      const t = (xl - prev.x) / ((b.pos.x - prev.x) || 1e-6);
-      b.lineEvent = { type: 'banda', sx, y: prev.y + (b.pos.y - prev.y) * t, z: prev.z + (b.pos.z - prev.z) * t };
-    }
-  }
+  // update 37: SIN saques de banda (Aritz). Las bandas son paredes invisibles: el balón rebota en la línea lateral y sigue en juego (a ras o por el aire)
+  if (b.pos.x > SIDE_X) { b.pos.x = SIDE_X; if (b.vel.x > 0) { b.vel.x = -b.vel.x * e; if (b.vel.x < -3) b.wallHit = 1; } }
+  if (b.pos.x < -SIDE_X) { b.pos.x = -SIDE_X; if (b.vel.x < 0) { b.vel.x = -b.vel.x * e; if (b.vel.x > 3) b.wallHit = 1; } }
   // porterías de caja
   for (const s of [1, -1]) {
     const gl = s * HL, back = s * (HL + GD);
@@ -2217,7 +2346,7 @@ function aiFieldRaw(a, opp, dt) {
   a.pressT = 0;
   let pred = bp.clone().addScaledVector(new THREE.Vector2(ball.vel.x, ball.vel.y), 0.35);
   if (ball.pos.z > 1.2) { const l = predictFlight(ball.pos, ball.vel, null, 4, 1 / 60); pred = new THREE.Vector2(l.x, l.y); }
-  pred.x = THREE.MathUtils.clamp(pred.x, -WX + 1, WX - 1); pred.y = THREE.MathUtils.clamp(pred.y, -WY + 1, WY - 1);
+  pred.x = THREE.MathUtils.clamp(pred.x, -SIDE_X + 1, SIDE_X - 1); pred.y = THREE.MathUtils.clamp(pred.y, -WY + 1, WY - 1);
   pred.y -= dirY * 0.4;
   // el balón va a manos de nuestro portero (está en su área y llega él antes): no estorbar, desmarcarse
   if (Math.abs(pred.y - ownY) < 7 && ownGk.pos.distanceTo(pred) + 1.5 < a.pos.distanceTo(pred)) {
@@ -2245,7 +2374,7 @@ function aiKeeper(k, dt) {
         const u = dir.clone().normalize(), rel = foe.pos.clone().sub(k.pos), along = rel.dot(u), perp = Math.abs(rel.x * u.y - rel.y * u.x);
         if (along > 0 && along < dir.length() + 2 && perp < 2.5) dir.set(-Math.sign(foe.pos.x - k.pos.x || 1) * (8 + Math.random() * 4), -s * (13 + Math.random() * 4));
       }
-      shoot(k, dir, 0.25 + Math.min(0.35, dir.length() / 60), false, 5.5); k.holdT = -5;
+      shoot(k, dir, (0.25 + Math.min(0.35, dir.length() / 60)) * THREE.MathUtils.clamp(k.sf.saq || 1, 0.75, 1.25), false, 5.5); k.holdT = -5;   // update 37: SAQUE
     }
     return new THREE.Vector2(0, 0);
   }
@@ -2259,8 +2388,8 @@ function aiKeeper(k, dt) {
     const tt = gc ? gc.tt : (lineY - B.pos.y) / B.vel.y;
     if (tt > 0 && tt < 2) tx = gc ? gc.x : B.pos.x + B.vel.x * tt;
   }
-  k.react = (k.react || 0) - dt;
-  if (k.react > 0) tx = k.lastTx ?? tx; else { k.lastTx = tx; if (comingIn && !k.wasComing) { k.react = 0.15 + Math.random() * 0.15; if (k.fetidaT > 0 && B === ball) { k.react = 0.6 + Math.random() * 0.15; k.fetidaT = 0; LOG('fetida_reaccion_tarde', k, {}); } } }   // BOMBA FÉTIDA: reacciona tarde
+  k.react = (k.react || 0) - dt; if (k.shellT > 0) k.react = Math.min(k.react, 0);   // update 37: CAPARAZÓN -> reacción inmediata
+  if (k.react > 0) tx = k.lastTx ?? tx; else { k.lastTx = tx; if (comingIn && !k.wasComing) { k.react = (0.15 + Math.random() * 0.15) * (2 - k.sf.ref); if (k.fetidaT > 0 && B === ball) { k.react = 0.6 + Math.random() * 0.15; k.fetidaT = 0; LOG('fetida_reaccion_tarde', k, {}); } } }   // BOMBA FÉTIDA: reacciona tarde
   k.wasComing = comingIn;
   if (comingIn && k.diveT <= 0 && k.react <= 0 && !bOwner) {
     const tt = gc ? gc.tt : (lineY - B.pos.y) / B.vel.y;
@@ -2277,14 +2406,14 @@ function aiKeeper(k, dt) {
   const dBallF = foeK && !S.practice ? Math.hypot(ball.pos.x - foeK.pos.x, ball.pos.y - foeK.pos.y) : 99;
   // update 22: sale a por el balón suelto si está en su zona y llega claramente antes que el delantero (balones al hueco)
   const near = !ball.owner && ball.pos.z < 1.6 && ((Math.hypot(ball.pos.x, ball.pos.y - s * HL) < 8 && bsp < 6) ||
-    (Math.abs(ball.pos.y - s * HL) < 12 && Math.abs(ball.pos.x) < GW + 5 && bsp < 9 && dBallK < dBallF * 0.75));
+    (Math.abs(ball.pos.y - s * HL) < 12 && Math.abs(ball.pos.x) < GW + 5 && bsp < 9 && dBallK < dBallF * 0.75 * THREE.MathUtils.clamp(k.sf.pos || 1, 0.8, 1.2)));
   if (near) { tx = THREE.MathUtils.clamp(ball.pos.x, -GW, GW); ty = THREE.MathUtils.clamp(ball.pos.y, s > 0 ? HL - 6 : -HL + 0.9, s > 0 ? HL - 0.9 : -HL + 6); }
   else ty = lineY;
   // el rival se acerca con el balón: el portero sale a tapar ángulo (y se expone a la vaselina)
   const h = ball.owner;
   if (h && h !== k && h.team !== k.team && !h.keeper) {
     const dGoal = Math.abs(s * HL - h.pos.y);
-    const out = THREE.MathUtils.clamp((18 - dGoal) * 0.4, 0, dGoal < 10 && Math.abs(h.pos.x) < GW + 2 ? 5 : 4);   // 1 contra 1: sale más
+    const out = THREE.MathUtils.clamp((18 - dGoal) * 0.4, 0, dGoal < 10 && Math.abs(h.pos.x) < GW + 2 ? 5 : 4) * THREE.MathUtils.clamp(k.sf.pos || 1, 0.75, 1.15);   // update 37: COLOCACIÓN   // 1 contra 1: sale más
     if (out > 0) { ty = lineY - s * out; tx = THREE.MathUtils.clamp(h.pos.x * 0.45, -GW + 0.6, GW - 0.6); }
     k.outY = ty;
   }
@@ -2338,8 +2467,8 @@ function keeperContact(k) {
   if (ball.noCatch === k && ball.noCatchT > 0) return;
   const diving = k.diveT > 0 && (k.diveDur - k.diveT) > 0.12 && (k.diveDur - k.diveT) < 0.6;
   const kj = k.kJumpZ || 0, hd = diving && k.diveHigh ? (k.diveLiftMax || 0) : 0;   // update 30: salto / estirada alta
-  const reach = (diving ? 1.75 : k.backpedal ? 0.8 : kj > 0.1 ? 1.25 : 1.1) * ESCALA, d = Math.hypot(ball.pos.x - k.pos.x, ball.pos.y - k.pos.y);   // reculando llega peor
-  const reachZ = (diving ? GK_REACH_DIVE : GK_REACH) * ESCALA + kj + hd * 1.15;     // por encima de esto (vaselina) no llega
+  const shK = k.shellT > 0 ? GK_SHELL_K : 1, reach = (diving ? 1.75 : k.backpedal ? 0.8 : kj > 0.1 ? 1.25 : 1.1) * ESCALA * shK, d = Math.hypot(ball.pos.x - k.pos.x, ball.pos.y - k.pos.y);   // reculando llega peor
+  const reachZ = (diving ? GK_REACH_DIVE : GK_REACH) * ESCALA * (k.sf.sal || 1) * shK + kj + hd * 1.15;     // por encima de esto (vaselina) no llega
   if (d > reach + BR || ball.pos.z - BR > reachZ) return;
   // solo dentro de su área grande aprox.
   const s = k.team === 0 ? -1 : 1;
@@ -2368,10 +2497,10 @@ function keeperContact(k) {
 // tecla R / F en teclado. El bot también los usa (espAI). Se pueden desactivar en AJUSTES (AJ.especiales, activados por defecto).
 const ESP_T = 22;   // segundos para cargar el especial
 const ESPECIALES = {
-  turtobola: { name: 'BALÓN TRAMPA', desc: 'Lanza un balón FALSO adonde apuntes (arrastra desde el botón o toca el campo) y sigue con tu balón: el portero y el rival se van a por el falso.', need: 'balon', col: '#3fd18b' },
+  turtobola: { name: 'CAPARAZÓN', desc: 'PORTERO: ante un tiro a puerta se blinda en su caparazón 1,6 s: llega más lejos y se lanza más rápido. Lo usa solo (IA del portero).', need: 'balon', col: '#3fd18b', gk: true },   // update 37: solo portero
   conazo: { name: 'ZONA CORTADA', desc: 'Planta una barrera de conos delante del rival: le corta el paso 3 s.', need: 'cerca', rango: 14, col: '#ff8a2a' },
   calcetrol: { name: 'PESTE A PIES', desc: 'Nube de olor a calcetín: el rival que la cruza va a cámara lenta.', col: '#b6d84a' },
-  buton: { name: 'BOTÓN DE PAUSA', desc: 'Pulsa pausa: el rival se queda congelado 1 s.', col: '#ffd23f' },
+  buton: { name: 'BOTÓN DE PAUSA', desc: 'PORTERO: cuando un rival entra con el balón en zona de tiro, pulsa pausa y lo congela 1 s. Lo usa solo (IA del portero).', col: '#ffd23f', gk: true },   // update 37: solo portero
   lobo: { name: 'AULLIDO', desc: 'Aúlla: el rival cercano se asusta, suelta el balón y recula.', need: 'cerca', rango: 9, col: '#8fa6ff' },
   zorro: { name: 'FINTA ASTUTA', desc: 'Regate automático que deja al rival clavado en el sitio.', need: 'balon', col: '#ff7a3d' },
   gecko: { name: 'LENGUA PEGAJOSA', desc: 'Atrapa con la lengua un balón suelto a distancia (hasta 11 m).', need: 'suelto', col: '#ff6fa8' },
@@ -2388,6 +2517,8 @@ const ESPECIALES = {
   frogetto: { name: 'HECHIZO SAPO', desc: 'Convierte al rival en un sapito 2,5 s: encoge, va lento, no puede hacer entradas ni coger el balón.', need: 'cerca', rango: 10, col: '#5dffb4' },   // update 36
   zora: { name: 'RAYO', desc: 'Se teletransporta 6,5 m como un rayo (con el balón si lo lleva) y aturde a quien esté en el camino.', col: '#3dff7a' },   // update 36
   tiburon: { name: 'REMOLINO', desc: 'Abre un remolino a los pies del rival: lo arrastra hacia el centro, lo frena y le hace perder el balón.', col: '#4fc3ff' },   // update 36
+  mushom: { name: 'ESPORAS', desc: 'Estornudo de esporas: el rival cercano se marea 3 s (se tambalea en zigzag, va más lento y no puede hacer entradas) y, si lleva el balón, lo suelta.', need: 'cerca', rango: 8, col: '#c77dff' },   // update 37
+  cacutu: { name: 'PINCHOS', desc: 'Se eriza 4 s y dispara un anillo de pinchos: pincha a los rivales de alrededor (aturdidos y sueltan el balón) y, mientras dure, quien le haga una entrada o se le pegue se pincha y rebota.', col: '#9be05a' },   // update 37 (t83u)
   tubi: { name: 'VENTOSA', desc: 'Dispara el desatascador: se pega al rival 1,5 s y, si lleva el balón, se lo trae. Luego nadie se lo quita en 3 s.', need: 'cerca', rango: 9, col: '#ff4f5e' },   // update 30
 };
 const ESP = { fx: [], obst: [], zonas: [], decoys: [], lengua: null, tex: {}, usos: [] };
@@ -2395,7 +2526,7 @@ const espOn = () => AJ.especiales !== false;
 const espFoe = (a) => S.practice ? null : is2v2() ? espFoe2(a) : (a === user ? rival : a === rival ? user : null);   // update 30: 2 VS 2 -> el que lleva el balón o el más cercano
 const espGkFoe = (a) => a.team === 0 ? gkB : gkA;
 const espGkOwn = (a) => a.team === 0 ? gkA : gkB;
-function espReset(a) { Object.assign(a, { stickT: 0, freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0, regenT: 0, toadT: 0, empT: 0 }); if (a._toadS && a._toadS !== 1) { a._toadS = 1; if (a.model) a.model.scale.setScalar(ESCALA * (a.charScale || 1)); } }
+function espReset(a) { Object.assign(a, { stickT: 0, freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0, regenT: 0, toadT: 0, empT: 0, mareoT: 0, spikeT: 0 }); if (a._toadS && a._toadS !== 1) { a._toadS = 1; if (a.model) a.model.scale.setScalar(ESCALA * (a.charScale || 1)); } }
 // ---- texturas generadas (una vez) ----
 function espTex(k) {
   if (ESP.tex[k]) return ESP.tex[k];
@@ -2486,6 +2617,9 @@ const espSfx = {
   frogetto: () => { [0, 0.08, 0.16, 0.24].forEach((d, i) => espTone(900 + i * 260, 0.12, { type: 'sine', vol: 0.06, delay: d })); espTone(140, 0.22, { type: 'square', vol: 0.08, f2: 90, delay: 0.32, vib: 20, vibF: 30 }); },   // conjuro + ¡croac!
   zora: () => { espNoise(0.25, { f: 5000, f2: 800, q: 0.7, vol: 0.16 }); espTone(2400, 0.18, { type: 'sawtooth', vol: 0.05, f2: 300 }); espNoise(0.5, { f: 200, q: 0.8, vol: 0.12, type: 'lowpass', delay: 0.06 }); },
   tiburon: () => { espNoise(1.0, { f: 500, f2: 1600, q: 2.5, vol: 0.12 }); espTone(90, 0.8, { type: 'sine', vol: 0.12, f2: 60, vib: 6, vibF: 5 }); },
+  cacutu: () => { espTone(1400, 0.06, { type: 'square', vol: 0.05, f2: 2600 }); setTimeout(() => espNoise(0.25, { f: 5200, f2: 2600, q: 2.5, vol: 0.12 }), 40); espTone(300, 0.25, { type: 'triangle', vol: 0.06, f2: 180 }); },   // update 37 (t83u): ¡TSHING! de pinchos
+  pincho: () => espTone(1900, 0.05, { type: 'square', vol: 0.04, f2: 900 }),
+  mushom: () => { espNoise(0.12, { f: 2400, f2: 5200, q: 1.2, vol: 0.12 }); setTimeout(() => espNoise(0.5, { f: 6000, f2: 1200, q: 0.8, vol: 0.16 }), 130); espTone(520, 0.35, { type: 'sine', vol: 0.05, f2: 260 }); },   // update 37: ¡a-a-ACHÍS! de esporas
   plop: () => { espNoise(0.08, { f: 600, vol: 0.2, type: 'lowpass' }); espTone(520, 0.14, { type: 'sine', vol: 0.15, f2: 150 }); },
   puf: () => espNoise(0.3, { f: 1500, f2: 300, vol: 0.1 }),
 };
@@ -2649,7 +2783,7 @@ const ESP_FN = {
   pepi(a, foe) {   // charco de vinagre en el camino del rival
     let p = a.pos.clone().addScaledVector(a.face, -2.2);
     if (foe && foe.pos.distanceTo(a.pos) < 12) p = foe.pos.clone().addScaledVector(foe.vel.lengthSq() > 1 ? foe.vel.clone().normalize() : a.pos.clone().sub(foe.pos).normalize(), 2.2);
-    p.x = THREE.MathUtils.clamp(p.x, -WX + 2, WX - 2); p.y = THREE.MathUtils.clamp(p.y, -WY + 2, WY - 2);
+    p.x = THREE.MathUtils.clamp(p.x, -SIDE_X + 2, SIDE_X - 2); p.y = THREE.MathUtils.clamp(p.y, -WY + 2, WY - 2);
     const m = new THREE.Mesh(new THREE.CircleGeometry(2.4, 40), new THREE.MeshBasicMaterial({ map: espTex('charco'), transparent: true, depthWrite: false }));
     m.rotation.x = -Math.PI / 2; m.position.copy(g2tS(p.x, p.y, 0.05)); m.renderOrder = 3; m.scale.setScalar(0.01);
     espAddZona({ kind: 'charco', x: p.x, y: p.y, r: 2.3, t: 7, life: 7, team: a.team, mesh: m });
@@ -2746,9 +2880,27 @@ const ESP_FN = {
     espShock(p0.x, p0.y, 0x3dff7a, 2.6, 0.4); espShock(p1.x, p1.y, 0xeaffd0, 3.2, 0.45);
     LOG('rayo', a, { L: +Math.sqrt(L2).toFixed(2) }); return true;
   },
+  cacutu(a) {   // update 37 (t83u): PINCHOS -> anillo de pinchos (pincha a los de alrededor) y 4 s erizado
+    a.spikeT = CACTUS_T; a._spikeFx = 0;
+    const foes = fieldPlayers().filter((o) => o && o.team !== a.team);
+    let n = 0; for (const o of foes) if (o.pos.distanceTo(a.pos) < CACTUS_R) { espPinch(a, o, false); n++; }
+    espSpikeRing(a, CACTUS_R, 18, 0.32);
+    espShock(a.pos.x, a.pos.y, 0x9be05a, CACTUS_R, 0.4); espPuffs(a.pos.x, a.pos.y, 0.4, 0xd8c79a, 8, 1.4, 1.0, 0.5, 0.3);
+    LOG('pinchos', a, { n }); return true;
+  },
+  mushom(a, foe) {   // update 37: ESPORAS -> el rival se marea 3 s (zigzag, lento, sin entradas) y suelta el balón
+    if (!foe) return false;
+    foe.mareoT = 3.0; foe.dashT = 0; foe.kickPending = null; foe.dribbleT = 0; foe.pm = null; foe.pmQ = null; foe.sprinting = false;
+    if (ball.owner === foe) { const an = Math.atan2(foe.face.y, foe.face.x) + (Math.random() < 0.5 ? 1.4 : -1.4); ball.owner = null; ball.vel.set(Math.cos(an) * 3.2, Math.sin(an) * 3.2, 1.8); ball.noCatch = foe; ball.noCatchT = 0.9; }
+    const s0 = espSprite(espTex('soft'), 0xc77dff, 1.0, 0.9, true), p0 = g2t(a.pos.x, a.pos.y, 1.6), p1 = g2t(foe.pos.x, foe.pos.y, 1.5);
+    espFx(s0, 0.35, (k, o) => { o.position.lerpVectors(p0, p1, k); o.scale.setScalar(1 + 2.2 * k); o.material.opacity = 0.9 * (1 - k * 0.6); });
+    espPuffs(foe.pos.x, foe.pos.y, 1.5, 0xc77dff, 14, 1.8, 1.4, 0.8); espPuffs(a.pos.x, a.pos.y, 1.6, 0xf2e6ff, 6, 1.0, 1.0, 0.5);
+    espIcon(foe, '@_@', '#c77dff', 3.0, 1.6);
+    LOG('esporas', a, {}); return true;
+  },
   tiburon(a, foe) {   // REMOLINO a los pies del rival (o delante si está lejos)
     let p = foe && foe.pos.distanceTo(a.pos) < 15 ? foe.pos.clone() : a.pos.clone().addScaledVector(a.face, 4);
-    p.x = THREE.MathUtils.clamp(p.x, -WX + 2, WX - 2); p.y = THREE.MathUtils.clamp(p.y, -WY + 2, WY - 2);
+    p.x = THREE.MathUtils.clamp(p.x, -SIDE_X + 2, SIDE_X - 2); p.y = THREE.MathUtils.clamp(p.y, -WY + 2, WY - 2);
     const g = new THREE.Group();
     for (let i = 0; i < 4; i++) {
       const m = new THREE.Mesh(new THREE.RingGeometry(0.55 + i * 0.75, 0.85 + i * 0.75, 40, 1, i * 0.6, Math.PI * 1.45), new THREE.MeshBasicMaterial({ color: i % 2 ? 0x4fc3ff : 0xd8f4ff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
@@ -2800,6 +2952,42 @@ function espAiWish(a, wish, dt) {
   if (a.blindT > 0) { return wish.clone().rotateAround(new THREE.Vector2(), Math.sin(S.t * 3) * 1.4).multiplyScalar(0.55); }
   return wish;
 }
+// ---- update 37 (t83u): PINCHOS de Cacutu ----
+const CACTUS_T = 4.0, CACTUS_R = 3.2, CACTUS_TOQUE = 1.7, CACTUS_STUN = 1.1;
+let _spikeGeo = null, _spikeMat = null;
+function espSpikeMesh() {   // pincho: cono fino verde claro con punta amarilla (toon, sin luces)
+  if (!_spikeGeo) { _spikeGeo = new THREE.ConeGeometry(0.11, 0.75, 6); _spikeGeo.rotateX(Math.PI / 2); _spikeMat = new THREE.MeshBasicMaterial({ color: 0xd9f78a, transparent: true, opacity: 1, depthWrite: false }); _spikeMat.userData.keep = true; }
+  const m = new THREE.Mesh(_spikeGeo, _spikeMat.clone()); m.renderOrder = 5; return m;
+}
+function espSpikeRing(a, r, n, life) {   // anillo de pinchos que sale disparado alrededor
+  const z = 1.1 * ESCALA, p0 = g2t(a.pos.x, a.pos.y, z), off = Math.random() * Math.PI;
+  for (let i = 0; i < n; i++) {
+    const an = off + i / n * Math.PI * 2, dx = Math.cos(an), dy = Math.sin(an), m = espSpikeMesh();
+    m.position.copy(p0);
+    m.lookAt(new THREE.Vector3(p0.x + dx, z, p0.z - dy));
+    espFx(m, life, (k, o) => { const d = 0.5 + (r - 0.5) * (1 - Math.pow(1 - k, 2)); o.position.set(p0.x + dx * d, z - 0.5 * k * k, p0.z - dy * d); o.material.opacity = k > 0.7 ? (1 - k) / 0.3 : 1; });
+  }
+}
+function espPinch(a, o, entrada) {   // 'a' (Cacutu) pincha a 'o': aturdido, rebota hacia atrás y suelta el balón
+  if (!o || o.keeper || (o._pinchAt != null && S.t - o._pinchAt < 0.9)) return false;
+  o._pinchAt = S.t;
+  const dx = o.pos.x - a.pos.x, dy = o.pos.y - a.pos.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+  o.stun = Math.max(o.stun || 0, entrada ? CACTUS_STUN * 1.25 : CACTUS_STUN); o.dashT = 0; o.kickPending = null; o.dribbleT = 0; o.pm = null; o.pmQ = null; o.sprinting = false;
+  if (o.vel) o.vel.set(ux * 7, uy * 7);
+  o.pos.x = THREE.MathUtils.clamp(o.pos.x + ux * 0.6, -SIDE_X + PR, SIDE_X - PR); o.pos.y += uy * 0.6;
+  if (ball.owner === o) {
+    if (a.pos.distanceTo(o.pos) < 2.4 && !a.stun) giveBall(a);
+    else { ball.owner = null; ball.vel.set(ux * 4, uy * 4, 1.5); ball.noCatch = o; ball.noCatchT = 0.9; }
+  }
+  espIcon(o, '¡AY!', '#9be05a', 1.1, 1.4); espPuffs(o.pos.x, o.pos.y, 1.3, 0xd9f78a, 5, 0.9, 0.7, 0.4, 0.4, true);
+  (espSfx.pincho || (() => {}))();
+  LOG('pinchazo', a, { vs: NAME(o), entrada: !!entrada }); return true;
+}
+function espSpikeTick(a, dt, playing) {   // mientras está erizado: aura de pinchos y pincha a quien se le pega
+  if ((a._spikeFx = (a._spikeFx || 0) - dt) <= 0) { a._spikeFx = 0.45; espSpikeRing(a, 1.25, 10, 0.22); espShock(a.pos.x, a.pos.y, 0x9be05a, 1.5, 0.3); }
+  if (!playing || S.mode !== 'play') return;
+  for (const o of fieldPlayers()) if (o && o.team !== a.team && !(o.stun > 0) && o.pos.distanceTo(a.pos) < CACTUS_TOQUE) espPinch(a, o, false);
+}
 // ---- IA: cuándo usa el bot su especial ----
 function espAI(a, opp, dt) {
   if (!espReady(a) || !espCanUse(a)) return;
@@ -2829,17 +3017,59 @@ function espAI(a, opp, dt) {
     case 'frogetto': want = (oppBall && d < 9.5) || (opp && opp.esp > 0.9 && d < 6); break;
     case 'zora': want = (myBall && d < 5.5 && dG > 9 && dG < 48) || (oppBall && d > 3 && d < 6.5); break;
     case 'tiburon': want = oppBall && d < 11; break;
+    case 'mushom': want = opp && d < 7.5 && (oppBall || (myBall && d < 3.5)); break;   // update 37
+    case 'cacutu': want = opp && ((oppBall && d < 3.0) || (myBall && d < 3.2) || (opp.dashT > 0 && d < 4.5) || (!ball.owner && bD < 3 && d < 3)); break;   // update 37 (t83u)
     case 'tubi': want = (oppBall && d > 1.5 && d < 8.5) || (myBall && d < 3 && dG < 24); break;
   }
   if (want && Math.random() < 0.7) espUse(a, true);
 }
+// ---- update 37: ESPECIAL DE PORTERO (Butón / Turtobola: siempre los usa la IA del portero, también el tuyo) ----
+// BUTÓN · BOTÓN DE PAUSA: un rival entra con el balón en zona de tiro -> lo congela 1 s.
+// TURTOBOLA · CAPARAZÓN: tiro rival hacia su portería -> se blinda 1,6 s (alcance ×1,3, estirada ×1,3, reacción inmediata).
+const GK_SHELL_T = 1.6, GK_SHELL_K = 1.3;
+function gkEspUpdate(dt, playing) {
+  for (const k of [gkA, gkB]) {
+    if (!k || !isGK(k.charKey)) continue;
+    if (k.shellT > 0) k.shellT = Math.max(0, k.shellT - dt);
+    if (!playing || !espOn() || S.mode !== 'play') continue;
+    if (k.esp < 1) { k.esp = Math.min(1, k.esp + dt / ESP_T); continue; }
+    k._espAiT = (k._espAiT || 0) - dt; if (k._espAiT > 0) continue; k._espAiT = 0.15;
+    const s = k.team === 0 ? -1 : 1, goalY = s * HL;
+    if (k.charKey === 'buton') {
+      const h = ball.owner;
+      if (h && h.team !== k.team && !h.keeper && Math.abs(goalY - h.pos.y) < 20 && Math.abs(h.pos.x) < GW + 9 && !(h.freezeT > 0)) gkEspFire(k, h);
+    } else {
+      const lt = ball.lastTouch;
+      if (!ball.owner && lt && lt.team !== k.team && ball.vel.y * s > 6 && Math.abs(goalY - ball.pos.y) < 24 && Math.abs(ball.pos.x) < GW + 8) gkEspFire(k, null);
+    }
+  }
+}
+function gkEspFire(k, foe) {
+  const e = ESPECIALES[k.charKey]; k.esp = 0; k.espUsedT = S.t;
+  if (k.charKey === 'buton') ESP_FN.buton(k, foe);
+  else {
+    k.shellT = GK_SHELL_T; k.react = 0;
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1.25 * ESCALA, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x3fd18b, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(1.25 * ESCALA, 0.07, 8, 40), new THREE.MeshBasicMaterial({ color: 0x14193a })); rim.rotation.x = Math.PI / 2; dome.add(rim);
+    espFx(dome, GK_SHELL_T, (q, o) => { o.material.opacity = 0.32 * (q < 0.08 ? q / 0.08 : q > 0.85 ? (1 - q) / 0.15 : 1); o.scale.setScalar(1 + 0.04 * Math.sin(q * 30)); }, k.root);
+    espPuffs(k.pos.x, k.pos.y, 0.6, 0x9ff0c8, 8, 2.2, 1.1, 0.6, 0.3);
+  }
+  (espSfx[k.charKey] || espSfx.listo)();
+  showBanner('¡' + e.name + '!', k.team === 0 ? 'bAzul esp' : 'bRojo esp', 1000);
+  espShock(k.pos.x, k.pos.y, e.col, 2.6, 0.45);
+  ESP.usos.push({ t: +S.t.toFixed(2), who: NAME(k), k: k.charKey, gk: true });
+  LOG('especial_portero', k, { k: k.charKey });
+  return true;
+}
 // ---- actualización (cada paso de simulación) ----
 function espUpdate(dt, playing) {
+  gkEspUpdate(dt, playing);   // update 37
   const fld = fieldPlayers();   // update 30: 2 VS 2
   for (const a of fld) {
     if (!a) continue;
     if (playing && espOn() && a.esp < 1 && !(a.empT > 0)) { a.esp = Math.min(1, a.esp + dt / ESP_T); if (a.esp >= 1 && a === user) espSfx.listo(); }
-    for (const k of ['stickT', 'slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd', 'regenT', 'toadT', 'empT']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
+    for (const k of ['stickT', 'slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd', 'regenT', 'toadT', 'empT', 'mareoT', 'spikeT']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
+    if (a.spikeT > 0) espSpikeTick(a, dt, playing);   // update 37 (t83u): PINCHOS de Cacutu
     if (a.empT > 0) { a.energy = 0; a.sprinting = false; if ((a._empT = (a._empT || 0) - dt) <= 0) { a._empT = 0.12; espPuffs(a.pos.x + (Math.random() - 0.5), a.pos.y + (Math.random() - 0.5), 0.6 + Math.random() * 1.4, Math.random() < 0.5 ? 0xb59bff : 0xffffff, 1, 0.3, 0.8, 0.25, 0.1); } }   // update 36: PULSO EMP
     { const tgt = a.toadT > 0 ? 0.55 : 1; if (a.model && (a._toadS || 1) !== tgt) { a._toadS = THREE.MathUtils.clamp((a._toadS || 1) + Math.sign(tgt - (a._toadS || 1)) * dt * 4, 0.55, 1); a.model.scale.setScalar(ESCALA * (a.charScale || 1) * a._toadS); } }   // update 36: HECHIZO SAPO
     if (a.regenT > 0 && (a._bubT = (a._bubT || 0) - dt) <= 0) { a._bubT = 0.09; const s = espSprite(espTex('burbuja'), Math.random() < 0.3 ? 0xffb3e0 : 0xbff4ff, 0.25 + Math.random() * 0.3, 0.9); const ox = (Math.random() - 0.5) * 1.2, oy = (Math.random() - 0.5) * 1.2; s.position.copy(g2tS(a.pos.x + ox, a.pos.y + oy, 0.3 + Math.random() * 1.4)); espFx(s, 0.8, (k, o, dt) => { o.position.y += 2.2 * dt; o.material.opacity = 0.9 * (1 - k); }); }   // update 34: burbujas mientras se regenera
@@ -3173,8 +3403,8 @@ function renderTienda() {
 }
 function renderTiendaEsp() {   // update 29: especiales de los personajes (el tuyo primero)
   const el = document.getElementById('tiendaEsp'); if (!el) return;
-  const ks = [CHARS[sel].key, ...CHARS.map((c) => c.key).filter((k) => k !== CHARS[sel].key)];
-  el.innerHTML = ks.map((k, i) => { const c = CHARS.find((x) => x.key === k), e = ESPECIALES[k]; return `<div class="tiEsp${i === 0 ? ' tuyo' : ''}" style="--ec:${e.col};--c:${c.color}"><img src="${c.badge || c.card}" alt=""><div><div class="tiEspNom"><b>${e.name}</b><small>${c.name}${i === 0 ? ' · TU PERSONAJE' : ''}</small></div><div class="tiEspDesc">${e.desc}</div></div></div>`; }).join('');
+  const ks = [CHARS[sel].key, ...CHARS.map((c) => c.key).filter((k) => k !== CHARS[sel].key), ...GK_ONLY];   // update 37: + especiales de portero
+  el.innerHTML = ks.map((k, i) => { const c = ALL_CHARS.find((x) => x.key === k), e = ESPECIALES[k]; return `<div class="tiEsp${i === 0 ? ' tuyo' : ''}" style="--ec:${e.col};--c:${c.color}"><img src="${c.badge || c.card}" alt=""><div><div class="tiEspNom"><b>${e.name}</b><small>${c.name}${i === 0 ? ' · TU PERSONAJE' : ''}</small></div><div class="tiEspDesc">${e.desc}</div></div></div>`; }).join('');
 }
 function openTienda() { if (S.mode !== 'menu') return; renderTienda(); renderTiendaEsp(); tiendaEl.classList.add('visible'); }
 function closeTienda() { tiendaEl.classList.remove('visible'); }
@@ -3188,7 +3418,7 @@ function practiceBall(resetPos) {
   if (resetPos) { user.place(0, -6); user.vel.set(0, 0); user.face.set(0, 1); }
   Object.assign(user, { kickPending: null, stun: 0, celebrate: false });
   const f = user.face.lengthSq() > 0.01 ? user.face.clone().normalize() : new THREE.Vector2(0, 1);
-  const bx = THREE.MathUtils.clamp(user.pos.x + f.x * 1.6, -WX + 1, WX - 1), by = THREE.MathUtils.clamp(user.pos.y + f.y * 1.6, -HL + 1.5, HL - 1.5);
+  const bx = THREE.MathUtils.clamp(user.pos.x + f.x * 1.6, -SIDE_X + 1, SIDE_X - 1), by = THREE.MathUtils.clamp(user.pos.y + f.y * 1.6, -HL + 1.5, HL - 1.5);
   ball.pos.set(bx, by, BR); ball.vel.set(0, 0, 0); ball.w.set(0, 0, 0); ball.owner = null; ball.noCatch = null; ball.noCatchT = 0; ball.lineEvent = null; ball.backspin = 0;
   input.shootDown = false; input.charge = 0;
   S.mode = 'play';
@@ -3196,7 +3426,7 @@ function practiceBall(resetPos) {
 // ---- update 32: marcador con badges, nombres apilados en 2 VS 2, animación del gol ----
 function marcadorSet() {
   const pr = !!S.practice, m2 = !pr && matchKeys[2] && matchKeys[3];
-  const C = (k) => CHARS.find((c) => c.key === k) || {};
+  const C = (k) => ALL_CHARS.find((c) => c.key === k) || {};
   const bad = (k) => { const c = C(k); return c.key ? `<img src="${c.badge || c.card}" alt="${c.name || ""}" title="${c.name || ""}" draggable="false" style="--c:${c.color || '#fff'}">` : ''; };
   const side = (cls, ks) => { const eq = document.querySelector('#marcador .' + cls); if (!eq) return;
     eq.querySelector('.mBad').innerHTML = pr ? '' : ks.map(bad).join('');
@@ -3216,7 +3446,7 @@ function applyPracticeHud() {
   document.body.classList.toggle('practica', pr);
   for (const a of [rival, gkA, gkB, mateA, mateB]) if (a) { a.root.visible = !pr; if (pr) { a.place(0, 900); a.vel.set(0, 0); } }
   if (user) actors = pr ? [user] : [user, rival, gkA, gkB, mateA, mateB].filter(Boolean);
-  const nm = (k) => CHARS.find((c) => c.key === k).name, m2 = !pr && matchKeys[2] && matchKeys[3];   // update 30: 2 VS 2 -> parejas
+  const nm = (k) => ALL_CHARS.find((c) => c.key === k).name, m2 = !pr && matchKeys[2] && matchKeys[3];   // update 30: 2 VS 2 -> parejas
   document.querySelector('#marcador .azul .nom').textContent = pr ? 'GOLES' : m2 ? nm(matchKeys[0]) + ' + ' + nm(matchKeys[2]) : nm(matchKeys[0]);
   document.querySelector('#marcador .rojo .nom').textContent = pr ? 'CHUTS' : m2 ? nm(matchKeys[1]) + ' + ' + nm(matchKeys[3]) : nm(matchKeys[1]);
   if (pr) { elReloj.textContent = 'PRÁCTICA'; elReloj._t = 'P'; elReloj.classList.remove('poco'); }
@@ -3298,7 +3528,7 @@ msEl.addEventListener('pointerdown', (e) => e.stopPropagation());
 let msGhost = 0; document.addEventListener('click', (e) => { if (performance.now() - msGhost < 450) { e.stopPropagation(); e.preventDefault(); } }, true);   // sin clic fantasma debajo al cerrar
 function msHide() { msEl.classList.remove('visible'); clearTimeout(msShow.t); }
 function msShow() {
-  const R = MS_get(), C = (k) => CHARS.find((c) => c.key === k) || {};
+  const R = MS_get(), C = (k) => ALL_CHARS.find((c) => c.key === k) || {};
   const m2 = matchKeys[2] && matchKeys[3], kA = m2 ? [matchKeys[0], matchKeys[2]] : [matchKeys[0]], kB = m2 ? [matchKeys[1], matchKeys[3]] : [matchKeys[1]];
   const bad = (ks) => ks.map((k) => `<img src="${C(k).badge || C(k).card}" alt="">`).join('');
   const nm = (ks) => ks.map((k) => C(k).name).join(' + ');
@@ -3330,7 +3560,7 @@ function goalScored(team) {
   if (S.practice) { practiceLine({ type: 'gol', s: team === 0 ? 1 : -1 }); return; }
   S.score[team]++; S.goals++; MS_goal(team); LOG('gol', null, { team });
   elA.textContent = S.score[0]; elB.textContent = S.score[1]; marcGol(team);
-  const lt = ball.lastTouch, propia = lt && !lt.keeper && lt.team !== team, gn = lt ? (CHARS.find((c) => c.key === lt.charKey) || {}).name : '';
+  const lt = ball.lastTouch, propia = lt && !lt.keeper && lt.team !== team, gn = lt ? (ALL_CHARS.find((c) => c.key === lt.charKey) || {}).name : '';
   showBanner('¡GOOOL!', team === 0 ? 'bAzul' : 'bRojo', 1800, gn ? (propia ? 'EN PROPIA · ' + gn : gn) : ''); sfx.goal();
   S.mode = 'goal'; S.pauseT = 2.6; ball.owner = null;   // update 16: tiempo para ver el balón en la red
   for (const a of actors) { a.celebrate = a.team === team; a.kickPending = null; a.diveT = 0; a.tackleT = 0; a.kickAnimT = 0; }
@@ -3339,44 +3569,24 @@ function goalScored(team) {
 function carriedLine(o) {
   const b = ball, p = prevBall;
   for (const s of [1, -1]) {
-    const yl = s * (HL + BR);
+    // update 37: entre palos el jugador no puede meterse en la portería (choca con la red) -> basta con que el balón conducido
+    // pase la línea con el centro (antes nunca llegaba a HL + BR y no había gol conduciendo)
+    const yl = Math.abs(b.pos.x) < GW - BR ? s * (HL + 0.05) : s * (HL + BR);
     if ((b.pos.y - yl) * s >= 0) {
       const t = (p.y - yl) * s < 0 ? (yl - p.y) / ((b.pos.y - p.y) || 1e-6) : 0, xc = p.x + (b.pos.x - p.x) * t;
       b.lineEvent = Math.abs(xc) < GW ? { type: 'gol', s } : { type: 'fuera', s, z: BR, carried: true }; LOG('fuera_conduciendo', o, { s, x: +xc.toFixed(1) }); return;
     }
   }
-  for (const sx of [1, -1]) {
-    if ((b.pos.x - sx * (HW + BR)) * sx >= 0) { b.lineEvent = { type: 'banda', sx, y: b.pos.y, z: BR, carried: true }; LOG('fuera_conduciendo', o, { sx, y: +b.pos.y.toFixed(1) }); return; }
-  }
 }
 // balón fuera por la línea de fondo (incl. por encima del larguero): saque de puerta del portero de ese lado
 // update 35: por la banda -> saque de banda para el equipo que NO la tocó el último
-function ballOut(ev) {
-  S.mode = 'out'; S.pauseT = 1.3; S.outSide = ev.s; S.outKind = ev.type === 'banda' ? 'banda' : 'fondo';
-  if (ev.type === 'banda') { const lt = ball.lastTouch; S.outBanda = { sx: ev.sx, y: ev.y, team: lt ? 1 - lt.team : (ball.owner ? 1 - ball.owner.team : 0) }; }
-  LOG('fuera', ball.lastTouch, { s: ev.s, sx: ev.sx, k: S.outKind, carried: !!ev.carried, z: +(ev.z || 0).toFixed(2) });
-  showBanner(ev.type !== 'banda' && ev.z > GH - 0.3 ? '¡POR ENCIMA!' : '¡FUERA!', '', 1100, ev.type === 'banda' ? 'SAQUE DE BANDA' : '');
+function ballOut(ev) {   // update 37: solo línea de fondo (las bandas son paredes)
+  S.mode = 'out'; S.pauseT = 1.3; S.outSide = ev.s; S.outKind = 'fondo';
+  LOG('fuera', ball.lastTouch, { s: ev.s, k: S.outKind, carried: !!ev.carried, z: +(ev.z || 0).toFixed(2) });
+  showBanner(ev.z > GH - 0.3 ? '¡POR ENCIMA!' : '¡FUERA!', '', 1100, '');
   if (ball.owner) { ball.owner = null; ball.vel.set(0, 0, 0); }   // conducido: el balón se queda donde salió
   for (const a of actors) { a.kickPending = null; }
   if (aim.active) aimEnd(null, true);
-}
-// update 35: SAQUE DE BANDA (no había: el balón rebotaba en la valla). El jugador de campo más cercano del equipo que saca se pone en la
-// línea con el balón mirando hacia dentro (y algo hacia la portería rival); los rivales a ≥ 4,5 m.
-function throwIn() {
-  const o = S.outBanda || { sx: Math.sign(ball.pos.x) || 1, y: ball.pos.y, team: 0 };
-  const y = THREE.MathUtils.clamp(o.y, -HL + 1.5, HL - 1.5), x = o.sx * (HW - 0.45);
-  const mates = fieldPlayers().filter((a) => a.team === o.team);
-  if (!mates.length) { goalKick(); return; }
-  let k = mates[0]; for (const a of mates) if (Math.hypot(a.pos.x - x, a.pos.y - y) < Math.hypot(k.pos.x - x, k.pos.y - y)) k = a;
-  k.place(x, y); const atk = goalCenter(k.team).y > 0 ? 1 : -1; k.face.set(-o.sx, atk * 0.6).normalize(); k.yaw = Math.atan2(k.face.x, -k.face.y);
-  k.stun = 0; k.dashT = 0; k.kickPending = null; k.holdT = 0;
-  for (const a of fieldPlayers()) {
-    if (a.team === k.team) continue; const dx = a.pos.x - x, dy = a.pos.y - y, d = Math.hypot(dx, dy);
-    if (d < 4.5) { const ux = d > 0.1 ? dx / d : -o.sx, uy = d > 0.1 ? dy / d : 0; a.pos.set(THREE.MathUtils.clamp(x + ux * 4.5, -HW + 0.8, HW - 0.8), THREE.MathUtils.clamp(y + uy * 4.5, -HL + 1, HL - 1)); a.vel.set(0, 0); }
-  }
-  ball.vel.set(0, 0, 0); ball.w && ball.w.set(0, 0, 0); ball.lineEvent = null; giveBall(k);
-  const off = ballOffset(k); ball.pos.set(k.pos.x + k.face.x * off.fwd, k.pos.y + k.face.y * off.fwd, BR);
-  S.mode = 'play'; S.outBanda = null; LOG('saque_banda', k, { x: +x.toFixed(1), y: +y.toFixed(1) });
 }
 function goalKick() {
   const k = S.outSide > 0 ? gkB : gkA;
@@ -3392,6 +3602,8 @@ function endGame() {
   resultado.innerHTML = `<div style="font-size:18px;opacity:.85">¡FINAL DEL PARTIDO!</div><div style="font-size:44px;margin:6px 0"><span style="color:#5ea0ff">${a}</span> - <span style="color:#ff6262">${b}</span></div>` +
     (a > b ? '<div style="color:#ffd23f">¡HAS GANADO! 🏆</div>' : a < b ? '<div>Has perdido… ¡revancha!</div>' : '<div>¡Empate!</div>');
   const cp = S.practice ? null : copasPartido(modoActual(), a, b);   // update 35: copas por modo
+  const mon = S.practice ? 0 : monedasPartido(a, b);   // update 37: MONEDAS
+  if (mon) { resultado.innerHTML += `<div class="rMonedas">${MONEDA_SVG}<b>+${mon}</b><span>MONEDAS · ${PROG.mon}</span></div>`; lbMonPend += mon; }
   if (cp) resultado.innerHTML += `<div class="rCopas ${cp.d >= 0 ? 'mas' : 'menos'}">${TRO_SVG}<b>${cp.d >= 0 ? '+' : ''}${cp.d}</b><span>${MODOS.find((m) => m.k === cp.modo).nom} · ${cp.copas}</span></div>`;
   if (S.comp) {   // update 24: partido de torneo / liga -> se guarda y se vuelve al cuadro / tabla
     showBanner(`FINAL ${a} - ${b}`, a > b ? 'bAzul' : a < b ? 'bRojo' : '', 1700);
@@ -3482,7 +3694,7 @@ function update(dt) {
       ball.vel.set((tgt.x - ball.pos.x) / dt * 0.5, (tgt.y - ball.pos.y) / dt * 0.5, 0);
       ball.pos.lerp(tgt, Math.min(1, dt * (o.kickPending ? 16 : 20)));
       ball.pos.z = BR;
-      ball.pos.x = THREE.MathUtils.clamp(ball.pos.x, -WX + BR, WX - BR); ball.pos.y = THREE.MathUtils.clamp(ball.pos.y, -WY + BR, WY - BR);
+      ball.pos.x = THREE.MathUtils.clamp(ball.pos.x, -SIDE_X, SIDE_X); ball.pos.y = THREE.MathUtils.clamp(ball.pos.y, -WY + BR, WY - BR);   // update 37: pared de banda
       if (S.mode === 'play' && !ball.lineEvent) carriedLine(o);   // update 35: conducir el balón fuera del campo = fuera (antes se podía seguir fuera)
     }
     if (o.stun > 0) ball.owner = null;
@@ -3514,6 +3726,9 @@ function update(dt) {
           if (o.stickT > 0) {   // update 30: VENTOSA -> el balón está pegado
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
             sfx.miss(); showBanner('¡PEGADO!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('ventosa_aguanta', o, { vs: NAME(a) });
+          } else if (o.spikeT > 0) {   // update 37 (t83u): PINCHOS -> el que entra se pincha y rebota
+            a.dashT = 0; a.dashEnded = false; a.dashHit = true; espPinch(o, a, true);
+            showBanner('¡PINCHO!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('pinchos_entrada', o, { vs: NAME(a) });
           } else if (o.ghostT > 0 || o.flyT > 0 || o.regenT > 0) {   // update 29: SPRINT SOMBRA / VUELO NOCTURNO: la entrada no le toca; update 34: REGENERACIÓN (piel viscosa)
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
             sfx.miss(); showBanner(o.flyT > 0 ? '¡POR ENCIMA!' : o.regenT > 0 ? '¡RESBALA!' : '¡SOMBRA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('especial_esquiva', o, { vs: NAME(a) });
@@ -3549,11 +3764,11 @@ function update(dt) {
     }
   } else ball.lineEvent = null;
   espUpdate(dt, playing);   // update 29: especiales
-  if (S.mode === 'out') { S.pauseT -= dt; if (S.pauseT <= 0) { if (S.outKind === 'banda') throwIn(); else goalKick(); } }
+  if (S.mode === 'out') { S.pauseT -= dt; if (S.pauseT <= 0) goalKick(); }
 
   // --- apuntado (CHUTAR / REGATE mantenidos) ---
   if (aim.active) {
-    if (ball.owner !== user || S.mode !== 'play') aimEnd(null, true);
+    if ((aim.kind === 'entrada' ? ball.owner === user : ball.owner !== user) || S.mode !== 'play') aimEnd(null, true);
     else if (!aim.shown && performance.now() - aim.t0 > AIM_SHOW_MS) { showAimJoy(true); aim.el.classList.add('apuntando'); }
   }
   if (PG.id !== null && (ball.owner !== user || S.mode !== 'play')) pgEnd(null, true);   // update 35: sin balón el patrón se cancela
@@ -3666,7 +3881,7 @@ function updateLobPreview(on, shotPrev) {
   if (!on) return;
   if (!aim.dragged) aim.dir.copy(lobDir());
   aim.lobP = aim.dragged && !aim.cancel ? aim.power : 0;
-  const lp = lobParams(aim.lobP, AJ.largoStat === false ? 1 : lobStatK(user));
+  const lp = lobParams(aim.lobP, AJ.largoStat === false ? LOB_K_MAX() : lobStatK(user));
   const start = new THREE.Vector3(ball.pos.x + aim.dir.x * 0.4, ball.pos.y + aim.dir.y * 0.4, BR + 0.02);
   const bf = bootShot(aim.dir, true, true);
   const pl = effectPlan(user, aim.dir, lp.h * bf.speed, 0.85, null, null, ball.pos), d0 = _efDir.copy(aim.dir); if (pl) d0.rotateAround(_efO, pl.rot);   // update 34: curva en C también en el CHUT ALTO (trayectoria y diana reales)
@@ -3702,7 +3917,7 @@ function updateFlightMark() {
 }
 function updateAimLine() {
   if (!aimLine) return;
-  const on = aim.active && aim.shown && !aim.cancel && user && ball.owner === user && S.mode === 'play';
+  const on = aim.active && aim.shown && !aim.cancel && user && (aim.kind === 'entrada' ? ball.owner !== user : ball.owner === user) && S.mode === 'play';
   updateLobPreview(on && aim.kind === 'alto', on && aim.kind === 'chutar' && aim.dragged && bootEquip() !== 'clasicas');
   updateFlightMark();
   if (aimJoy) { const be = !!on && aim.kind === 'alto' && lobDeEspaldas(user, aim.dragged ? aim.dir : lobDir()); if (aimJoy._be !== be) { aimJoy._be = be; aimJoy.classList.toggle('deEspaldas', be); } }   // update 35
@@ -3710,12 +3925,12 @@ function updateAimLine() {
   if (!aimLine.visible) return;
   if (!aim.dragged) {      // mantenido sin arrastrar: enseña la dirección del toque rápido
     const md = moveDir();
-    aim.dir.copy(md || (aim.kind === 'chutar' ? goalCenter(user.team).sub(user.pos).normalize() : aim.dir));
+    aim.dir.copy(md || (aim.kind === 'chutar' ? goalCenter(user.team).sub(user.pos).normalize() : aim.kind === 'entrada' ? user.face : aim.dir));
   }
-  const isShot = aim.kind === 'chutar';
-  const len = isShot ? (aim.dragged ? 5 + 15 * aim.power : 11) : DRIBBLE_SPEED * DRIBBLE_T + 1.2;
+  const isShot = aim.kind === 'chutar', isTk = aim.kind === 'entrada';
+  const len = isShot ? (aim.dragged ? 5 + 15 * aim.power : 11) : isTk ? DASH_SPEED * (user.sf ? user.sf.ent : 1) * DASH_T + 1.6 : DRIBBLE_SPEED * DRIBBLE_T + 1.2;
   const u = aimLine.userData, start = 0.9 * ESCALA, w = isShot ? 0.42 : 0.5;
-  u.mat.color.set(isShot ? (aim.dragged ? (aim.onGoal ? 0x5dff8a : new THREE.Color().setHSL(0.14 - 0.12 * aim.power, 1, 0.55)) : 0xffd23f) : 0xd77bff);
+  u.mat.color.set(isShot ? (aim.dragged ? (aim.onGoal ? 0x5dff8a : new THREE.Color().setHSL(0.14 - 0.12 * aim.power, 1, 0.55)) : 0xffd23f) : isTk ? 0x4ec0ff : 0xd77bff);
   const body = Math.max(0.3, len - start - 1.25);
   for (const m of [u.strip, u.shadow]) { m.scale.set(m === u.shadow ? w + 0.16 : w, 1, body); m.position.z = -start; }
   u.head.position.z = -(start + body); u.headSh.position.z = -(start + body) + 0.12;
@@ -3896,16 +4111,19 @@ function renderPortraits() {
     renderer.setRenderTarget(prevRT); renderer.setClearColor(pc, pa); rt.dispose();
   } catch (e) { console.info('retratos: se usan las imágenes', e); }
 }
-function cardHTML(key) {
-  const c = CHARS.find((x) => x.key === key), t = STATS[key];
-  const bars = STAT_KEYS.map((k, i) => `<div class="cs ${i < 4 ? 'at' : 'de'}"><span>${STAT_NAMES[k].slice(0, 3)}</span><i><b style="width:${t[k]}%"></b></i><em>${t[k]}</em></div>`).join('') +
-    `<div class="cs ef"><span>EFE</span><i><b style="width:${t.cur || 0}%"></b></i><em>${t.cur || 0}</em></div>`;   // update 31: EFECTO
-  return `<div class="mlCard ${t.rareza}" data-k="${key}" style="--c:${c.color}">` +
-    `<div class="mlFoto"><img src="${PORTRAITS[key] || c.card}" alt="" draggable="false"></div>` +
-    `<div class="mlTop"><div class="mlMedia">${t.media}</div><div class="mlPos">${t.pos}</div></div><div class="mlRar">${t.rareza.toUpperCase()}</div>` +
-    `<div class="mlNom">${c.name}</div>` + (ESPECIALES[key] ? `<div class="mlEsp" style="--ec:${ESPECIALES[key].col}">★ ${ESPECIALES[key].name}</div>` : '') +
-    `<div class="mlAD"><div class="mlA"><small>ATQ</small>${t.atq}</div><div class="mlD"><small>DEF</small>${t.def}</div></div>` +
-    `<div class="mlStats">${bars}</div><div class="mlBrillo"></div></div>`;
+const GUANTE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 21.5v-6.2L4.5 12a1.5 1.5 0 0 1 2.3-1.9L8.2 11.6V5.2a1.35 1.35 0 0 1 2.7 0v4.6V3.8a1.35 1.35 0 0 1 2.7 0v6V4.6a1.35 1.35 0 0 1 2.7 0v5.8V6.8a1.35 1.35 0 0 1 2.7 0v8.4c0 3.6-2.4 6.3-5.6 6.3z"/><path class="ln" d="M8 17.6h9.4"/></svg>';
+function cardHTML(key, lv) {   // update 37: carta del NIVEL actual (categoría BRONCE…LEYENDA con su marco) y cartas de PORTERO
+  const c = ALL_CHARS.find((x) => x.key === key), t = statsAt(key, lv ?? progLv(key)), gk = isGK(key);
+  const bar = (k, nm, cls) => `<div class="cs ${cls}"><span>${nm.slice(0, 3)}</span><i><b style="width:${t[k]}%"></b></i><em>${t[k]}</em></div>`;
+  const bars = gk ? GK_STAT_KEYS.map((k) => bar(k, GK_STAT_NAMES[k], 'gk')).join('')
+    : STAT_KEYS.map((k, i) => bar(k, STAT_NAMES[k], i < 4 ? 'at' : 'de')).join('') + `<div class="cs ef"><span>EFE</span><i><b style="width:${t.cur || 0}%"></b></i><em>${t.cur || 0}</em></div>`;   // update 31: EFECTO
+  const e = ESPECIALES[key];
+  return `<div class="mlCard ${t.rareza}${gk ? ' portero' : ''}" data-k="${key}" data-lv="${t.lv}" style="--c:${c.color}">` +
+    `<div class="mlMarco"></div><div class="mlFoto"><img src="${PORTRAITS[key] || c.card}" alt="" draggable="false"></div>` +
+    `<div class="mlTop"><div class="mlMedia">${t.media}</div><div class="mlPos">${t.pos}</div></div><div class="mlRar">${t.tier}</div><div class="mlNv">NV ${t.lv}</div>` +
+    `<div class="mlNom">${c.name}</div>` + (e ? `<div class="mlEsp" style="--ec:${e.col}">★ ${e.name}</div>` : '') +
+    (gk ? `<div class="mlAD gkAD"><div class="mlG">${GUANTE_SVG}<span>PORTERO</span></div></div>` : `<div class="mlAD"><div class="mlA"><small>ATQ</small>${t.atq}</div><div class="mlD"><small>DEF</small>${t.def}</div></div>`) +
+    `<div class="mlStats${gk ? ' gk' : ''}">${bars}</div><div class="mlBrillo"></div></div>`;
 }
 function playCardIn(el) { el.classList.remove('entra'); void el.offsetWidth; el.classList.add('entra'); }
 const mCartaGrande = document.getElementById('mCartaGrande');
@@ -3913,24 +4131,28 @@ function showBigCard() { if (!mCartaGrande) return; mCartaGrande.innerHTML = car
 // colección navegable
 const colEl = document.getElementById('coleccion'), colLista = document.getElementById('colLista');
 let colIdx = 0;
+const COL_KEYS = () => [...CHARS.map((c) => c.key), ...GK_ONLY];   // update 37: la colección incluye a los porteros
 function openColeccion() {
   if (S.mode !== 'menu') return;
-  colLista.innerHTML = CHARS.map((c) => `<div class="colItem">${cardHTML(c.key)}<div class="colLema">${STATS[c.key].lema}</div>${espHTML(c.key, 'colEsp')}</div>`).join('');
-  [...colLista.children].forEach((d, i) => d.addEventListener('click', () => { if (i === colIdx) { selectChar(i); closeColeccion(); } else colGo(i); }));
+  colLista.innerHTML = COL_KEYS().map((k) => `<div class="colItem">${cardHTML(k)}<div class="colLema">${baseOf(k).lema}</div>${espHTML(k, 'colEsp')}</div>`).join('');
+  [...colLista.children].forEach((d, i) => d.addEventListener('click', () => { if (i === colIdx) colElegir(); else colGo(i); }));
   colEl.classList.add('visible'); colGo(sel);
 }
 function colGo(i) {
-  colIdx = (i + CHARS.length) % CHARS.length;
-  const n = CHARS.length;
+  const ks = COL_KEYS(), n = ks.length;
+  colIdx = (i + n) % n;
   [...colLista.children].forEach((d, k) => { let o = k - colIdx; if (o > n / 2) o -= n; if (o < -n / 2) o += n; d.classList.toggle('act', o === 0); d.classList.toggle('lejos', Math.abs(o) > 2); d.style.setProperty('--o', o); });
   playCardIn(colLista.children[colIdx].firstChild);
-  document.getElementById('colElegir').textContent = 'ELEGIR ' + CHARS[colIdx].name;
+  const k = ks[colIdx];
+  document.getElementById('colElegir').textContent = (isGK(k) ? 'PORTERO: ' : 'ELEGIR ') + cName(k);
 }
+function colElegir() { const k = COL_KEYS()[colIdx]; if (isGK(k)) alinSet({ gk: k }); else selectChar(colIdx); closeColeccion(); }
 function closeColeccion() { colEl.classList.remove('visible'); }
 document.getElementById('btnMenuCartas').addEventListener('click', openColeccion);
 document.getElementById('colPrev').addEventListener('click', () => colGo(colIdx - 1));
 document.getElementById('colNext').addEventListener('click', () => colGo(colIdx + 1));
-document.getElementById('colElegir').addEventListener('click', () => { selectChar(colIdx); closeColeccion(); });
+document.getElementById('colElegir').addEventListener('click', () => colElegir());
+document.getElementById('colMejorar').addEventListener('click', () => { const k = COL_KEYS()[colIdx]; closeColeccion(); abrirMejora(k); });
 document.getElementById('colCerrar').addEventListener('click', closeColeccion);
 // enfrentamiento al empezar el partido: tu carta vs la del rival
 const vsEl = document.getElementById('vsCartas');
@@ -3938,8 +4160,8 @@ function showVsCards(on) {
   if (!vsEl) return;
   if (on) {
     const vb = (k) => `<img class="vsBadge" src="${cBadgeImg(k)}" alt="">`;   // update 30: badge del personaje sobre su carta
-    if (matchKeys[2] && matchKeys[3]) vsEl.innerHTML = `<div class="vsPar izq"><div class="vsC izq">${vb(matchKeys[0])}${cardHTML(matchKeys[0])}</div><div class="vsC izq">${vb(matchKeys[2])}${cardHTML(matchKeys[2])}</div></div><div class="vsTxt">VS</div><div class="vsPar der"><div class="vsC der">${vb(matchKeys[1])}${cardHTML(matchKeys[1])}</div><div class="vsC der">${vb(matchKeys[3])}${cardHTML(matchKeys[3])}</div></div>`;
-    else vsEl.innerHTML = `<div class="vsC izq">${vb(matchKeys[0])}${cardHTML(matchKeys[0])}</div><div class="vsTxt">VS</div><div class="vsC der">${vb(matchKeys[1])}${cardHTML(matchKeys[1])}</div>`;
+    if (matchKeys[2] && matchKeys[3]) vsEl.innerHTML = `<div class="vsPar izq"><div class="vsC izq">${vb(matchKeys[0])}${cardHTML(matchKeys[0], user && user.lv)}</div><div class="vsC izq">${vb(matchKeys[2])}${cardHTML(matchKeys[2], mateA && mateA.lv)}</div></div><div class="vsTxt">VS</div><div class="vsPar der"><div class="vsC der">${vb(matchKeys[1])}${cardHTML(matchKeys[1], rival && rival.lv)}</div><div class="vsC der">${vb(matchKeys[3])}${cardHTML(matchKeys[3], mateB && mateB.lv)}</div></div>`;
+    else vsEl.innerHTML = `<div class="vsC izq">${vb(matchKeys[0])}${cardHTML(matchKeys[0], user && user.lv)}</div><div class="vsTxt">VS</div><div class="vsC der">${vb(matchKeys[1])}${cardHTML(matchKeys[1], rival && rival.lv)}</div>`;
     vsEl.classList.toggle('dos', !!(matchKeys[2] && matchKeys[3]));
     vsEl.classList.add('visible'); vsEl.querySelectorAll('.mlCard').forEach(playCardIn);
   } else vsEl.classList.remove('visible');
@@ -3949,11 +4171,12 @@ function buildMenuUI() {
   mCartas.classList.toggle('muchas', CHARS.length > 8);   // update 22: 11 personajes -> rejilla de 6 columnas (2 filas)
   mCartas.classList.toggle('muchisimas', CHARS.length > 12);   // update 29: 15 personajes -> 8 columnas
   mCartas.classList.toggle('nueveCol', CHARS.length > 16);   // update 34: 17 personajes -> 9 columnas (2 filas, sin una carta suelta en una 3ª fila)
-  mCartas.classList.toggle('onceCol', CHARS.length > 18);   // update 36: 21 personajes -> 11 columnas (2 filas: 11 + 10)
+  mCartas.classList.toggle('onceCol', CHARS.length > 20);   // update 36: 21 personajes -> 11 columnas (2 filas: 11 + 10)
+  mCartas.classList.toggle('diezCol', CHARS.length > 18 && CHARS.length <= 20);   // update 37: 20 de campo (sin porteros) -> 10 + 10
   CHARS.forEach((c, i) => {
     const d = document.createElement('div'); d.className = 'carta'; d.style.setProperty('--c', c.color);
     if (c.badge) d.classList.add('conBadge');
-    d.innerHTML = `<div class="cartaFoto"><img src="${c.badge || c.card}" alt="" draggable="false"></div><div class="cartaNom">${c.name}</div>`;
+    d.innerHTML = `<div class="cartaFoto"><img src="${c.badge || c.card}" alt="" draggable="false"></div><div class="cartaNom">${c.name}</div><em class="cartaMed"></em>`;   // update 37: media + categoría
     d.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (i !== sel) selectChar(i); });
     mCartas.appendChild(d);
   });
@@ -4049,10 +4272,12 @@ function copasPartido(modo, gu, gr) {
 function copasTitulo(modo) {   // ganar la liga / el torneo
   if (!MODO_COPAS.includes(modo)) return 0;
   const d = 20; PERF.copas[modo] += d; PERF.max[modo] = Math.max(PERF.max[modo], PERF.copas[modo]);
-  PERF.titulos++; PERF.xp += 40; perfSave(); lbPend.push(d); return d;
+  PERF.titulos++; PERF.xp += 40; perfSave(); lbPend.push(d); lbMonPend += monedasTitulo(modo);   // update 37: + monedas por título
+  return d;
 }
 function modoActual() { return S.comp ? S.comp.type : (typeof is2v2 === 'function' && is2v2() ? '2v2' : '1v1'); }
 const lbPend = [];   // cambios de copas pendientes de enseñar al volver al lobby
+let lbMonPend = 0;   // update 37: monedas ganadas pendientes de animar en el lobby
 const $id = (i) => document.getElementById(i);
 const lbEls = {};
 function lbBuild() {
@@ -4073,25 +4298,26 @@ function lbBuild() {
   for (const b of menuEl.querySelectorAll('.lbCerrar')) b.addEventListener('click', () => lbCerrar());
   for (const p of menuEl.querySelectorAll('.lbPanel')) p.addEventListener('pointerdown', (e) => { if (e.target === p) { e.preventDefault(); lbCerrar(); } });
   $id('lbNovCuerpo').innerHTML = NOVEDADES.map((n) => `<div class="lbNov" style="--c:${n.c}"><b>${n.t}</b><span>${n.d}</span></div>`).join('');
+  lbBuild37();   // update 37
   lbRuedaBuild();
   lbListo = true;
   lbRender();
 }
 const NOVEDADES = [
-  { t: '4 PERSONAJES NUEVOS', d: 'RUBIBOT (PULSO EMP), FROGETTO (HECHIZO SAPO), ZORA (RAYO) y TIBURÓN (REMOLINO). Cada uno con su intro.', c: '#3dff7a' },
-  { t: 'BUTÓN Y CONAZO', d: 'Modelos nuevos con intro propia. Mismas stats y especiales.', c: '#ffb020' },
-  { t: 'REGATES MÁS FÁCILES', d: 'Botón más grande: desliza en cualquier dirección (vale una diagonal ↗ / ↖ para la bicicleta) y ves el nombre del truco en vivo.', c: '#2fd6c3' },
-  { t: 'EDITAR CONTROLES', d: 'Arreglado: GUARDAR ya se puede pulsar.', c: '#5ea0ff' },
-  { t: 'NUEVO LOBBY', d: 'Copas por modo, nivel de perfil y rueda de personajes: desliza para cambiar.', c: '#ffd23f' },
-  { t: 'REGATES POR PATRÓN', d: 'Botón REGATES: dibuja en la rejilla 3×3 y suelta. → ← ↓ y bicicletas ↑→ / ↑←.', c: '#2fd6c3' },
-  { t: 'SAQUE DE BANDA', d: 'Si el balón sale por la banda o la línea de fondo, conduciendo o suelto, se reanuda el juego.', c: '#5ea0ff' },
-  { t: 'TIRO ALTO', d: 'De espaldas no se puede: gírate hacia la portería. Con TIR 60 ya llegas lejos.', c: '#ff8a2a' },
-  { t: 'AJOLOTE', d: 'Nuevo personaje con su especial propio.', c: '#ff86dc' },
+  { t: 'CARTAS CON NIVEL', d: 'Todas empiezan en BRONCE. Gana MONEDAS jugando y MEJORA tus cartas: PLATA, ORO, DIAMANTE y LEYENDA. Cada personaje crece a su manera.', c: '#ffd23f' },
+  { t: 'PORTEROS DE VERDAD', d: 'BUTÓN y TURTOBOLA son solo porteros, con stats de portero y su especial bajo palos.', c: '#38c172' },
+  { t: 'ALINEACIÓN', d: 'Elige tu portero y, en 2 VS 2, tu DÚO. Se guarda para tus partidos.', c: '#2fb6ff' },
+  { t: 'MUSHOM', d: 'Nuevo personaje: ESPORAS que marean al rival y le hacen soltar el balón.', c: '#c77dff' },
+  { t: 'CACUTU', d: 'Nuevo personaje: el cactus del bombín. PINCHOS: se eriza y quien se le acerca o le entra se pincha.', c: '#9be05a' },
+  { t: 'SIN SAQUES DE BANDA', d: 'Las bandas son paredes: el balón rebota y el juego sigue.', c: '#5ea0ff' },
+  { t: 'ENTRADA CON DIRECCIÓN', d: 'Arrastra desde ENTRADA para elegir hacia dónde: flecha en el campo y sale al soltar. Toque rápido = entrada automática.', c: '#4ec0ff' },
+  { t: 'CHUT ALTO MÁS JUSTO', d: 'El chut alto/largo es más flojo: con TIR 99 rinde como antes con 70.', c: '#ff8a2a' },
+  { t: 'FROGETTO', d: 'Sombrero retocado por detrás: banda morada continua y sin estrellas mal pintadas.', c: '#2fa39a' },
 ];
 function lbAbrir(id) {
   lbCerrar(true);
   const p = $id(id); if (!p) return;
-  if (id === 'lbCopasPanel') lbCopasHTML(); else if (id === 'lbPerfPanel') lbPerfHTML(); else if (id === 'lbPers') showBigCard();
+  if (id === 'lbCopasPanel') lbCopasHTML(); else if (id === 'lbPerfPanel') lbPerfHTML(); else if (id === 'lbPers') showBigCard(); else if (id === 'lbMejora') mejoraHTML(true); else if (id === 'lbAlin') alinHTML();   // update 37
   p.classList.add('visible'); menuEl.classList.add('conPanel');
   sfx.dribble && actx && sfx.dribble();
 }
@@ -4121,6 +4347,8 @@ function lbRender() {
   for (const b of menuEl.querySelectorAll('.lbModoCard')) b.classList.toggle('sel', b.dataset.modo === PERF.modo);
   lbEls.lbBtnNov.classList.toggle('nuevo', PERF.visto !== ASSET_V);
   mVs.style.visibility = PERF.modo === '1v1' ? '' : 'hidden';
+  lbMonedasRender();   // update 37
+  mCartas.querySelectorAll('.carta').forEach((d, i) => { const t = statsAt(CHARS[i].key, progLv(CHARS[i].key)), e = d.querySelector('.cartaMed'); if (e) { e.textContent = t.media; e.className = 'cartaMed t-' + t.rareza; } });
 }
 function lbMostrarPend() {   // "+8" que sube desde el contador de copas al volver de un partido
   if (!lbPend.length) return;
@@ -4142,6 +4370,93 @@ function lbPerfHTML() {
   const inp = $id('lbNombreIn');
   inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); });
   inp.addEventListener('change', () => { PERF.nombre = nombreLimpio(inp.value); inp.value = PERF.nombre; perfSave(); lbRender(); });
+}
+// ===================== update 37: MONEDAS · MEJORAR CARTA · ALINEACIÓN =====================
+const MONEDA_SVG = '<svg class="icoMoneda" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.6"/><circle class="in" cx="12" cy="12" r="6.6"/><path class="st" d="M12 7.6l1.35 2.75 3.03.44-2.19 2.13.52 3.02L12 14.52l-2.71 1.42.52-3.02-2.19-2.13 3.03-.44z"/></svg>';
+let mejK = null;   // personaje que se está mejorando
+const mejLista = () => [...CHARS.map((c) => c.key), ...GK_ONLY];
+function abrirMejora(k) { mejK = k || CHARS[sel].key; lbAbrir('lbMejora'); }
+function mejoraHTML(anim) {
+  const k = mejK, L = PROG.lv[k] || 0, cur = statsAt(k, L), max = L >= LV_MAX, nxt = max ? cur : statsAt(k, L + 1), cost = lvCost(L), gk = isGK(k);
+  const ks = statKeysOf(k), names = gk ? GK_STAT_NAMES : STAT_NAMES;
+  const filas = [...ks, ...(gk ? [] : ['cur'])].map((x) => {
+    const d = (nxt[x] || 0) - (cur[x] || 0);
+    return `<div class="mjFila${d > 0 ? ' sube' : ''}"><span>${names[x]}</span><i><b style="width:${cur[x]}%"></b>${d > 0 ? `<u style="left:${cur[x]}%;width:${d}%"></u>` : ''}</i><em>${cur[x]}</em><strong>${d > 0 ? '+' + d : ''}</strong></div>`;
+  }).join('');
+  // barra de categorías por MEDIA (55-99) con las marcas de cada una
+  const pc = (m) => THREE.MathUtils.clamp((m - 55) / 44 * 100, 0, 100).toFixed(1);
+  const marcas = TIERS.map((t, i) => `<span class="mjT t-${t.k}${cur.rareza === t.k ? ' yo' : ''}" style="left:${pc(i ? t.min : 55)}%"><b>${t.n}</b></span>`).join('');
+  const leg = statsAt(k, LV_MAX);
+  $id('lbMejCarta').innerHTML = cardHTML(k, L); if (anim) playCardIn($id('lbMejCarta').firstChild);
+  $id('lbMejInfo').innerHTML =
+    `<div class="mjCab"><span class="mjNv">NV <b>${L}</b><small>/${LV_MAX}</small></span><span class="mjTier t-${cur.rareza}">${cur.tier}</span><span class="mjMed">MEDIA <b>${cur.media}</b>${max ? '' : ` → <b class="${nxt.media > cur.media ? 'up' : ''}">${nxt.media}</b>`}</span></div>` +
+    `<div class="mjBarra"><i style="width:${pc(cur.media)}%"></i>${max ? '' : `<u style="left:${pc(cur.media)}%;width:${(pc(nxt.media) - pc(cur.media)).toFixed(1)}%"></u>`}<em style="left:${pc(leg.media)}%" title="LEYENDA"></em>${marcas}</div>` +
+    (nxt.rareza !== cur.rareza ? `<div class="mjSubeTier t-${nxt.rareza}">¡CON ESTA MEJORA PASA A ${nxt.tier}!</div>` : '') +
+    `<div class="mjLista">${filas}</div>` +
+    `<div class="mjPie"><span class="mjSaldo">${MONEDA_SVG}<b>${PROG.mon}</b></span><span class="mjTope">LEYENDA: MEDIA ${leg.media}</span></div>`;
+  const b = $id('lbMejBtn');
+  b.disabled = max || PROG.mon < cost;
+  b.innerHTML = max ? 'NIVEL MÁXIMO' : `MEJORAR <span class="mjCoste">${MONEDA_SVG}${cost}</span>`;
+  b.classList.toggle('falta', !max && PROG.mon < cost);
+  $id('lbMejNom').textContent = cName(k) + (gk ? ' · PORTERO' : '');
+}
+function mejorarAhora() {
+  const r = progMejorar(mejK); if (!r) { sfx.miss && sfx.miss(); return null; }
+  mejoraHTML(true); lbRender();
+  const c = $id('lbMejCarta'); c.classList.remove('sube', 'subeTier'); void c.offsetWidth; c.classList.add(r.subeTier ? 'subeTier' : 'sube');
+  if (r.subeTier) { const t = document.createElement('div'); t.className = 'mjFlash t-' + r.desp.rareza; t.textContent = '¡' + r.desp.tier + '!'; c.appendChild(t); setTimeout(() => t.remove(), 1800); }
+  sfx.dribble && actx && sfx.dribble();
+  return r;
+}
+function mejPaso(d) { const l = mejLista(); mejK = l[(l.indexOf(mejK) + d + l.length) % l.length]; mejoraHTML(true); }
+// ---- ALINEACIÓN ----
+let alinTab = '1v1';
+function alinSlot(k, rol, cls) { return `<div class="alSlot ${cls}" data-rol="${rol}"><small>${rol}</small><div class="alCarta">${cardHTML(k)}</div></div>`; }
+function alinHTML() {
+  const me = CHARS[sel].key, dos = alinTab === '2v2';
+  if (dos && (!ALIN.duo || ALIN.duo === me)) { ALIN.duo = CHARS.find((c) => c.key !== me).key; alinSave(); }
+  for (const b of menuEl.querySelectorAll('.alTab')) b.classList.toggle('sel', b.dataset.al === alinTab);
+  $id('lbAlinCampo').className = 'alCampo ' + (dos ? 'dos' : 'uno');
+  $id('lbAlinCampo').innerHTML = '<div class="alLineas"><i class="area"></i><i class="medio"></i><i class="circ"></i></div>' +
+    (dos ? alinSlot(ALIN.duo, 'DÚO', 'duo') : '') + alinSlot(me, 'TÚ', 'tu') + alinSlot(ALIN.gk, 'PORTERO', 'por');
+  const gks = GK_ONLY.map((k) => `<button class="alOp gk${ALIN.gk === k ? ' sel' : ''}" data-gk="${k}" style="--c:${cCol(k)}"><img src="${cImg(k)}" alt="" draggable="false"><span>${cName(k)}</span><em class="t-${statsAt(k, progLv(k)).rareza}">${statsAt(k, progLv(k)).media}</em></button>`).join('');
+  const duos = CHARS.filter((c) => c.key !== me).map((c) => { const t = statsAt(c.key, progLv(c.key)); return `<button class="alOp${ALIN.duo === c.key ? ' sel' : ''}" data-duo="${c.key}" style="--c:${c.color}"><img src="${cImg(c.key)}" alt="" draggable="false"><span>${c.name}</span><em class="t-${t.rareza}">${t.media}</em></button>`; }).join('');
+  $id('lbAlinElige').innerHTML = `<div class="alGrupo"><div class="alTit">PORTERO <small>BUTÓN O TURTOBOLA</small></div><div class="alOps gks">${gks}</div></div>` +
+    (dos ? `<div class="alGrupo"><div class="alTit">DÚO <small>TU COMPAÑERO IA EN 2 VS 2</small></div><div class="alOps duos">${duos}</div></div>` : '');
+}
+function alinSet(o) {
+  if (o.gk && GK_ONLY.includes(o.gk)) ALIN.gk = o.gk;
+  if (o.duo && CHARS.some((c) => c.key === o.duo)) { ALIN.duo = o.duo; M2.mate = o.duo; }
+  alinSave(); if (menuEl.querySelector('#lbAlin.visible')) alinHTML();
+  LOG('alineacion', null, { gk: ALIN.gk, duo: ALIN.duo });
+  return { ...ALIN };
+}
+function lbMonedasRender() {
+  const n = $id('lbMonN'); if (n) n.textContent = PROG.mon;
+  const ok = CHARS[sel] && PROG.mon >= lvCost(PROG.lv[CHARS[sel].key] || 0);
+  const b = $id('lbMonedas'); if (b) b.classList.toggle('puede', !!ok);
+}
+function lbMonedasPend() {
+  if (!lbMonPend) return;
+  const d = lbMonPend; lbMonPend = 0;
+  const b = $id('lbMonedas'); if (!b) return;
+  const t = document.createElement('div'); t.className = 'lbDelta mas mon'; t.innerHTML = `${MONEDA_SVG}+${d}`;
+  b.appendChild(t); setTimeout(() => t.remove(), 2200);
+  b.classList.remove('late'); void b.offsetWidth; b.classList.add('late');
+}
+function lbBuild37() {
+  $id('lbMonedas').addEventListener('click', () => abrirMejora());
+  $id('lbBtnAlin').addEventListener('click', () => { alinTab = PERF.modo === '2v2' ? '2v2' : '1v1'; lbAbrir('lbAlin'); });
+  $id('lbPersMejorar').addEventListener('click', () => abrirMejora(CHARS[sel].key));
+  $id('lbMejBtn').addEventListener('click', () => mejorarAhora());
+  $id('lbMejPrev').addEventListener('click', () => mejPaso(-1));
+  $id('lbMejNext').addEventListener('click', () => mejPaso(1));
+  for (const b of menuEl.querySelectorAll('.alTab')) b.addEventListener('click', () => { alinTab = b.dataset.al; alinHTML(); });
+  $id('lbAlinElige').addEventListener('click', (e) => {
+    const o = e.target.closest('.alOp'); if (!o) return;
+    alinSet(o.dataset.gk ? { gk: o.dataset.gk } : { duo: o.dataset.duo }); sfx.dribble && actx && sfx.dribble();
+  });
+  $id('lbAlinCampo').addEventListener('click', (e) => { const s = e.target.closest('.alSlot'); if (!s) return; const k = s.dataset.rol === 'PORTERO' ? ALIN.gk : s.dataset.rol === 'DÚO' ? ALIN.duo : CHARS[sel].key; abrirMejora(k); });
 }
 function lobbyPlay() {
   if (S.mode !== 'menu') return;
@@ -4222,7 +4537,7 @@ function openMenu() {
   showBanner('', '', 0);
   lbCerrar(true);
   selectChar(sel, false);
-  lbRuedaMedir(); lbMostrarPend();
+  lbRuedaMedir(); lbMostrarPend(); lbMonedasPend();
 }
 async function menuPlay(practice = false) {
   if (S.mode !== 'menu') return;
@@ -4238,23 +4553,44 @@ async function menuPlay(practice = false) {
   document.getElementById('btnJugar').textContent = 'JUGAR OTRA VEZ';
   startGame();
 }
+// ---------- ALINEACIÓN (update 37): tu portero (Butón / Turtobola) y tu DÚO de 2 VS 2 (compañero IA) ----------
+const ALIN_KEY = 'ml_alineacion_v1';
+function alinLoad() {
+  let p = null; try { p = JSON.parse(localStorage.getItem(ALIN_KEY) || 'null'); } catch (e) {}
+  if (!p || typeof p !== 'object') p = {};
+  if (!GK_ONLY.includes(p.gk)) p.gk = 'buton';
+  if (!CHARS.some((c) => c.key === p.duo)) p.duo = null;
+  return { gk: p.gk, duo: p.duo };
+}
+let ALIN = alinLoad();
+function alinSave() { try { localStorage.setItem(ALIN_KEY, JSON.stringify(ALIN)); } catch (e) {} }
+const rivalGK = (rk) => GK_ONLY[[...String(rk)].reduce((s, ch) => s + ch.charCodeAt(0), 0) % GK_ONLY.length];   // el portero del rival (fijo por rival)
+let matchSig = '';
 function setupMatch(uk, rk, mk = null, r2k = null) {   // update 30: mk / r2k = compañero y segundo rival (2 VS 2)
-  if (matchKeys && matchKeys[0] === uk && matchKeys[1] === rk && (matchKeys[2] || null) === mk && (matchKeys[3] || null) === r2k) return;
+  // update 37: porteros = Butón / Turtobola (el tuyo, de la ALINEACIÓN) y cada jugador con el nivel de su carta
+  const gu = ALIN.gk, gr = rivalGK(rk);
+  const lvU = progLv(uk), base = mk ? (lvU + progLv(mk)) / 2 : lvU;
+  const LV = { user: lvU, mateA: mk ? progLv(mk) : 0, gkA: progLv(gu), rival: rivalLv(base, rk), mateB: r2k ? rivalLv(base, r2k) : 0, gkB: rivalLv(progLv(gu), gr) };
+  const sig = [uk, rk, mk, r2k, gu, gr, ...Object.values(LV)].join('|');
+  if (matchKeys && matchKeys[0] === uk && matchKeys[1] === rk && (matchKeys[2] || null) === mk && (matchKeys[3] || null) === r2k && matchSig === sig) return;
+  matchSig = sig;
   for (const a of new Set([...actors, user, rival, gkA, gkB, mateA, mateB])) if (a) a.dispose();
   user = new Actor(uk, 0, false, 0x3d8bff);
   rival = new Actor(rk, 1, false, 0xff4040);
-  gkA = new Actor(uk, 0, true, 0x9cc4ff);
-  gkB = new Actor(rk, 1, true, 0xffa0a0);
+  gkA = new Actor(gu, 0, true, 0x9cc4ff);
+  gkB = new Actor(gr, 1, true, 0xffa0a0);
   mateA = mk ? new Actor(mk, 0, false, 0x8fbcff) : null;
   mateB = r2k ? new Actor(r2k, 1, false, 0xff9a9a) : null;
+  for (const [n, a] of Object.entries({ user, rival, gkA, gkB, mateA, mateB })) if (a) { a.lv = LV[n]; a.sf = actorStats(a); }
   actors = [user, rival, gkA, gkB, mateA, mateB].filter(Boolean);
+  LOG('niveles', null, { ...LV, gu, gr });
   const tri = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.5, 3), new THREE.MeshBasicMaterial({ color: 0x3d8bff }));
   tri.rotation.x = Math.PI; tri.position.y = 2.75 * ESCALA; user.root.add(tri); user.marker = tri;
   user.place(0, -3.2); rival.place(0, 3.2); gkA.place(0, -HL + 0.9); gkB.place(0, HL - 0.9);
-  document.querySelector('#marcador .azul .nom').textContent = CHARS.find((c) => c.key === uk).name;
-  document.querySelector('#marcador .rojo .nom').textContent = CHARS.find((c) => c.key === rk).name;
+  document.querySelector('#marcador .azul .nom').textContent = ALL_CHARS.find((c) => c.key === uk).name;
+  document.querySelector('#marcador .rojo .nom').textContent = ALL_CHARS.find((c) => c.key === rk).name;
   matchKeys = [uk, rk, mk, r2k];
-  if (mk && r2k) { mateA.place(5, -9); mateB.place(-5, 9); document.querySelector('#marcador .azul .nom').textContent = CHARS.find((c) => c.key === uk).name + ' + ' + CHARS.find((c) => c.key === mk).name; document.querySelector('#marcador .rojo .nom').textContent = CHARS.find((c) => c.key === rk).name + ' + ' + CHARS.find((c) => c.key === r2k).name; }
+  if (mk && r2k) { mateA.place(5, -9); mateB.place(-5, 9); document.querySelector('#marcador .azul .nom').textContent = ALL_CHARS.find((c) => c.key === uk).name + ' + ' + ALL_CHARS.find((c) => c.key === mk).name; document.querySelector('#marcador .rojo .nom').textContent = ALL_CHARS.find((c) => c.key === rk).name + ' + ' + ALL_CHARS.find((c) => c.key === r2k).name; }
   marcadorSet();   // update 32
 }
 // ===================== TORNEO Y LIGA (update 24) =====================
@@ -4364,7 +4700,7 @@ function standings(c) {
     A.pj++; B.pj++; A.gf += m.ga; A.gc += m.gb; B.gf += m.gb; B.gc += m.ga;
     if (m.ga > m.gb) { A.g++; B.p++; A.pts += 3; } else if (m.ga < m.gb) { B.g++; A.p++; B.pts += 3; } else { A.e++; B.e++; A.pts++; B.pts++; }
   }
-  const nm = (k) => (CHARS.find((x) => x.key === k) || { name: k }).name;
+  const nm = (k) => (ALL_CHARS.find((x) => x.key === k) || { name: k }).name;
   return Object.values(T).map((t) => (t.dg = t.gf - t.gc, t)).sort((x, y) => y.pts - x.pts || y.dg - x.dg || y.gf - x.gf || nm(x.k).localeCompare(nm(y.k)));
 }
 function compLoad() {
@@ -4377,10 +4713,10 @@ const compEl = document.getElementById('comp'), coCuerpo = document.getElementBy
 const coJugar = document.getElementById('coJugar'), coNuevo = document.getElementById('coNuevo');
 let COMP = null;      // competición abierta en pantalla
 const RONDAS = ['CUARTOS', 'SEMIFINALES', 'FINAL'];
-const cName = (k) => (CHARS.find((x) => x.key === k) || { name: k }).name;
-const cCol = (k) => (CHARS.find((x) => x.key === k) || { color: '#888' }).color;
-const cImg = (k) => { const c = CHARS.find((x) => x.key === k); return c ? (c.badge || c.card) : ''; };   // update 30: badge del personaje
-const cHasBadge = (k) => { const c = CHARS.find((x) => x.key === k); return !!(c && c.badge); };
+const cName = (k) => (ALL_CHARS.find((x) => x.key === k) || { name: k }).name;
+const cCol = (k) => (ALL_CHARS.find((x) => x.key === k) || { color: '#888' }).color;
+const cImg = (k) => { const c = ALL_CHARS.find((x) => x.key === k); return c ? (c.badge || c.card) : ''; };   // update 30: badge del personaje
+const cHasBadge = (k) => { const c = ALL_CHARS.find((x) => x.key === k); return !!(c && c.badge); };
 function teamChip(k, c, extra = '') {
   return `<div class="coEq${k === c.user ? ' tu' : ''}${extra}" style="--c:${cCol(k)}"><i${cHasBadge(k) ? ' class="bdg"' : ''}><img src="${cImg(k)}" alt="" draggable="false"></i><span>${cName(k)}</span></div>`;
 }
@@ -4475,7 +4811,7 @@ function closeComp() { compEl.className = ''; COMP = null; openMenu(); }
 async function compPlay() {
   const c = COMP, opp = c && compNextOpp(c); if (!opp) return;
   if (!window.__game.ready) { coJugar.textContent = 'CARGANDO…'; await campoReady; }
-  S.practice = false; S.comp = { type: c.type, opp };
+  S.practice = false; S.comp = { type: c.type, opp, ronda: c.type === 'torneo' ? (c.round | 0) : 0 };   // update 37: ronda -> nivel del rival
   compEl.className = '';
   setupMatch(c.user, opp);
   tryLandscape();
@@ -4965,7 +5301,7 @@ function passTarget(a, m, lofted) {
   const d0 = a.pos.distanceTo(m.pos), sp = lofted ? 15 : THREE.MathUtils.clamp(9 + d0 * 0.55, 11, 22), t = d0 / sp;
   const p = m.pos.clone().addScaledVector(m.vel, Math.min(1.1, t) * 0.9);   // donde estará (adelantado a su carrera)
   if (lofted && m !== user) p.y += Math.sign(goalCenter(a.team).y) * 2;
-  p.x = THREE.MathUtils.clamp(p.x, -WX + 1.2, WX - 1.2); p.y = THREE.MathUtils.clamp(p.y, -WY + 1.2, WY - 1.2);
+  p.x = THREE.MathUtils.clamp(p.x, -SIDE_X + 1.2, SIDE_X - 1.2); p.y = THREE.MathUtils.clamp(p.y, -WY + 1.2, WY - 1.2);
   return p;
 }
 function passBall(a, m, lofted = false, at = null) {
@@ -5572,7 +5908,7 @@ function u30Render() {
 // ---------- MENÚ 2 VS 2 ----------
 const M2 = { mate: null, r1: null, r2: null };
 const m2El = document.getElementById('m2v2');
-const cBadgeImg = (k) => { const c = CHARS.find((x) => x.key === k); return c ? (c.badge || c.card) : ''; };
+const cBadgeImg = (k) => { const c = ALL_CHARS.find((x) => x.key === k); return c ? (c.badge || c.card) : ''; };
 function m2Rivals(force) {
   const me = CHARS[sel].key, used = new Set([me, M2.mate]);
   const pool = CHARS.map((c) => c.key).filter((k) => !used.has(k));
@@ -5590,6 +5926,7 @@ function render2v2() {
 function open2v2() {
   if (S.mode !== 'menu' || !m2El) return;
   const me = CHARS[sel].key;
+  if (ALIN.duo && ALIN.duo !== me) M2.mate = ALIN.duo;   // update 37: el DÚO de tu ALINEACIÓN
   if (!M2.mate || M2.mate === me) { const pool = CHARS.map((c) => c.key).filter((k) => k !== me); M2.mate = pool[Math.floor(Math.random() * pool.length)]; }
   m2Rivals(true); render2v2(); m2El.classList.add('visible');
 }
@@ -5605,7 +5942,7 @@ async function play2v2() {
   startGame();
 }
 if (m2El) {
-  document.getElementById('m2Lista').addEventListener('click', (e) => { const it = e.target.closest('.m2It'); if (!it) return; M2.mate = it.dataset.k; m2Rivals(false); render2v2(); sfx.dribble && actx && sfx.dribble(); });
+  document.getElementById('m2Lista').addEventListener('click', (e) => { const it = e.target.closest('.m2It'); if (!it) return; M2.mate = it.dataset.k; ALIN.duo = M2.mate; alinSave(); m2Rivals(false); render2v2(); sfx.dribble && actx && sfx.dribble(); });
   document.getElementById('m2Azar').addEventListener('click', () => { const me = CHARS[sel].key, pool = CHARS.map((c) => c.key).filter((k) => k !== me); M2.mate = pool[Math.floor(Math.random() * pool.length)]; m2Rivals(true); render2v2(); });
   document.getElementById('m2Volver').addEventListener('click', close2v2);
   document.getElementById('m2Jugar').addEventListener('click', () => play2v2());
@@ -5625,7 +5962,13 @@ Object.assign(window.__game, {
 Object.assign(window.__game, { cardHTML, shoot, THREE, effectCurve, applyTeamDiscs, discosOn, trampaFire: (x, y) => trampaFire(x === undefined ? null : { x, y }), screenToField, trampaPointer, landPt: () => { const l = landPt(); return l && { x: l.x, y: l.y }; }, inLandCircle: (a) => inLandCircle(a || user), LAND_R });   // update 31
 Object.assign(window.__game, { MS_get, msShow, msHide, get MS() { return MS; }, marcadorSet, marcGol, CTRL, TR, applyComboTR, applyTiroPase, showBanner, ROT_LOG, confeti, lobStatK: (k) => lobStatK({ charKey: k }), tpOn });   // update 32
 Object.defineProperties(window.__game, { perf: { get: () => PERF, configurable: true }, rueda: { get: () => ({ pos: RUEDA.pos, target: RUEDA.target, sp: RUEDA.sp, n: RUEDA.items.length }), configurable: true } });   // update 35 (getters de verdad: Object.assign los congela)
-Object.assign(window.__game, { patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, throwIn, QUALITY });   // update 35
+Object.assign(window.__game, { patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
+Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS, GK_ONLY, GK_STATS, GK_STAT_KEYS, statsAt, progCurve, lvCost, LV_MAX, LV_REF, TIERS, tierDe, progMejorar, monedasPartido, monedasTitulo, MON_PARTIDO, MON_TITULO,
+  rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, LOB_NERF, LOB_K_MAX, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
+  progReload: () => { PROG = progLoad(); lbRender(); return PROG; }, alinReload: () => { ALIN = alinLoad(); return ALIN; },
+  setLv: (k, lv) => { PROG.lv[k] = lv; progSave(); lbRender(); }, setMon: (m) => { PROG.mon = m; progSave(); lbRender(); } });   // update 37
+Object.assign(window.__game, { HL, lobStatKTir: (t) => lobStatK({ sf: { t: { tir: t } } }) });
+Object.defineProperties(window.__game, { META: { get: () => META, configurable: true }, PROG: { get: () => PROG, configurable: true }, ALIN: { get: () => ALIN, configurable: true }, matchSig: { get: () => matchSig, configurable: true } });
 Object.assign(window.__game, { effectPlan, EF_THETA, gkCurveCross: (lineY, s) => { const r = gkCurveCross(lineY, s); return r && { tt: r.tt, x: r.x, z: r.z }; } });   // update 34
 Object.defineProperty(window.__game, 'trampa', { get: () => trampa && { t0: trampa.t0, tgt: trampa.tgt, held: trampa.held, pid: trampa.pid }, configurable: true });
 Object.defineProperties(window.__game, {
@@ -5643,8 +5986,8 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
   try {
     cargando.textContent = 'Cargando personajes…';
     META = await (await fetch(`assets/anim_meta.json?${ASSET_V}`)).json();
-    const gl = await Promise.all(CHARS.map((c) => load(c.file)));
-    CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
+    const gl = await Promise.all(ALL_CHARS.map((c) => load(c.file)));
+    ALL_CHARS.forEach((c, i) => { GLB[c.key] = gl[i]; toStandard(gl[i].scene); });
     applyTextureQuality();
     buildMenuChars(); renderPortraits(); buildMenuUI();
     layout(); layoutMenu(); updateOrient();
