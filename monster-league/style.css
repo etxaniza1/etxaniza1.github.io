@@ -667,12 +667,8 @@ body.horizontal #btnMenu2v2{font-size:clamp(12px,3.4vh,17px);padding:2px 10px 4p
 
 /* update 31: fila EFECTO en las cartas */
 .cs.ef b{background:#c78bff}.cs.ef span{color:#e3c6ff}
-/* ===== update 32: TURBO + REGATE en un botón ===== */
-body.comboTR #btnRegate{display:none!important}
-#btnTurbo.combo .btnTxt{display:flex;flex-direction:column;align-items:center;line-height:1}
-#btnTurbo.combo .btnTxt small{font-size:.52em;letter-spacing:.02em;opacity:.92;margin-top:1px;text-transform:uppercase}
-#btnTurbo.combo::after{content:'';position:absolute;inset:-5px;border-radius:50%;border:2px dashed rgba(215,123,255,.85);pointer-events:none}
-#btnTurbo.combo.apuntando::after{border-style:solid;border-color:#d77bff}
+/* ===== update 38: TURBO es un botón simple (ya no regatea) y el botón REGATE de deslizar desaparece ===== */
+#btnRegate{display:none!important}
 /* update 32: botón TIRO/PASE rediseñado (verde-turquesa, icono pie + balón con estela corta) */
 #btnChutar.tiroPase{background:radial-gradient(circle at 35% 28%,#7dffd0 0%,#19c99a 46%,#0c9c86 100%);box-shadow:0 6px 0 #076b5d,0 8px 14px rgba(0,0,0,.35),inset 0 -6px 0 rgba(0,0,0,.12),inset 0 4px 0 rgba(255,255,255,.35)}
 #btnChutar.tiroPase.pulsado{box-shadow:0 2px 0 #076b5d,0 4px 8px rgba(0,0,0,.3)}
@@ -824,15 +820,15 @@ body:not(.practica) #marcador.m32 .mBad.dos img{width:28px;height:28px}
 #btnPatron .btnTxt{font-size:10px}
 #btnPatron .icono{width:21px;height:21px}
 #btnPatron .icono g circle{opacity:.95}
-#acciones.sin-balon #btnPatron,body.sinPatron #btnPatron,body.practica.sinPatron #btnPatron{visibility:hidden;pointer-events:none}
+#acciones.sin-balon #btnPatron{visibility:hidden;pointer-events:none}
 body.horizontal #btnPatron{--pb:calc(var(--btn-s) * 1.12);width:var(--pb);height:var(--pb);
   right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) / 2 + var(--arc-r) * 1.98 - var(--pb) / 2);
   bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) / 2 + var(--arc-r) * 0.06 - var(--pb) / 2)}
-/* TURBO+REGATE activo (por defecto): REGATE no se ve -> REGATES ocupa su hueco a la izquierda de CHUTAR */
-body.horizontal.comboTR #btnPatron{
+/* update 38 (antes TURBO+REGATE, u32): sin botón REGATE -> REGATES ocupa su sitio a la izquierda de CHUTAR (sin hueco) */
+body.horizontal.sinRegate #btnPatron{
   right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) / 2 + var(--arc-r) * 0.999 - var(--pb) / 2);
   bottom:calc(var(--safe-b) + var(--ui-pad) + var(--btn-c) / 2 - var(--arc-r) * 0.035 - var(--pb) / 2)}
-body.horizontal.m2v2:not(.comboTR) #btnPatron{right:calc(var(--safe-r) + var(--ui-pad) + var(--btn-c) / 2 + var(--arc-r) * 2.95 - var(--pb) / 2)}
+body:not(.horizontal).sinRegate #btnPatron{right:124px;bottom:calc(env(safe-area-inset-bottom) + 84px)}   /* update 38: retrato (?vertical=1): REGATES en el sitio de REGATE */
 body.horizontal #btnPatron .btnTxt{font-size:clamp(8px, 2.4vmin, 10px)}
 body.horizontal #btnPatron .icono{width:clamp(15px, 4.6vmin, 21px);height:clamp(15px, 4.6vmin, 21px)}
 /* cuadrícula del patrón (encima de todo el HUD, sin capturar toques: el dedo sigue en el botón) */

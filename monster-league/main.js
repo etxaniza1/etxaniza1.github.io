@@ -33,7 +33,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=37';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=38';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -302,7 +302,19 @@ function loadAjustes() {
   a.cabCirculo = a.cabCirculo !== false;
   a.trampaApunta = a.trampaApunta !== false;
   a.discos2v2 = a.discos2v2 !== false;
-  a.turboRegate = a.turboRegate !== false;
+  // update 38: TURBO ya no regatea (fuera el modo TURBO+REGATE y el botón REGATE de deslizar). Los regates, solo con REGATES (patrón),
+  // que pasa a estar siempre puesto. Migración de lo guardado (una vez): el que tenía REGATE colocado a mano y REGATES sin colocar
+  // -> REGATES pasa al sitio de su REGATE (no queda hueco); se borran el ajuste turboRegate, la opción de ocultar REGATES y la
+  // posición del botón REGATE.
+  if ((a.ver38 || 0) < 1) {
+    if (a.ctrl && typeof a.ctrl === 'object' && a.ctrl.regate) {
+      const rg = a.ctrl.regate, pt = a.ctrl.patron;
+      if (a.turboRegate === false && rg.x != null && (!pt || pt.x == null)) a.ctrl.patron = { x: rg.x, y: rg.y, s: (pt && pt.s) || rg.s || 1 };
+      delete a.ctrl.regate;
+    }
+    a.migr38 = { turboRegate: a.turboRegate !== false, patron: a.patron !== false }; a.ver38 = 1;
+  }
+  delete a.turboRegate; delete a.patron; delete a.vistoTR32;
   a.tiroPase = a.tiroPase !== false;
   a.largoStat = a.largoStat !== false; delete a.altoCaida; a.ocultaCaida = a.ocultaCaida === true;   // update 33: indicador del chut alto como en v31 (completo + diana) por defecto; el corto de v32 es opcional; el ajuste antiguo de v32 se descarta   // update 32: chut alto según TIR (SÍ)   // update 32: TIRO/PASE   // update 32: TURBO + REGATE en un botón   // update 31: 2 VS 2 con círculos sólidos azul (tu equipo) / rojo (rivales)   // update 31: BALÓN TRAMPA apuntado (NO = como antes: chut automático + señuelo)   // update 31: cabezazo solo dentro del círculo de caída
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
@@ -1294,7 +1306,6 @@ function aimEnd(e, cancelAll) {
     if (kind === 'chutar') { if (quick) quickShot(); else aimedShot(aim.dir, aim.power); }
     else if (kind === 'alto') aimedLob(quick ? lobDir() : aim.dir, quick ? 0 : aim.power);   // update 16: carga = distancia del mini-joystick al centro; toque = vaselina mínima
     else if (kind === 'entrada') { if (quick) { if (!tryDash(user)) bufferAction('entrada'); } else if (tryDash(user, aim.dir)) LOG('entrada_dir', user, { dir: [+aim.dir.x.toFixed(2), +aim.dir.y.toFixed(2)] }); }   // update 37
-    else if (aim.combo) { if (!quick && aim.dragged) { TR.n++; tryDribble(user, aim.dir); LOG('regate_desliz', user, {}); } }   // update 32: TURBO+REGATE
     else { if (quick) tryDribble(user); else tryDribble(user, aim.dir); }
   } else if (aim.cancel) LOG('apuntado_cancelado', user, { kind });
   el.classList.remove('pulsado', 'apuntando');
@@ -1339,31 +1350,16 @@ window.addEventListener('pointerup', (e) => aimEnd(e));
 window.addEventListener('pointercancel', (e) => aimEnd(e, true));
 for (const el of [btnChutar, btnRegate, btnAlto, btnEntrada, btnTurbo, btnEspecial, joyZona]) el.addEventListener('touchstart', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
 bindAim(btnChutar, 'chutar');
-bindAim(btnRegate, 'regate');
+// update 38: el botón REGATE (mini-joystick de deslizar) ya no existe en el juego: se queda oculto y sin acción
 bindAim(btnAlto, 'alto');
 bindAim(btnEntrada, 'entrada');   // update 37: ENTRADA direccionable (arrastrar = dirección con flecha en el campo; toque = entrada automática de antes; al centro = cancelar)
 bindHold(btnEspecial, (e) => { markAction('especial', e); btnEspecial.classList.add('pulsado'); if (S.mode === 'play' && !S.paused) { espUse(user); if (trampa && trampa.held) trampa.pid = e && e.pointerId; } }, () => btnEspecial.classList.remove('pulsado'));   // update 29 (+31 balón trampa apuntado)
-// update 32: TURBO + REGATE en UN botón (opción AJ.turboRegate, SÍ por defecto; NO = botones separados como antes).
-// Mantener = turbo (sprint). Con balón, deslizar desde el botón y soltar = regate hacia esa dirección (aparece el mini joystick
-// morado del regate). Un toque o mantener sin deslizar = solo turbo. Volver al centro antes de soltar = sin regate.
-const TR_DRAG_PX = 16;
-function comboOn() { return AJ.turboRegate !== false; }
+// update 38: TURBO es un botón simple: mantener = esprintar. Deslizar no hace nada (fuera el regate por deslizamiento de la update 32).
+function comboOn() { return false; }   // compat: el modo TURBO+REGATE ya no existe
 bindHold(btnTurbo, (e) => {
   markAction('turbo', e); input.turboDown = true; btnTurbo.classList.add('pulsado'); turboKick();
-  if (!comboOn() || aim.id !== null) return;
-  if (S.mode !== 'play' || !user || ball.owner !== user || user.kickPending) { TR.pend = { id: e.pointerId }; return; }   // sin balón: si lo recibes mientras mantienes, el desliz ya vale
-  trArm(e.pointerId);
-}, () => { input.turboDown = false; btnTurbo.classList.remove('pulsado'); TR.pend = null; });
-const TR = { pend: null, n: 0 };
-function trArm(id) {
-  const r = btnRect(btnTurbo);
-  Object.assign(aim, { id, kind: 'regate', el: btnTurbo, combo: true, cx: r.left + r.width / 2, cy: r.top + r.height / 2, t0: performance.now(), dragged: false, shown: false, dx: 0, dy: 0, R: aimRadius(btnTurbo), power: 0, cancel: false, active: true, rawAng: undefined, onGoal: false });
-  aim.dir.copy(moveDir() || user.face);
-}
-window.addEventListener('pointermove', (e) => {   // recibió el balón con el botón ya pulsado
-  if (!TR.pend || TR.pend.id !== e.pointerId || aim.id !== null) return;
-  if (S.mode === 'play' && user && ball.owner === user && !user.kickPending) { TR.pend = null; trArm(e.pointerId); }
-}, true);
+}, () => { input.turboDown = false; btnTurbo.classList.remove('pulsado'); });
+const TR = { pend: null, n: 0 };   // compat (tests antiguos): el regate por deslizamiento ya no suma
 
 // ---- CHUT POR DESLIZAMIENTO (update 24, opción de AJUSTES; apagado por defecto) ----
 // Un solo gesto sustituye a CHUTAR + CHUT ALTO: se desliza el dedo desde el botón CHUTAR o desde la zona derecha libre.
@@ -1706,7 +1702,7 @@ const PG = { id: null, sx: 0, sy: 0, gx: 0, gy: 0, s: 50, dots: [], dirs: [], ax
 if (patronGrid) {
   const box = patronGrid.querySelector('.pgPuntos'); for (let i = 0; i < 9; i++) { const d = document.createElement('i'); d.dataset.i = i; box.appendChild(d); PG.els.push(d); }
 }
-function patOn() { return AJ.patron !== false; }
+function patOn() { return true; }   // update 38: REGATES (patrón) siempre puesto
 function applyPatronBtn() { document.body.classList.toggle('sinPatron', !patOn()); const b = document.getElementById('ajPatron'); if (b) { b.textContent = 'BOTÓN REGATES POR PATRÓN (3×3): ' + (patOn() ? 'SÍ' : 'NO'); b.classList.toggle('on', patOn()); } }
 function pgDotXY(i) { return [PG.gx + ((i % 3) - 1) * PG.s, PG.gy + (Math.floor(i / 3) - 1) * PG.s]; }
 function pgDraw(fx, fy) {
@@ -3314,7 +3310,7 @@ function startGame() {
   if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   actx?.resume?.();
   S.score = [0, 0]; S.time = DURACION; S.goals = 0; S.saves = 0; S.shots = 0; MS_reset(); msHide();
-  if (comboOn() && !AJ.vistoTR32 && !S.practice) { AJ.vistoTR32 = true; saveAjustes(); setTimeout(() => { if (S.mode === 'play' || S.mode === 'kickoff') showBanner('MANTÉN TURBO = SPRINT · DESLIZA Y SUELTA = REGATE', 'bAzul', 2800); }, 2600); }   // update 32: aviso (una vez)
+  // update 38: fuera el aviso 'DESLIZA Y SUELTA = REGATE' (TURBO ya no regatea)
   if (user) user.energy = 1; if (rival) rival.energy = 1;
   for (const a of [user, rival, mateA, mateB]) if (a) { a.esp = 0; a.energy = 1; } ESP.usos.length = 0; espSetBtnLabel(); S.passes = 0;
   elA.textContent = '0'; elB.textContent = '0'; elReloj._t = null;
@@ -4304,6 +4300,7 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
+  { t: 'TURBO Y REGATES', d: 'TURBO ya no regatea: mantén para esprintar. Los regates, con el botón REGATES (dibuja el patrón), siempre a mano.', c: '#19c9b0' },   // update 38
   { t: 'CARTAS CON NIVEL', d: 'Todas empiezan en BRONCE. Gana MONEDAS jugando y MEJORA tus cartas: PLATA, ORO, DIAMANTE y LEYENDA. Cada personaje crece a su manera.', c: '#ffd23f' },
   { t: 'PORTEROS DE VERDAD', d: 'BUTÓN y TURTOBOLA son solo porteros, con stats de portero y su especial bajo palos.', c: '#38c172' },
   { t: 'ALINEACIÓN', d: 'Elige tu portero y, en 2 VS 2, tu DÚO. Se guarda para tus partidos.', c: '#2fb6ff' },
@@ -4945,7 +4942,6 @@ function setupField(campo) {
 const CTRL = {
   joy: { el: joyBase, name: 'Joystick' },
   chutar: { el: btnChutar, name: 'Chutar' },
-  regate: { el: btnRegate, name: 'Regate' },
   turbo: { el: btnTurbo, name: 'Turbo' },
   entrada: { el: btnEntrada, name: 'Entrada' },
   alto: { el: btnAlto, name: 'Chut alto' },
@@ -4953,7 +4949,7 @@ const CTRL = {
   pase: { el: document.getElementById('btnPase'), name: 'Pase (2 VS 2)' },   // update 30
   patron: { el: document.getElementById('btnPatron'), name: 'Regates (patrón)' },   // update 35
 };
-const BTN_IDS = ['chutar', 'regate', 'turbo', 'entrada', 'alto', 'especial', 'pase', 'patron'];
+const BTN_IDS = ['chutar', 'turbo', 'entrada', 'alto', 'especial', 'pase', 'patron'];   // update 38: sin 'regate'
 const S_MIN = 0.6, S_MAX = 1.6, CTRL_MARGIN = 6, TOP_RESERVE = 46;   // TOP_RESERVE: marcador
 const clampS = (v) => Math.max(S_MIN, Math.min(S_MAX, +v || 1));
 let _ins = null, _insKey = '';
@@ -4986,13 +4982,12 @@ function applyTiroPase() {   // update 32: botón TIRO/PASE (nuevo nombre, icono
   btnChutar.setAttribute('aria-label', on ? 'Tiro / pase' : 'Chutar');
   if (CTRL.chutar) CTRL.chutar.name = on ? 'Tiro / Pase' : 'Chutar';
 }
-function applyComboTR() {   // update 32
-  const on = comboOn(); document.body.classList.toggle('comboTR', on);
-  const t = btnTurbo.querySelector('.btnTxt'); if (t) t.innerHTML = on ? 'TURBO<small>desliza: regate</small>' : 'TURBO';
-  btnTurbo.classList.toggle('combo', on); btnTurbo.setAttribute('aria-label', on ? 'Turbo (mantén) y regate (desliza)' : 'Turbo');
-  if (CTRL.turbo) CTRL.turbo.name = on ? 'Turbo + Regate' : 'Turbo';
-  if (on && editor.sel === 'regate') edSelect(null);
-  try { cacheCtrlRects(); } catch (_) {}   // u32: REGATE vuelve a aparecer -> medir de nuevo
+function applyComboTR() {   // update 38: TURBO simple y sin botón REGATE. 'sinRegate' = disposición en la que REGATES ocupa el sitio del antiguo REGATE
+  document.body.classList.remove('comboTR'); document.body.classList.add('sinRegate');
+  const t = btnTurbo.querySelector('.btnTxt'); if (t) t.innerHTML = 'TURBO';
+  btnTurbo.classList.remove('combo'); btnTurbo.setAttribute('aria-label', 'Turbo (mantén para esprintar)');
+  if (CTRL.turbo) CTRL.turbo.name = 'Turbo';
+  try { cacheCtrlRects(); } catch (_) {}
 }
 function applyControls() {
   const cfg = liveCtrl(), opa = editor.on ? editor.opa : AJ.opacity;
@@ -5194,9 +5189,10 @@ btnAjAsist.addEventListener('click', () => setAimAssist(!AJ.aimAssist));
 setAimAssist(AJ.aimAssist);
 // update 30: cabezazos, salto automático, porteros mejorados y cambio de jugador (2 VS 2)
 const AJ30 = [['ajCabezazos', 'cabezazos', 'CABEZAZOS (SALTAR A BALONES ALTOS)'], ['ajSaltoAuto', 'saltoAuto', 'SALTO AUTOMÁTICO A BALONES ALTOS'],
-  ['ajPorteros', 'porteros', 'PORTEROS: SALTO Y ESTIRADA ALTA'], ['ajCabCirculo', 'cabCirculo', 'CABEZAZO SOLO DENTRO DEL CÍRCULO DE CAÍDA'], ['ajTrampa', 'trampaApunta', 'BALÓN TRAMPA: APUNTAS Y SIGUES CON TU BALÓN'], ['ajDiscos', 'discos2v2', '2 VS 2: CÍRCULOS AZUL (TU EQUIPO) / ROJO (RIVALES)'], ['ajCambio', 'cambio', '2 VS 2: PASE SIN BALÓN = CAMBIAR DE JUGADOR'], ['ajTurboRegate', 'turboRegate', 'TURBO + REGATE EN UN BOTÓN'], ['ajTiroPase', 'tiroPase', 'BOTÓN TIRO/PASE (CHUT SUAVE Y CONTROLADO)'], ['ajLargoStat', 'largoStat', 'CHUT ALTO SEGÚN LA STAT TIR'], ['ajOcultaCaida', 'ocultaCaida', 'CHUT ALTO: INDICADOR CORTO (OCULTA DÓNDE CAE)']];
-function setAj30(id, k, txt, on) { AJ[k] = !!on; saveAjustes(); if (k === 'turboRegate') applyComboTR(); if (k === 'tiroPase') applyTiroPase(); if (k === 'discos2v2' && typeof applyTeamDiscs === 'function' && user) applyTeamDiscs(); const b = document.getElementById(id); if (b) { b.textContent = txt + ': ' + (AJ[k] ? 'SÍ' : 'NO'); b.classList.toggle('on', AJ[k]); } }
+  ['ajPorteros', 'porteros', 'PORTEROS: SALTO Y ESTIRADA ALTA'], ['ajCabCirculo', 'cabCirculo', 'CABEZAZO SOLO DENTRO DEL CÍRCULO DE CAÍDA'], ['ajTrampa', 'trampaApunta', 'BALÓN TRAMPA: APUNTAS Y SIGUES CON TU BALÓN'], ['ajDiscos', 'discos2v2', '2 VS 2: CÍRCULOS AZUL (TU EQUIPO) / ROJO (RIVALES)'], ['ajCambio', 'cambio', '2 VS 2: PASE SIN BALÓN = CAMBIAR DE JUGADOR'], ['ajTiroPase', 'tiroPase', 'BOTÓN TIRO/PASE (CHUT SUAVE Y CONTROLADO)'], ['ajLargoStat', 'largoStat', 'CHUT ALTO SEGÚN LA STAT TIR'], ['ajOcultaCaida', 'ocultaCaida', 'CHUT ALTO: INDICADOR CORTO (OCULTA DÓNDE CAE)']];
+function setAj30(id, k, txt, on) { AJ[k] = !!on; saveAjustes(); if (k === 'tiroPase') applyTiroPase(); if (k === 'discos2v2' && typeof applyTeamDiscs === 'function' && user) applyTeamDiscs(); const b = document.getElementById(id); if (b) { b.textContent = txt + ': ' + (AJ[k] ? 'SÍ' : 'NO'); b.classList.toggle('on', AJ[k]); } }
 for (const [id, k, txt] of AJ30) { const b = document.getElementById(id); if (b) b.addEventListener('click', () => setAj30(id, k, txt, !AJ[k])); setAj30(id, k, txt, AJ[k]); }
+applyComboTR();   // update 38: TURBO simple, sin botón REGATE (antes lo llamaba el ajuste turboRegate)
 document.getElementById('ajEspeciales').addEventListener('click', () => setEspeciales(!espOn()));
 { const b = document.getElementById('ajPatron'); if (b) b.addEventListener('click', () => { AJ.patron = !patOn(); saveAjustes(); applyPatronBtn(); try { cacheCtrlRects(); } catch (_) {} }); applyPatronBtn(); }   // update 35
 setEspeciales(espOn());
@@ -5962,7 +5958,7 @@ Object.assign(window.__game, {
 Object.assign(window.__game, { cardHTML, shoot, THREE, effectCurve, applyTeamDiscs, discosOn, trampaFire: (x, y) => trampaFire(x === undefined ? null : { x, y }), screenToField, trampaPointer, landPt: () => { const l = landPt(); return l && { x: l.x, y: l.y }; }, inLandCircle: (a) => inLandCircle(a || user), LAND_R });   // update 31
 Object.assign(window.__game, { MS_get, msShow, msHide, get MS() { return MS; }, marcadorSet, marcGol, CTRL, TR, applyComboTR, applyTiroPase, showBanner, ROT_LOG, confeti, lobStatK: (k) => lobStatK({ charKey: k }), tpOn });   // update 32
 Object.defineProperties(window.__game, { perf: { get: () => PERF, configurable: true }, rueda: { get: () => ({ pos: RUEDA.pos, target: RUEDA.target, sp: RUEDA.sp, n: RUEDA.items.length }), configurable: true } });   // update 35 (getters de verdad: Object.assign los congela)
-Object.assign(window.__game, { patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
+Object.assign(window.__game, { NOVEDADES, comboOn, patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
 Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS, GK_ONLY, GK_STATS, GK_STAT_KEYS, statsAt, progCurve, lvCost, LV_MAX, LV_REF, TIERS, tierDe, progMejorar, monedasPartido, monedasTitulo, MON_PARTIDO, MON_TITULO,
   rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, LOB_NERF, LOB_K_MAX, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
   progReload: () => { PROG = progLoad(); lbRender(); return PROG; }, alinReload: () => { ALIN = alinLoad(); return ALIN; },
