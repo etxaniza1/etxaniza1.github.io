@@ -11,21 +11,24 @@ const CROP = /^Banderines/;   // vallas + porterías + banderines (y restos de g
 const GRASS = (a, b, run, wear) => ({ grassA: a, grassB: b, grassRun: run, grassWear: wear });
 const LISO = /^grassWear$/;   // update 40: parches de desgaste del césped fuera en los temas (se leían como manchas/relieve)
 const nada = () => {};   // update 40: pieza anulada (dentro del campo)
+// update 41: alturas de las capas del suelo en los temas: mismo orden que campo.glb pero separadas 2,5 cm (antes ground y path
+// coincidían a -0.043 y el resto iba a 3–12 mm): sin z-fighting ni con la poca precisión de profundidad de los móviles.
+const SUELOS = { grassRun: -0.02, pavingDark: -0.045, track: -0.07, paving: -0.095, path: -0.12, ground: -0.145 };
 export const TEMAS = {
   dbg: { hide: HIDE, crop: CROP, bg: '#000000', apron: '#000000', colors: { blue: '#0000ff', red: '#ff0000', white: '#00ff00', paving: '#ff88cc', pavingDark: '#8800ff', track: '#884400', ground: '#556600', path: '#ffffff', net: '#888888' } },
   volcan: {
-    hide: HIDE, crop: CROP, hideMat: LISO, bg: '#3a1410', apron: '#2a2224', sky: ['#120606', '#5a1a0e', '#c2471b'],
+    hide: HIDE, crop: CROP, hideMat: LISO, suelos: SUELOS, bg: '#3a1410', apron: '#2a2224', sky: ['#120606', '#5a1a0e', '#c2471b'],
     colors: { ...GRASS('#3b3336', '#353033', '#2e292b', '#443a3a'), blue: '#2c2528', red: '#3d3336', white: '#4a4043', post: '#e7d3b3', net: '#e9dccb',
       paving: '#352d30', pavingDark: '#2a2326', track: '#4a2216', ground: '#231c1e', path: '#2d2427' },
     glow: { line: '#ff8a1e' },
   },
   hielo: {
-    hide: HIDE, crop: CROP, hideMat: LISO, bg: '#1b2c5a', apron: '#dfeaf5', sky: ['#081233', '#1f3a7a', '#5d86c9'],
+    hide: HIDE, crop: CROP, hideMat: LISO, suelos: SUELOS, bg: '#1b2c5a', apron: '#dfeaf5', sky: ['#081233', '#1f3a7a', '#5d86c9'],
     colors: { ...GRASS('#d5e1ed', '#cad8e6', '#cfdcea', '#c2d1e1'), line: '#2f6fe0', blue: '#4f9fe0', red: '#86c8f2', white: '#f4f9ff', post: '#ffffff', net: '#ffffff',
       paving: '#e2ecf6', pavingDark: '#cbdcee', track: '#9fc6e8', ground: '#eef4fa', path: '#d6e4f2' },
   },
   setas: {
-    hide: HIDE, crop: CROP, hideMat: LISO, bg: '#2c1d55', apron: '#2b4d22', sky: ['#120a2c', '#3b2470', '#8a5bc0'],
+    hide: HIDE, crop: CROP, hideMat: LISO, suelos: SUELOS, bg: '#2c1d55', apron: '#2b4d22', sky: ['#120a2c', '#3b2470', '#8a5bc0'],
     colors: { ...GRASS('#4f8f2e', '#467f29', '#3f7425', '#5a9a38'), line: '#f3f0d8', blue: '#5c3a22', red: '#6e4a2c', white: '#8a6640', post: '#7a5232', net: '#f4efe0',
       paving: '#3b6a2b', pavingDark: '#325c24', track: '#5b4630', ground: '#284a20', path: '#4a3b28' },
   },
