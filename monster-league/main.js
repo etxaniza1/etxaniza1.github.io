@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=42';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=43';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=42';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=43';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -223,7 +223,7 @@ function rivalLv(base, rk) {
   const h = [...rk].reduce((s, ch) => s + ch.charCodeAt(0), 0) % 3 - 1;
   let off = h;
   if (S.practice) off = 0;
-  else if (S.comp && S.comp.type === 'torneo') off = (S.comp.ronda | 0) - 1;
+  else if (S.comp && S.comp.type === 'torneo') off = S.comp.lvOff !== undefined ? S.comp.lvOff : (S.comp.ronda | 0) - 1;   // update 43
   return THREE.MathUtils.clamp(Math.round(base) + off, 0, Math.min(LV_MAX, Math.round(base) + 2));
 }
 // update 37: las stats en partido salen del NIVEL actual de la carta (a.lv; sin nivel -> identidad 'ref')
@@ -1572,7 +1572,11 @@ function tryDribble(a, forceDir) {
 // ida y vuelta). Direcciones relativas a hacia dónde mira el jugador. Mientras dura el truco las entradas no le quitan el balón
 // (salvo al principio del amago de la bicicleta: si el rival entra pronto y no pica, se la lleva).
 const PAT = { roll: { dur: 0.40, lat: 1.75 }, back: { dur: 0.54 }, bici: { dur: 0.68, split: 0.44, ang: 0.72 }, cd: 1.1, max: 3, th: 26, buf: 0.7 };   // update 36: cd 1,5 -> 1,1; umbral de trazo 26 px; búfer 0,7 s
-const PAT_NAMES = { R: 'RUEDA ►', L: '◄ RUEDA', B: 'ARRASTRE ▼', SR: 'BICICLETA ►', SL: '◄ BICICLETA' };
+const PAT_NAMES = { R: 'RUEDA ►', L: '◄ RUEDA', B: 'ARRASTRE ▼', SR: 'BICICLETA ►', SL: '◄ BICICLETA', H: 'SOMBRERITO ▲', HB: '▼ SOMBRERITO ATRÁS' };
+// update 43 (t93u): SOMBRERITOS. ↓ y luego ↑ = SOMBRERITO: levanta el balón por encima del defensor hacia delante y corre a por él.
+// ↑ y luego ↓ = SOMBRERITO HACIA ATRÁS: taconazo en vaselina por encima de la cabeza hacia atrás, media vuelta y a por él.
+// Mientras el balón va alto, ningún rival lo puede tocar (ni de cabeza): solo cuando baja a la altura del pie. El sombrerito cierra la cadena.
+const HAT = { H: { lift: 0.16, apex: 2.6, dist: 5.6, run: 1.12 }, HB: { lift: 0.2, apex: 2.4, dist: 5.0, run: 1.3 }, safe: 0.6, max: 1.7 };
 function patParse(dots) {   // dots: índices 0-8 (fila*3+col, fila 0 = arriba) -> fichas (se mantiene para compatibilidad)
   const dirs = [];
   for (let i = 1; i < dots.length; i++) {
@@ -1588,6 +1592,8 @@ function patParseDirs(dirs0) {
   const d = dirs0.filter((x, i) => x && (i === 0 || x !== dirs0[i - 1])), out = [];
   for (let i = 0; i < d.length; i++) {
     const x = d[i], n = d[i + 1];
+    if (x === 'U' && (n === 'D' || n === 'DL' || n === 'DR')) { out.push('HB'); break; }   // update 43: ↑↓ = sombrerito hacia atrás
+    if (x[0] === 'D' && n === 'U') { out.push('H'); break; }                                 // update 43: ↓↑ = sombrerito
     if (x === 'U') {
       if (n === 'R' || n === 'UR' || n === 'L' || n === 'UL') { out.push(n.endsWith('R') ? 'SR' : 'SL'); i++; if (n.length === 2 && d[i + 1] === n.slice(1)) i++; }
       // 'U' suelto no es ningún truco
@@ -1620,6 +1626,7 @@ function patStart(a, k) {
   const pm = { k, t: 0, f, r, side: 0, bit: false, reg };
   if (k === 'R' || k === 'L') Object.assign(pm, { type: 'roll', side: k === 'R' ? 1 : -1, dur: PAT.roll.dur * q, lat: PAT.roll.lat * Math.min(1.15, reg) });
   else if (k === 'B') Object.assign(pm, { type: 'back', dur: PAT.back.dur * q, turn: Math.random() < 0.5 ? 1 : -1 });
+  else if (k === 'H' || k === 'HB') { const h = HAT[k]; Object.assign(pm, { type: 'hat', back: k === 'HB', lift: h.lift * q, dur: h.lift * q + HAT.max, fly: false, h, turn: Math.random() < 0.5 ? 1 : -1 }); }   // update 43
   else { const side = k === 'SR' ? 1 : -1; Object.assign(pm, { type: 'bici', side, feint: -side, dur: PAT.bici.dur * q, split: PAT.bici.split, sp: DRIBBLE_SPEED * reg * 0.86,
     exit: f.clone().multiplyScalar(Math.cos(PAT.bici.ang)).addScaledVector(r, side * Math.sin(PAT.bici.ang)).normalize() }); }
   a.pm = pm; a.vel.multiplyScalar(0.55);
@@ -1640,6 +1647,7 @@ function patImmune(o, a) {
 }
 function patStep(a, dt) {   // movimiento del jugador durante el truco (lo llama moveActor)
   const pm = a.pm; pm.t += dt; const u = Math.min(1, pm.t / pm.dur);
+  if (pm.type === 'hat') return hatStep(a, pm, dt);   // update 43
   if (ball.owner !== a) { patEnd(a, true); return false; }
   if (pm.type === 'roll') {   // suela: paso lateral rápido (campana) llevando el balón con la planta
     const v = pm.lat * Math.PI / (2 * pm.dur) * Math.sin(Math.PI * u);
@@ -1655,10 +1663,56 @@ function patStep(a, dt) {   // movimiento del jugador durante el truco (lo llama
   if (pm.t >= pm.dur) patEnd(a, false);
   return true;
 }
+// update 43: sombrerito. Fase 1 (lift): frena y mete el pie bajo el balón. Fase 2 (vuelo): el balón sale en parábola alta
+// (cumbre HAT.apex m, cae a HAT.dist m) y el jugador corre a por él solo (sin joystick) hasta que lo controla al bajar.
+function hatLaunch(a, pm) {
+  const d = pm.back ? pm.f.clone().multiplyScalar(-1) : pm.f.clone(), h = pm.h;
+  const vz = Math.sqrt(2 * GRAV * (h.apex - BR)), tLow = (vz + Math.sqrt(Math.max(0, vz * vz - 2 * GRAV * (BALL_LOW - BR)))) / GRAV;
+  const vh = h.dist / tLow * 1.05;   // +5 %: rozamiento del aire
+  ball.owner = null; ball.pos.z = BR + 0.05;   // sale desde donde está (en el pie)
+  ball.vel.set(d.x * vh, d.y * vh, vz); ball.backspin = 0; ball.w.set(0, 0, 0);
+  Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0 }); applyEffect(null);
+  ball.noCatch = a; ball.noCatchT = 0.3; ball.lastTouch = a; ball.hatBy = a; ball.hatT = tLow + 0.05;   // todo el vuelo alto (hasta que baja a la altura del pie)
+  pm.fly = true; pm.tf = 0; pm.vh = vh; pm.dir = d; pm.tLow = tLow; a.kickT = 0.3;
+  // rodea al defensor (no lo atraviesa ni lo empuja): sale por el lado contrario al rival más cercano en la trayectoria
+  const lat = new THREE.Vector2(d.y, -d.x); let best = null, bd = 1e9;
+  for (const o of fieldPlayers()) { if (o.team === a.team) continue; const rx = o.pos.x - a.pos.x, ry = o.pos.y - a.pos.y, al = rx * d.x + ry * d.y, side = rx * lat.x + ry * lat.y;
+    if (al > -0.3 && al < h.dist + 1 && Math.abs(side) < 1.8 && al < bd) { bd = al; best = side; } }
+  ball.hatBeat = []; ball.hatBeatT = tLow + 0.45;   // los vendidos no la tocan hasta que bota y el regateador llega (primer toque suyo)
+  for (const o of fieldPlayers()) if (o.team !== a.team && Math.hypot(o.pos.x - a.pos.x, o.pos.y - a.pos.y) < 3.5) {   // vendidos: miran arriba un momento
+    ball.hatBeat.push(o);
+    o.hatLag = THREE.MathUtils.clamp(0.5 + ((a.sf.t ? a.sf.t.reg : 70) - (o.sf.t ? o.sf.t.ent : 70)) / 200, 0.3, 0.7);
+    if (o.dashT > 0) { o.dashT = 0; o.dashEnded = false; o.dashHit = true; o.stun = DASH_MISS_STUN * 1.6; o.vel.multiplyScalar(0.2); LOG('regate_falla_entrada', a, { vs: NAME(o), truco: pm.back ? 'HB' : 'H' }); }   // entró a por el balón y se lo han pasado por encima
+  }
+  pm.lat = lat; pm.amp = best === null ? 0 : 1.5 * (best > 0.05 ? -1 : best < -0.05 ? 1 : pm.turn);
+  sfx.kick(0.35); if (a === user || !S.practice) showBanner(pm.back ? '¡SOMBRERITO DE TACÓN!' : '¡SOMBRERITO!', a.team === 0 ? 'bAzul' : 'bRojo', 800);
+  LOG('sombrerito', a, { back: pm.back, vh: +vh.toFixed(1), vz: +vz.toFixed(1) });
+}
+function hatStep(a, pm, dt) {
+  if (!pm.fly) {
+    if (ball.owner !== a) { patEnd(a, true); return false; }
+    a.vel.multiplyScalar(Math.exp(-9 * dt)); a.face.copy(pm.f);
+    const carga = fieldPlayers().some((o) => o.team !== a.team && o.dashT > 0 && Math.hypot(o.pos.x - a.pos.x, o.pos.y - a.pos.y) < 2.4);   // entra un rival: se la levanta YA
+    if (pm.t >= pm.lift || (carga && pm.t > 0.05)) hatLaunch(a, pm);
+    return true;
+  }
+  pm.tf += dt;
+  if (ball.owner === a) { patEnd(a, false); return true; }                       // ¡controlado!
+  if (ball.owner || S.mode !== 'play' || pm.t >= pm.dur) { patEnd(a, true); return false; }   // se la quedó otro / fuera / tiempo
+  // media vuelta (de tacón) y carrera hacia donde va a caer el balón
+  const lead = Math.min(0.25, Math.max(0, 0.9 - pm.tf)), pr = Math.min(1, pm.tf / pm.tLow), off = pm.amp * Math.sin(Math.PI * pr);
+  const tx = ball.pos.x + ball.vel.x * lead + pm.lat.x * off - a.pos.x, ty = ball.pos.y + ball.vel.y * lead + pm.lat.y * off - a.pos.y, L = Math.hypot(tx, ty);
+  if (pm.back && pm.tf < 0.22) { const an = pm.turn * Math.PI * Math.min(1, pm.tf / 0.22); a.face.copy(pm.f).rotateAround(_v2zero, an); a.vel.multiplyScalar(Math.exp(-6 * dt)); return true; }
+  const sp = Math.min(pm.vh * pm.h.run * (pm.amp ? 1.1 : 1), SPEED_USER * a.sf.vel * 1.3);
+  const bs = Math.hypot(ball.vel.x, ball.vel.y), sp2 = pr >= 1 ? Math.max(sp, Math.min(bs * 1.25, SPEED_USER * a.sf.vel * 1.3)) : sp;   // ya abajo: lo alcanza aunque bote
+  if (L > 0.05) { const want = _patW.set(tx / L, ty / L); a.face.lerp(want, 1 - Math.exp(-14 * dt)).normalize(); a.vel.lerp(want.multiplyScalar(L < 0.5 && pr < 1 ? sp * L / 0.5 : sp2), 1 - Math.exp(-10 * dt)); }
+  return true;
+}
 const _v2zero = new THREE.Vector2(), _patW = new THREE.Vector2();
 function patBallOffset(o, toeF, toeR) {   // balón respecto a la cara actual (fwd/right), calculado en ejes del inicio del truco
   const pm = o.pm, u = Math.min(1, pm.t / pm.dur), F = o.face, Rx = F.y, Ry = -F.x;
   const w = _patW;
+  if (pm.type === 'hat') { const k = Math.min(1, pm.t / pm.lift); w.copy(pm.f).multiplyScalar(toeF * (1 - 0.35 * k)); return { fwd: w.x * F.x + w.y * F.y, right: w.x * Rx + w.y * Ry }; }   // update 43
   if (pm.type === 'roll') {
     const sm = u * u * (3 - 2 * u), lat = pm.side * (-0.06 + 0.42 * sm);
     w.copy(pm.f).multiplyScalar(toeF * 0.85).addScaledVector(pm.r, lat);
@@ -1675,6 +1729,7 @@ function patBallOffset(o, toeF, toeR) {   // balón respecto a la cara actual (f
 function patAnim(a) {   // [clip, velocidad] durante el truco
   const pm = a.pm, u = Math.min(1, pm.t / pm.dur), M = a.meta;
   if (pm.type === 'roll') return ['Dribble', 1.5];
+  if (pm.type === 'hat') return !pm.fly ? ['Kick', ((M.Kick.impact || 9) / 30) / pm.lift] : (a.vel.length() > RUN_MIN ? ['Run', a.vel.length() / ((M.Run.speed || 6) * ESCALA)] : ['Idle', 1]);   // update 43
   if (pm.type === 'back') return u < 0.5 ? ['Dribble', -1.15] : ['Dribble', 1.3];
   if (u < pm.split) return ['Kick', ((M.Kick.impact || 9) / 30) / (pm.dur * pm.split) * 0.92];
   return ['Dribble', Math.max(1, (pm.sp / ((M.Dribble.speed || 5) * ESCALA)))];
@@ -1683,6 +1738,7 @@ function patBody(a) {   // giro de cadera / inclinación encima de la animación
   const pm = a.pm; if (!pm) return [0, 0];
   const u = Math.min(1, pm.t / pm.dur);
   if (pm.type === 'roll') { const b = Math.sin(Math.PI * u); return [-pm.side * 0.42 * b, pm.side * 0.10 * b]; }
+  if (pm.type === 'hat') return [0, 0];   // update 43
   if (pm.type === 'back') { const b = u < 0.5 ? Math.sin(Math.PI * u / 0.5) : 0; return [0, 0.0 * b]; }
   const s = pm.split;
   if (u < s) { const b = Math.sin(Math.PI * u / s); return [-pm.feint * 0.55 * b, pm.feint * 0.16 * b]; }
@@ -1947,6 +2003,7 @@ function moveActor(a, wish, speed, dt) {
     a.dashT -= dt; a.vel.copy(a.face).multiplyScalar(a.dashSp);
     if (a.dashT <= 0) a.dashEnded = true;
   } else {
+    if (a.hatLag > 0) { a.hatLag -= dt; speed *= 0.18; }   // update 43: vendido por el sombrerito (mira el balón por encima)
     const target = wish.clone().multiplyScalar(speed);
     const acc = 1 - Math.exp(-(a === user ? 26 : 14) * a.sf.vel * dt);   // usuario: menos inercia (~40 ms) para que responda ya
     a.vel.lerp(target, acc);
@@ -3397,6 +3454,11 @@ const SKINS = {
   tiburon: [{ k: 'lava', name: 'MAKO DE LAVA', precio: 300, pal: ['#c4452b', '#f5e2b8', '#ffd21f'] }, { k: 'abisal', name: 'SOMBRA ABISAL', precio: 450, pal: ['#3a3157', '#c9cbe0', '#ff3cf2'] }],
   mushom: [{ k: 'amanita', name: 'AMANITA', precio: 300, pal: ['#c8222b', '#f7e9c8', '#ff7a1f'] }, { k: 'helada', name: 'ESPORA HELADA', precio: 450, pal: ['#1d6f8a', '#c4f3fa', '#3ff2e0'] }],
   zora: [{ k: 'tormenta', name: 'TORMENTA AZUL', precio: 300, pal: ['#3b4048', '#2d9bff', '#bfe6ff'] }, { k: 'fuego', name: 'LOBA DE FUEGO', precio: 450, pal: ['#4a3a33', '#ff7a1f', '#ffd0a0'] }],
+  // update 43 (t93u): mismo sistema (recolor por zonas de la textura, modelo intacto)
+  pantera: [{ k: 'oro', name: 'GARRA DE ORO', precio: 300, pal: ['#141414', '#ffc41f', '#fff0b0'] }, { k: 'carmesi', name: 'PANTERA CARMESÍ', precio: 450, pal: ['#2a1418', '#ff2b45', '#ffc0c8'] }],
+  carnero: [{ k: 'algodon', name: 'ALGODÓN DE AZÚCAR', precio: 300, pal: ['#fbd3e6', '#3a3a3a', '#3fe6ff'] }, { k: 'galaxia', name: 'DJ GALAXIA', precio: 450, pal: ['#a88be0', '#25283f', '#ff4fd8'] }],
+  frogetto: [{ k: 'esmeralda', name: 'MAGO ESMERALDA', precio: 300, pal: ['#14663f', '#e0b034', '#9dff3f'] }, { k: 'fuego', name: 'BRUJO DE FUEGO', precio: 450, pal: ['#7a1420', '#ff8a24', '#ffe14a'] }],
+  pepi: [{ k: 'guindilla', name: 'GUINDILLA', precio: 300, pal: ['#c8241e', '#7a1410', '#1a1a1a'] }, { k: 'oro', name: 'PEPINILLO DE ORO', precio: 450, pal: ['#e0b028', '#8a6410', '#1a1a1a'] }],
 };
 const SKIN_KEY = 'ml_skins_v1';
 function skinsLoad() {
@@ -3786,7 +3848,7 @@ function update(dt) {
 
   // --- balón ---
   prevBall.copy(ball.pos);
-  ball.noCatchT = Math.max(0, ball.noCatchT - dt); ball.ownT = (ball.ownT || 0) + dt;
+  ball.noCatchT = Math.max(0, ball.noCatchT - dt); ball.hatT = Math.max(0, (ball.hatT || 0) - dt); ball.hatBeatT = ball.owner ? 0 : Math.max(0, (ball.hatBeatT || 0) - dt); ball.ownT = (ball.ownT || 0) + dt;
   if (ball.owner) {
     const o = ball.owner;
     if (o.keeper) {
@@ -3818,6 +3880,9 @@ function update(dt) {
     for (const a of fieldPlayers()) {
       if (ball.owner === a || a.stun > 0) continue;
       if (ball.noCatch === a && ball.noCatchT > 0) continue;
+      if (ball.hatT > 0 && ball.hatBy !== a && !ball.owner) continue;
+      if (ball.hatBeatT > 0 && !ball.owner && ball.hatBeat && ball.hatBeat.includes(a)) continue;                  // update 43: el defensor superado no corta el bote                                  // update 43: sombrerito subiendo: nadie lo toca
+      if (a.pm && a.pm.type === 'hat' && a.pm.fly && ball.pos.z >= BALL_LOW && !ball.owner) continue;   // ni tu propio jugador lo cabecea al perseguirlo
       if (ESP.ventosa && ESP.ventosa.pull) continue;   // update 30: el balón va pegado hacia Tubi
       if (u30HeadContact(a)) continue;                 // update 30: cabezazo
       const d = Math.hypot(ball.pos.x - a.pos.x, ball.pos.y - a.pos.y);
@@ -4763,9 +4828,12 @@ function setupMatch(uk, rk, mk = null, r2k = null) {   // update 30: mk / r2k = 
 }
 // ===================== TORNEO Y LIGA (update 24) =====================
 // TORNEO: eliminatoria de 8 (cuartos, semis, final). LIGA: 8 equipos a una vuelta (7 jornadas, 4 partidos por jornada).
+// update 43 (t92u): liga y torneo con TODOS los jugadores de campo (21; Butón y Turtobola solo porteros).
+//  LIGA: 21 a una vuelta = 21 jornadas (cada equipo descansa una; si descansas tú, esa jornada se simula sola).
+//  TORNEO: cuadro de 32 con RONDA PREVIA (5 partidos, 11 pasan directos) → octavos → cuartos → semis → final.
 // Tus partidos se juegan; los demás se simulan con la MEDIA/ATQ/DEF de las cartas y algo de azar (Poisson).
 // Empate en eliminatoria = tanda de penaltis simulada (TIRO del lanzador contra REFLEJOS del rival). Progreso en localStorage.
-const COMP_KEY = 'ml_competicion_v1', COMP_N = 8;
+const COMP_KEY = 'ml_competicion_v1', COMP_N = 8, COMP_FMT = 43;   // update 43: COMP_N ya no limita (se usan todos)
 function compRng(seed) { let s = (seed >>> 0) || 1; return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; }
 function poisson(l, r) { const L = Math.exp(-l); let k = 0, p = 1; do { k++; p *= r(); } while (p > L && k < 12); return k - 1; }
 function simLambda(a, b) {
@@ -4783,13 +4851,19 @@ function simPens(a, b, r) {
   return [ga, gb];
 }
 function shuffled(arr, r) { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
-function compTeams(user, r) { return shuffled([user, ...shuffled(CHARS.map((c) => c.key).filter((k) => k !== user), r).slice(0, COMP_N - 1)], r); }
+function compTeams(user, r) { return shuffled([user, ...CHARS.map((c) => c.key).filter((k) => k !== user)], r); }   // update 43: los 21
 // calendario de liga: método del círculo (cada equipo juega una vez contra todos)
+// update 43: con número impar se añade un hueco (null): quien cae contra él DESCANSA esa jornada ({ a, b: null, bye: true })
 function roundRobin(teams) {
-  const n = teams.length, t = [...teams], rounds = [];
+  const t = [...teams]; if (t.length % 2) t.push(null);
+  const n = t.length, rounds = [];
   for (let r = 0; r < n - 1; r++) {
     const ms = [];
-    for (let i = 0; i < n / 2; i++) { const a = t[i], b = t[n - 1 - i]; ms.push(r % 2 === 0 ? { a, b } : { a: b, b: a }); }
+    for (let i = 0; i < n / 2; i++) {
+      const a = t[i], b = t[n - 1 - i];
+      if (a === null || b === null) { ms.push({ a: a === null ? b : a, b: null, bye: true, played: true }); continue; }
+      ms.push(r % 2 === 0 ? { a, b } : { a: b, b: a });
+    }
     rounds.push(ms);
     t.splice(1, 0, t.pop());
   }
@@ -4797,12 +4871,36 @@ function roundRobin(teams) {
 }
 function newTorneo(user, seed = (Date.now() & 0x7fffffff)) {
   const r = compRng(seed), teams = compTeams(user, r);
-  const qf = []; for (let i = 0; i < COMP_N; i += 2) qf.push({ a: teams[i], b: teams[i + 1] });
-  return { type: 'torneo', user, seed, step: 1, teams, rounds: [qf, [], []], round: 0, done: false, champion: null, last: null };
+  // update 43: cuadro de potencia de 2 (32 para 21): P/2 cruces; (n − P/2) son partidos de verdad, repartidos por el cuadro; el resto pasa directo
+  const n = teams.length, P = 2 ** Math.ceil(Math.log2(Math.max(2, n))), pares = P / 2, reales = n - pares;
+  const esReal = new Set(); for (let i = 0; i < reales; i++) esReal.add(Math.floor((i + 0.5) * pares / reales));
+  const r0 = []; let j = 0;
+  for (let i = 0; i < pares; i++) {
+    if (esReal.has(i)) { r0.push({ a: teams[j], b: teams[j + 1] }); j += 2; }
+    else { r0.push({ a: teams[j], b: null, bye: true, played: true, w: teams[j] }); j++; }
+  }
+  const rounds = [r0]; for (let k = pares; k > 1; k >>= 1) rounds.push([]);
+  const c = { type: 'torneo', fmt: COMP_FMT, user, seed, step: 1, teams, rounds, round: 0, done: false, champion: null, last: null };
+  if (!r0.some((m) => !m.played && (m.a === user || m.b === user))) { compAdvanceKO(c, compR(c)); c.last = { round: 0, user: null, directo: true }; }   // pasas directo: la previa se juega sola
+  return c;
 }
 function newLiga(user, seed = (Date.now() & 0x7fffffff)) {
   const r = compRng(seed), teams = compTeams(user, r);
-  return { type: 'liga', user, seed, step: 1, teams, fixtures: roundRobin(teams), jornada: 0, done: false, champion: null, last: null };
+  const c = { type: 'liga', fmt: COMP_FMT, user, seed, step: 1, teams, fixtures: roundRobin(teams), jornada: 0, done: false, champion: null, last: null };
+  const d = ligaDescanso(c, compR(c)); if (d.length) c.last = { jornada: d[0], descanso: d };
+  return c;
+}
+// update 43: si en la jornada actual DESCANSAS, se simula entera y se pasa a la siguiente (devuelve las jornadas saltadas)
+function ligaSimJornada(c, r) {
+  for (const m of c.fixtures[c.jornada]) { if (m.played) continue; const s = simScore(m.a, m.b, r); m.ga = s[0]; m.gb = s[1]; m.played = true; }
+}
+function ligaDescanso(c, r) {
+  const out = [];
+  while (c.jornada < c.fixtures.length && c.fixtures[c.jornada].some((m) => m.bye && m.a === c.user)) {
+    ligaSimJornada(c, r); out.push(c.jornada); c.jornada++;
+  }
+  if (c.jornada >= c.fixtures.length && !c.done) { c.done = true; c.champion = standings(c)[0].k; }
+  return out;
 }
 function compR(c) { return compRng((c.seed + c.step++ * 7919) >>> 0); }
 function playKO(m, ga, gb, r) {
@@ -4834,6 +4932,7 @@ function compRecord(c, gu, gr) {
     c.last = { jornada: c.jornada };
     c.jornada++;
     if (c.jornada >= c.fixtures.length) { c.done = true; c.champion = standings(c)[0].k; }
+    else { const d = ligaDescanso(c, r); if (d.length) c.last.descanso = d; }   // update 43
   }
   return c;
 }
@@ -4842,7 +4941,7 @@ function compAdvanceKO(c, r) {
   while (!c.done) {
     const ms = c.rounds[c.round];
     if (ms.some((m) => !m.played)) {
-      if (ms.some((m) => m.a === c.user || m.b === c.user)) return;
+      if (ms.some((m) => !m.played && (m.a === c.user || m.b === c.user))) return;   // update 43: pasar directo no cuenta como partido pendiente
       for (const m of ms) if (!m.played) { const s = simScore(m.a, m.b, r); playKO(m, s[0], s[1], r); }
     }
     const win = ms.map((m) => m.w);
@@ -4856,14 +4955,14 @@ function compUserAlive(c) { return c.type !== 'torneo' || c.rounds[c.round].some
 function compNextOpp(c) {
   if (c.done) return null;
   const ms = c.type === 'torneo' ? c.rounds[c.round] : c.fixtures[c.jornada];
-  const m = ms.find((x) => !x.played && (x.a === c.user || x.b === c.user));
+  const m = ms.find((x) => !x.played && !x.bye && (x.a === c.user || x.b === c.user));
   return m ? (m.a === c.user ? m.b : m.a) : null;
 }
 // clasificación: 3 puntos victoria, 1 empate. Desempate: PTS, DG, GF, nombre
 function standings(c) {
   const T = {}; for (const k of c.teams) T[k] = { k, pj: 0, g: 0, e: 0, p: 0, gf: 0, gc: 0, dg: 0, pts: 0 };
   for (const j of c.fixtures) for (const m of j) {
-    if (!m.played) continue;
+    if (!m.played || m.bye) continue;
     const A = T[m.a], B = T[m.b];
     A.pj++; B.pj++; A.gf += m.ga; A.gc += m.gb; B.gf += m.gb; B.gc += m.ga;
     if (m.ga > m.gb) { A.g++; B.p++; A.pts += 3; } else if (m.ga < m.gb) { B.g++; A.p++; B.pts += 3; } else { A.e++; B.e++; A.pts++; B.pts++; }
@@ -4875,12 +4974,18 @@ function compLoad() {
   try { const c = JSON.parse(localStorage.getItem(COMP_KEY) || 'null'); return c && typeof c === 'object' ? c : {}; } catch (_) { return {}; }
 }
 function compSave(all) { try { localStorage.setItem(COMP_KEY, JSON.stringify(all)); } catch (_) {} }
-function compValid(c) { return c && c.teams && c.teams.every((k) => STATS[k] && CHARS.some((x) => x.key === k)); }
+function compValid(c) { return c && c.fmt === COMP_FMT && c.teams && c.teams.every((k) => STATS[k] && CHARS.some((x) => x.key === k)); }   // update 43: formato nuevo (todos los personajes)
 // ---- interfaz ----
 const compEl = document.getElementById('comp'), coCuerpo = document.getElementById('coCuerpo'), coTit = document.getElementById('coTit');
 const coJugar = document.getElementById('coJugar'), coNuevo = document.getElementById('coNuevo');
 let COMP = null;      // competición abierta en pantalla
 const RONDAS = ['CUARTOS', 'SEMIFINALES', 'FINAL'];
+// update 43: nombre de cada ronda por el nº de cruces (sirve para cualquier tamaño de cuadro)
+const KO_NOM = { 16: 'RONDA PREVIA', 8: 'OCTAVOS', 4: 'CUARTOS', 2: 'SEMIFINALES', 1: 'FINAL' };
+const KO_CORTO = { 16: 'PREVIA', 8: 'OCTAVOS', 4: 'CUARTOS', 2: 'SEMIS', 1: 'FINAL' };
+const koNom = (c, r) => KO_NOM[c.rounds[0].length >> r] || ('RONDA ' + (r + 1));
+const koCorto = (c, r) => KO_CORTO[c.rounds[0].length >> r] || ('R' + (r + 1));
+let coKoR = null;   // ronda que se está viendo en el cuadro (null = la actual)
 const cName = (k) => (ALL_CHARS.find((x) => x.key === k) || { name: k }).name;
 const cCol = (k) => (ALL_CHARS.find((x) => x.key === k) || { color: '#888' }).color;
 const cImg = (k) => { const c = ALL_CHARS.find((x) => x.key === k); return c ? (c.badge || c.card) : ''; };   // update 30: badge del personaje
@@ -4895,35 +5000,58 @@ function koMatchHTML(m, c, ri) {
   return `<div class="coPar${yours ? ' tuyo' : ''}${m.played ? '' : ' pend'}">${row(m.a, m.ga, m.pa)}${row(m.b, m.gb, m.pb)}${m.played && m.pa !== undefined ? '<em>PENALTIS</em>' : ''}</div>`;
 }
 function torneoHTML(c) {
-  let h = '<div class="coCuadro">';
-  for (let r = 0; r < 3; r++) {
-    const n = 4 >> r, ms = c.rounds[r] || [];
-    h += `<div class="coRonda r${r}"><div class="coRTit${r === c.round && !c.done ? ' act' : ''}">${RONDAS[r]}</div><div class="coRPars">`;
-    for (let i = 0; i < n; i++) h += koMatchHTML(ms[i], c, r);
-    h += '</div></div>';
+  // update 43: cuadro de 21 → pestañas por ronda (PREVIA · OCTAVOS · CUARTOS · SEMIS · FINAL · CAMPEÓN) y tarjetas en rejilla que bajan con el dedo
+  const R = c.rounds.length, ver = coKoR === null ? (c.done ? R : c.round) : Math.min(coKoR, R);
+  const userEn = (r) => (c.rounds[r] || []).find((m) => m.a === c.user || m.b === c.user);
+  let tabs = '';
+  for (let r = 0; r <= R; r++) {
+    let est = '', ico = '';
+    if (r < R) {
+      const m = userEn(r);
+      if (r < c.round || c.done) est = 'hecha'; else if (r === c.round) est = 'act'; else est = 'fut';
+      if (m && m.played) ico = m.bye ? '<i class="kd">»</i>' : m.w === c.user ? '<i class="kg">✓</i>' : '<i class="kp">✗</i>';
+    } else est = c.done ? 'act hecha' : 'fut';
+    tabs += `<button class="koTab ${est}${r === ver ? ' ver' : ''}" data-kor="${r}">${r < R ? koCorto(c, r) : 'CAMPEÓN'}${ico}</button>`;
   }
-  const ch = c.done ? c.champion : null;
-  h += `<div class="coRonda coCopa"><div class="coRTit">CAMPEÓN</div><div class="coRPars"><div class="coTrofeo${ch ? ' lleno' : ''}">${trophySVG()}${ch ? teamChip(ch, c, ' campeon') : '<div class="coEq"><i></i><span>¿?</span></div>'}</div></div></div>`;
-  return h + '</div>';
+  let h = `<div class="coKO"><div class="koTabs" role="tablist">${tabs}</div><div class="koCuerpo">`;
+  if (ver >= R) {
+    const ch = c.done ? c.champion : null;
+    h += `<div class="koCampeon"><div class="coTrofeo${ch ? ' lleno' : ''}">${trophySVG()}${ch ? teamChip(ch, c, ' campeon') : '<div class="coEq"><i></i><span>¿?</span></div>'}</div></div>`;
+  } else {
+    const ms = c.rounds[ver] || [], n = c.rounds[0].length >> ver;
+    const reales = ms.filter((m) => !m.bye), directos = ms.filter((m) => m.bye);
+    const tuyo = (m) => m.a === c.user || m.b === c.user;
+    reales.sort((x, y) => tuyo(y) - tuyo(x));
+    h += `<div class="koInfo">${koNom(c, ver)} · ${ms.length ? reales.length + (reales.length === 1 ? ' PARTIDO' : ' PARTIDOS') : n + (n === 1 ? ' PARTIDO' : ' PARTIDOS')}${directos.length ? ` · ${directos.length} PASAN DIRECTO` : ''}</div><div class="koGrid">`;
+    if (ms.length) for (const m of reales) h += koMatchHTML(m, c, ver);
+    else for (let i = 0; i < n; i++) h += koMatchHTML(null, c, ver);
+    h += '</div>';
+    if (directos.length) h += `<div class="coSub">PASAN DIRECTO A ${koCorto(c, ver + 1)}</div><div class="koDirectos">${directos.map((m) => teamChip(m.a, c, ' directo')).join('')}</div>`;
+  }
+  return h + '</div></div>';
 }
 function ligaHTML(c) {
+  // update 43: 21 equipos → tabla con cabecera fija que baja con el dedo (se centra en tu fila), y jornada con TU partido primero + quién descansa
   const st = standings(c), J = c.fixtures.length;
-  let h = '<div class="coLiga"><div class="coTabla"><table><thead><tr><th>#</th><th class="eq">EQUIPO</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>DG</th><th class="pts">PTS</th></tr></thead><tbody>';
+  let h = '<div class="coLiga"><div class="coTabla"><table><thead><tr><th>#</th><th class="eq">EQUIPO</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th class="gx">GF</th><th class="gx">GC</th><th>DG</th><th class="pts">PTS</th></tr></thead><tbody>';
   st.forEach((t, i) => {
-    h += `<tr class="${t.k === c.user ? 'tu' : ''}${i === 0 && t.pj ? ' lider' : ''}"><td class="pos">${i + 1}</td><td class="eq">${teamChip(t.k, c)}</td><td>${t.pj}</td><td>${t.g}</td><td>${t.e}</td><td>${t.p}</td><td>${t.gf}</td><td>${t.gc}</td><td>${t.dg > 0 ? '+' : ''}${t.dg}</td><td class="pts">${t.pts}</td></tr>`;
+    h += `<tr class="${t.k === c.user ? 'tu' : ''}${i === 0 && t.pj ? ' lider' : ''}${i < 3 && t.pj ? ' podio p' + (i + 1) : ''}"><td class="pos">${i + 1}</td><td class="eq">${teamChip(t.k, c)}</td><td>${t.pj}</td><td>${t.g}</td><td>${t.e}</td><td>${t.p}</td><td class="gx">${t.gf}</td><td class="gx">${t.gc}</td><td>${t.dg > 0 ? '+' : ''}${t.dg}</td><td class="pts">${t.pts}</td></tr>`;
   });
   h += '</tbody></table></div><div class="coLado">';
-  const lj = c.last ? c.last.jornada : null;
-  if (lj !== null && lj !== undefined) {
-    h += `<div class="coSub">RESULTADOS · JORNADA ${lj + 1}</div><div class="coRes">`;
-    for (const m of c.fixtures[lj]) h += `<div class="coResF${m.a === c.user || m.b === c.user ? ' tuyo' : ''}">${teamChip(m.a, c)}<b>${m.ga} - ${m.gb}</b>${teamChip(m.b, c, ' der')}</div>`;
-    h += '</div>';
+  const jorHTML = (j, prox) => {
+    const tuyo = (m) => m.a === c.user || m.b === c.user;
+    const ms = c.fixtures[j].filter((m) => !m.bye).sort((x, y) => tuyo(y) - tuyo(x)), bye = c.fixtures[j].find((m) => m.bye);
+    let o = `<div class="coRes${prox ? ' prox' : ''}">`;
+    for (const m of ms) o += `<div class="coResF${tuyo(m) ? ' tuyo' : ''}">${teamChip(m.a, c)}<b>${prox ? 'vs' : `${m.ga} - ${m.gb}`}</b>${teamChip(m.b, c, ' der')}</div>`;
+    if (bye) o += `<div class="coDescansa${bye.a === c.user ? ' tuyo' : ''}"><small>DESCANSA</small>${teamChip(bye.a, c)}</div>`;
+    return o + '</div>';
+  };
+  const L = c.last;
+  if (L && L.jornada !== null && L.jornada !== undefined) {
+    const js = [L.jornada, ...(L.descanso || []).filter((x) => x !== L.jornada)];
+    for (const j of js) h += `<div class="coSub">RESULTADOS · JORNADA ${j + 1}${c.fixtures[j].some((m) => m.bye && m.a === c.user) ? ' · DESCANSASTE' : ''}</div>` + jorHTML(j, false);
   }
-  if (!c.done) {
-    h += `<div class="coSub">JORNADA ${c.jornada + 1} DE ${J}</div><div class="coRes prox">`;
-    for (const m of c.fixtures[c.jornada]) h += `<div class="coResF${m.a === c.user || m.b === c.user ? ' tuyo' : ''}">${teamChip(m.a, c)}<b>vs</b>${teamChip(m.b, c, ' der')}</div>`;
-    h += '</div>';
-  }
+  if (!c.done) h += `<div class="coSub">JORNADA ${c.jornada + 1} DE ${J}</div>` + jorHTML(c.jornada, true);
   return h + '</div></div>';
 }
 function trophySVG() {
@@ -4934,8 +5062,8 @@ function finalHTML(c) {
   const sub = c.type === 'torneo' ? (won ? '¡CAMPEÓN DEL TORNEO!' : 'CAMPEÓN DEL TORNEO') : (won ? '¡CAMPEÓN DE LIGA!' : 'CAMPEÓN DE LIGA');
   let extra = '';
   if (c.type === 'liga') { const st = standings(c), pos = st.findIndex((t) => t.k === c.user) + 1; extra = `<div class="coFinTxt">${won ? `${st[0].pts} puntos · ${st[0].g} G · ${st[0].e} E · ${st[0].p} P` : `Has terminado ${pos}º con ${st[pos - 1].pts} puntos`}</div>`; }
-  else if (!won) extra = `<div class="coFinTxt">Has caído en ${RONDAS[c.rounds.findIndex((rs) => rs.some((m) => (m.a === c.user || m.b === c.user) && m.w !== c.user))] || 'el torneo'}</div>`;
-  else extra = '<div class="coFinTxt">Cuartos, semis y final: ¡imbatible!</div>';
+  else if (!won) { const ri = c.rounds.findIndex((rs) => rs.some((m) => (m.a === c.user || m.b === c.user) && m.w !== c.user)); extra = `<div class="coFinTxt">Has caído en ${ri >= 0 ? koNom(c, ri).toLowerCase().replace('final', 'la final') : 'el torneo'}</div>`; }
+  else { const nv = c.rounds.reduce((s, rs) => s + rs.filter((m) => !m.bye && (m.a === c.user || m.b === c.user)).length, 0); extra = `<div class="coFinTxt">${nv} victorias seguidas entre ${c.teams.length} bestias: ¡imbatible!</div>`; }   // update 43
   return `<div class="coFin${won ? ' gana' : ''}"><div class="coRayos"></div>${won ? '<div class="coConfeti">' + Array.from({ length: 26 }, (_, i) => `<i style="--i:${i}"></i>`).join('') + '</div>' : ''}` +
     `<div class="coFinCopa">${trophySVG()}</div><div class="coFinFoto${cHasBadge(c.champion) ? ' bdg' : ''}" style="--c:${cCol(c.champion)}"><img src="${cHasBadge(c.champion) ? cImg(c.champion) : (PORTRAITS[c.champion] || cImg(c.champion))}" alt=""></div>` +
     `<div class="coFinSub">${sub}</div><div class="coFinNom" style="--c:${cCol(c.champion)}">${cName(c.champion)}</div>${extra}</div>`;
@@ -4954,11 +5082,13 @@ function renderComp(view) {
     return;
   }
   if (c.type === 'torneo') {
-    coTit.innerHTML = `TORNEO MONSTER <small>${c.done ? 'TERMINADO' : RONDAS[c.round]}</small>`;
+    coTit.innerHTML = `TORNEO MONSTER <small>${c.done ? 'TERMINADO' : koNom(c, c.round)}</small>`;
     coCuerpo.innerHTML = torneoHTML(c);
   } else {
     coTit.innerHTML = `LIGA MONSTER <small>${c.done ? 'TERMINADA' : 'JORNADA ' + (c.jornada + 1) + '/' + c.fixtures.length}</small>`;
     coCuerpo.innerHTML = ligaHTML(c);
+    const tb = coCuerpo.querySelector('.coTabla'), tu = tb && tb.querySelector('tr.tu');   // update 43: tu fila a la vista
+    if (tu) requestAnimationFrame(() => { tb.scrollTop = Math.max(0, tu.offsetTop - tb.clientHeight / 2 + tu.offsetHeight / 2); });
   }
   if (opp) { coJugar.innerHTML = `JUGAR <small>vs <img class="coBtnBdg" src="${cImg(opp)}" alt="">${cName(opp)}</small>`; coJugar.dataset.act = 'jugar'; }
   else if (c.done) { coJugar.textContent = c.type === 'torneo' ? 'VER CAMPEÓN' : 'VER CAMPEÓN'; coJugar.dataset.act = 'fin'; }
@@ -4970,6 +5100,7 @@ function openComp(type, fresh) {
   const all = compLoad(), uk = CHARS[sel].key;
   let c = all[type];
   if (fresh || !compValid(c) || c.done) c = type === 'torneo' ? newTorneo(uk) : newLiga(uk);
+  coKoR = null;
   all[type] = c; compSave(all); COMP = c;
   menuEl.classList.remove('visible'); pantalla.classList.remove('visible');
   renderComp(c.done ? 'fin' : null);
@@ -4979,7 +5110,8 @@ function closeComp() { compEl.className = ''; COMP = null; openMenu(); }
 async function compPlay() {
   const c = COMP, opp = c && compNextOpp(c); if (!opp) return;
   if (!window.__game.ready) { coJugar.textContent = 'CARGANDO…'; await campoReady; }
-  S.practice = false; S.comp = { type: c.type, opp, ronda: c.type === 'torneo' ? (c.round | 0) : 0 };   // update 37: ronda -> nivel del rival
+  const quedan = c.type === 'torneo' ? c.rounds.length - 1 - (c.round | 0) : 0;   // update 43: final +1, semis 0, antes −1
+  S.practice = false; S.comp = { type: c.type, opp, ronda: c.type === 'torneo' ? (c.round | 0) : 0, lvOff: quedan === 0 ? 1 : quedan === 1 ? 0 : -1 };   // update 37: ronda -> nivel del rival
   compEl.className = '';
   setupMatch(c.user, opp);
   tryLandscape();
@@ -4993,7 +5125,7 @@ function compAfterMatch(gu, gr) {
   compRecord(c, gu, gr);
   if (c.done && c.champion === c.user && !c.copaTitulo) { c.copaTitulo = true; copasTitulo(sc.type); }   // update 35
   all[sc.type] = c; compSave(all); COMP = c;
-  hudSet(false);
+  hudSet(false); coKoR = null;
   renderComp(c.done && c.champion === c.user ? 'fin' : null);
   const yours = compEl.querySelector('.coPar.tuyo, .coResF.tuyo'); if (yours) yours.classList.add('nuevo');
   return true;
@@ -5004,6 +5136,11 @@ coJugar.addEventListener('click', () => {
 });
 coNuevo.addEventListener('click', () => { if (COMP) { const t = COMP.type; S.mode = 'menu'; openComp(t, true); } });
 document.getElementById('coSalir').addEventListener('click', closeComp);
+coCuerpo.addEventListener('click', (e) => {   // update 43: pestañas de ronda del torneo
+  const t = e.target.closest('[data-kor]'); if (!t || !COMP || COMP.type !== 'torneo') return;
+  coKoR = +t.dataset.kor; coCuerpo.innerHTML = torneoHTML(COMP);
+  const v = coCuerpo.querySelector('.koTab.ver'); if (v) v.scrollIntoView({ block: 'nearest', inline: 'center' });
+});
 const LB_CAM = { visH: 4.5, camY: 1.0, lookY: 0.55 };
 let lbListo = false;
 function layoutMenu() {

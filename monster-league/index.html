@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=42';
+  var V = 'v=43';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -55,8 +55,8 @@ html,body{margin:0;background:#07080d}
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
-<link id="mainCss" rel="stylesheet" href="style.css?v=42" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
-<noscript><link rel="stylesheet" href="style.css?v=42"></noscript>
+<link id="mainCss" rel="stylesheet" href="style.css?v=43" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
+<noscript><link rel="stylesheet" href="style.css?v=43"></noscript>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -295,7 +295,7 @@ html,body{margin:0;background:#07080d}
       <button id="ajTrampa" class="ajBtn ajToggle">BALÓN TRAMPA: APUNTAS Y SIGUES CON TU BALÓN: SÍ</button>
       <button id="ajDiscos" class="ajBtn ajToggle">2 VS 2: CÍRCULOS AZUL (TU EQUIPO) / ROJO (RIVALES): SÍ</button>
       <button id="ajCambio" class="ajBtn ajToggle">2 VS 2: PASE SIN BALÓN = CAMBIAR DE JUGADOR: NO</button>
-      <div id="ajPatronNota" class="ajNota"><b>REGATES</b> (siempre en pantalla con balón): toca y <b>dibuja</b> desde el punto central; se ejecuta al <b>soltar</b> · → rodar derecha · ← rodar izquierda · ↓ rodar atrás · ↑→ bicicleta derecha · ↑← bicicleta izquierda · se pueden encadenar (hasta 3) · <b>TURBO</b>: mantén para esprintar</div>
+      <div id="ajPatronNota" class="ajNota"><b>REGATES</b> (siempre en pantalla con balón): toca y <b>dibuja</b> desde el punto central; se ejecuta al <b>soltar</b> · → rodar derecha · ← rodar izquierda · ↓ rodar atrás · ↑→ bicicleta derecha · ↑← bicicleta izquierda · <b>↓↑ sombrerito</b> (por encima del rival, hacia delante) · <b>↑↓ sombrerito de tacón</b> (hacia atrás) · se pueden encadenar (hasta 3) · <b>TURBO</b>: mantén para esprintar</div>
       <button id="ajTiroPase" class="ajBtn ajToggle">BOTÓN TIRO/PASE (CHUT SUAVE Y CONTROLADO): SÍ</button>
       <div id="ajTiroPaseNota" class="ajNota">TIRO/PASE = balón controlado (≈15 m/s) · NO = CHUTAR potente de antes · CHUT ALTO y deslizamiento no cambian</div>
       <button id="ajLargoStat" class="ajBtn ajToggle">CHUT ALTO SEGÚN LA STAT TIR: SÍ</button>
@@ -340,6 +340,6 @@ html,body{margin:0;background:#07080d}
     <div class="giraSub">Beast Strikers se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=42"></script>
+<script type="module" src="main.js?v=43"></script>
 </body>
 </html>
