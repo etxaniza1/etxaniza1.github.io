@@ -1323,3 +1323,104 @@ body.horizontal #mCartas.muchas.muchisimas.nueveCol.diezCol{--cw:min(calc((47vw 
 .tpNom small{display:block;font-size:.8em;color:#ffd23f}
 #tiendaSkins{flex:1;min-width:0}
 @media (orientation:portrait){.tiSkinsZona{flex-direction:column;align-items:center}.tiProbador{position:relative}}
+
+/* ===================== update 43: LIGA y TORNEO con 21 (móvil primero) ===================== */
+#coCuerpo{flex:1 1 auto;min-height:0;display:flex;flex-direction:column}
+/* torneo: pestañas de ronda + rejilla de cruces */
+.coKO{flex:1;display:flex;flex-direction:column;gap:clamp(4px,1.2vh,8px);min-height:0}
+.koTabs{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x;padding:2px 2px 6px;flex:none}
+.koTabs::-webkit-scrollbar{display:none}
+.koTab{position:relative;isolation:isolate;flex:1 0 auto;min-height:40px;min-width:76px;font:400 clamp(12px,3.4vh,16px) "Lilita One",system-ui,sans-serif;color:#cfe0ff;background:#1f2a4d;border:3px solid #14193a;border-radius:12px;box-shadow:0 3px 0 #14193a;padding:2px 10px 4px;letter-spacing:.5px;cursor:pointer;touch-action:manipulation;display:inline-flex;align-items:center;justify-content:center;gap:5px}
+.koTab.hecha{color:#fff;background:#2b3a6e}
+.koTab.act{color:#14193a;background:linear-gradient(180deg,#fff27a,#ffd23f 55%,#ffb21e)}
+.koTab.fut{opacity:.7}
+.koTab.ver{outline:3px solid #fff;outline-offset:1px;opacity:1}
+.koTab:active{transform:translateY(2px);box-shadow:0 1px 0 #14193a}
+.koTab i{font-style:normal;font-size:.85em;width:1.25em;height:1.25em;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;border:2px solid #14193a;color:#fff}
+.koTab .kg{background:#3ccf5a}.koTab .kp{background:#ff4d5e}.koTab .kd{background:#3fa9ff}
+.koCuerpo{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;padding:2px 2px 8px}
+.koInfo{text-align:center;font-size:clamp(11px,3vh,14px);color:#cfe0ff;letter-spacing:.6px;margin:0 0 6px;text-shadow:0 2px 0 #14193a}
+.koGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr));gap:clamp(6px,1.4vh,10px)}
+.koGrid .coPar{padding:4px 6px}
+.koGrid .coFila{min-height:clamp(26px,7vh,34px)}
+.koDirectos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;margin-top:6px}
+.koDirectos .coEq{background:#1f2a4d;border:2px solid #14193a;border-radius:10px;padding:3px 6px;box-shadow:0 2px 0 #14193a}
+.koDirectos .coEq.tu{border-color:#ffd23f}
+.koCuerpo .coSub{margin-top:10px}
+.koCampeon{display:flex;justify-content:center;align-items:center;min-height:100%;padding:8px}
+.koCampeon .coTrofeo{min-width:200px}
+/* liga: tabla de 21 con cabecera fija, scroll con el dedo */
+.coLiga{grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}
+.coTabla{display:block;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain}
+.coTabla table{height:auto}
+.coTabla thead th{position:sticky;top:0;z-index:2}
+.coTabla th.eq,.coTabla td.eq{display:table-cell;vertical-align:middle}
+.coTabla td{height:clamp(28px,7.6vh,36px)}
+.coTabla tr.podio.p2 td.pos{color:#14193a;background:#d9e2f2;-webkit-text-stroke:0;text-shadow:none}
+.coTabla tr.podio.p3 td.pos{color:#14193a;background:#e09a5a;-webkit-text-stroke:0;text-shadow:none}
+.coTabla tr.tu td{background:rgba(255,210,63,.24)}
+.coTabla tr.tu td:first-child{box-shadow:inset 4px 0 0 #ffd23f}
+.coDescansa{display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(10,16,60,.45);border:2px dashed rgba(207,224,255,.45);border-radius:10px;padding:3px 8px}
+.coDescansa small{font-size:clamp(9px,2.6vh,12px);color:#cfe0ff;letter-spacing:.6px}
+.coDescansa.tuyo{border-color:#ffd23f}
+@media (max-width:760px){.coTabla .gx{display:none}}
+@media (max-aspect-ratio:1/1){
+  .coLiga{grid-template-columns:1fr;grid-template-rows:minmax(0,58%) minmax(0,1fr);overflow:hidden}
+  .coLado{overflow-y:auto}
+  .koGrid{grid-template-columns:1fr}
+}
+
+/* ===================== update 43: BOTONES PRO (t92u) =====================
+   Un solo sistema para todos los botones del menú, lobby, paneles, pausa y resultado:
+   borde de tinta 3 px · brillo superior (::before detrás del texto) · bisel inferior · sombra sólida + sombra suave ·
+   estado pulsado (se hunde) · deshabilitado (desaturado, sin relieve) · foco visible · tipografía Lilita con contorno. */
+:root{--bk:#14193a}
+.ajBtn,.ajSeg button,.m2B,#pausa button,#btnJugar,#btnMenu,.alTab,.skBtn,.botaBtn,.koTab{position:relative}
+.ajBtn,.ajSeg button,.m2B,#pausa button,#btnJugar,#btnMenu,.alTab,.skBtn,.botaBtn,.koTab,
+.lbBtn,.lbModoCard,.lbModo,.lbPerfil,.lbCopas,.lbCampo,.lbMonedas,.mEngranaje,.mFlecha,.mjFl,#btnMenuJugar{
+  isolation:isolate;-webkit-tap-highlight-color:transparent;
+  box-shadow:inset 0 -4px 0 rgba(0,0,0,.22),inset 0 2px 0 rgba(255,255,255,.32),0 4px 0 var(--bk),0 7px 12px rgba(5,8,30,.32) !important;
+  transition:transform .06s ease-out,filter .12s ease-out}
+.ajBtn::before,.ajSeg button::before,.m2B::before,#pausa button::before,#btnJugar::before,#btnMenu::before,.alTab::before,.skBtn::before,.botaBtn::before,.koTab::before,
+.lbBtn::before,.lbModoCard::before,.lbModo::before,.lbPerfil::before,.lbCopas::before,.lbCampo::before,.lbMonedas::before,.mEngranaje::before,.mFlecha::before,.mjFl::before,#btnMenuJugar::before{
+  content:"";position:absolute;left:3px;right:3px;top:2px;height:46%;border-radius:10px 10px 40% 40% / 10px 10px 14px 14px;
+  background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.06));z-index:-1;pointer-events:none}
+.mEngranaje::before,.mFlecha::before,.mjFl::before{border-radius:50% 50% 45% 45%/60% 60% 40% 40%;left:4px;right:4px;top:3px}
+.lbMonedas::before{border-radius:999px 999px 40% 40%/999px 999px 12px 12px}
+/* pulsado: se hunde (el transform de cada botón ya existe; aquí el relieve) */
+.ajBtn:active,.ajSeg button:active,.m2B:active,#pausa button:active,#btnJugar:active,#btnMenu:active,.alTab:active,.skBtn:active:not(:disabled),.botaBtn:active,.koTab:active,
+.lbBtn:active,.lbModoCard:active,.lbModo:active,.lbPerfil:active,.lbCopas:active,.lbCampo:active,.lbMonedas:active,.mEngranaje:active,.mFlecha:active,.mjFl:active,#btnMenuJugar:active{
+  box-shadow:inset 0 -2px 0 rgba(0,0,0,.22),inset 0 2px 0 rgba(255,255,255,.2),0 1px 0 var(--bk) !important;filter:brightness(.95)}
+.alTab:active{transform:translateY(3px)}
+/* deshabilitado */
+.ajBtn:disabled,.m2B:disabled,#btnMenuJugar:disabled,.skBtn.falta,.skBtn:disabled,.botaBtn.eq,.skBtn.eq{
+  filter:saturate(.3) brightness(.92);box-shadow:inset 0 -2px 0 rgba(0,0,0,.15),0 2px 0 var(--bk) !important;cursor:not-allowed}
+.ajBtn:disabled::before,.m2B:disabled::before,#btnMenuJugar:disabled::before,.skBtn.falta::before{opacity:.35}
+/* foco con teclado / mando */
+.ajBtn:focus-visible,.m2B:focus-visible,#pausa button:focus-visible,.lbBtn:focus-visible,.lbModoCard:focus-visible,.lbModo:focus-visible,#btnMenuJugar:focus-visible,.alTab:focus-visible,.koTab:focus-visible,.skBtn:focus-visible{outline:3px solid #fff;outline-offset:2px}
+/* tipografía común */
+.ajBtn,.ajSeg button,.m2B,#pausa button,#btnJugar,#btnMenu{font-family:"Lilita One",system-ui,sans-serif;letter-spacing:.6px;-webkit-text-stroke:1px var(--bk);text-shadow:0 2px 0 var(--bk);border:3px solid var(--bk)}
+#btnMenu{color:#fff}
+/* paleta: secundario azul (antes gris plano), confirmar verde, alerta naranja */
+.ajVolver,.m2B.volver{background:#4f65c9}
+#menu.lobby .lbOk{background:#ffd23f;color:var(--bk)}
+.ajSeg button.sel,.ajSeg button.on{filter:none}
+/* ---- lobby: botones laterales en losa con icono y etiqueta en franja (las palabras largas ya no se salen) ---- */
+#menu.lobby .lbCol{top:calc(env(safe-area-inset-top) + clamp(58px,calc(var(--u)*19.5),124px));gap:clamp(6px,calc(var(--u)*2),14px)}
+#menu.lobby .lbBtn{width:clamp(60px,calc(var(--u)*18),100px);padding:clamp(5px,calc(var(--u)*1.4),9px) 0 0;gap:clamp(2px,calc(var(--u)*.9),6px);border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.18),rgba(255,255,255,0) 60%),var(--c)}
+#menu.lobby .lbBtn svg{width:clamp(22px,calc(var(--u)*7.2),40px);height:clamp(22px,calc(var(--u)*7.2),40px)}
+#menu.lobby .lbBtn span{align-self:stretch;display:block;text-align:center;background:rgba(10,16,60,.55);border-top:2px solid rgba(10,16,60,.55);border-radius:0 0 13px 13px;
+  padding:2px 1px 3px;font-size:clamp(8.5px,calc(var(--u)*2.55),14px);letter-spacing:0;line-height:1.15;overflow:hidden;-webkit-text-stroke:.8px var(--bk)}
+#menu.lobby .lbBtn:active{transform:translateY(4px)}
+/* ---- JUGAR: más volumen ---- */
+#menu.lobby #btnMenuJugar{box-shadow:inset 0 -6px 0 rgba(180,90,0,.38),inset 0 3px 0 rgba(255,255,255,.65),0 7px 0 var(--bk),0 11px 18px rgba(5,8,30,.4) !important;border-radius:20px}
+#menu.lobby #btnMenuJugar:active{box-shadow:inset 0 -3px 0 rgba(180,90,0,.38),inset 0 2px 0 rgba(255,255,255,.5),0 2px 0 var(--bk) !important}
+#menu.lobby #btnMenuJugar::before{background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.08))}
+/* ---- tarjetas de modo ---- */
+#menu.lobby .lbModoCard{border-radius:18px}
+#menu.lobby .lbModoCard.sel{outline:3px solid #fff;outline-offset:2px}
+#menu.lobby .lbModoCard .lbMcIco{box-shadow:inset 0 2px 0 rgba(0,0,0,.25)}
+/* ---- botones de panel: alto mínimo táctil ---- */
+#menu.lobby .lbPanel .ajBtn,.coBotones .ajBtn,.m2B,#tienda .ajBtn,#coleccion .ajBtn,#ajustes .ajBtn{min-height:44px}
+.coBotones .ajBtn{display:inline-flex;align-items:center;justify-content:center;gap:4px}
