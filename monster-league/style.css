@@ -1424,3 +1424,6 @@ body.horizontal #mCartas.muchas.muchisimas.nueveCol.diezCol{--cw:min(calc((47vw 
 /* ---- botones de panel: alto mínimo táctil ---- */
 #menu.lobby .lbPanel .ajBtn,.coBotones .ajBtn,.m2B,#tienda .ajBtn,#coleccion .ajBtn,#ajustes .ajBtn{min-height:44px}
 .coBotones .ajBtn{display:inline-flex;align-items:center;justify-content:center;gap:4px}
+/* update 44: pista del marcador (toque corto en partido) */
+#marcPista{position:fixed;z-index:40;pointer-events:none;background:#14193a;color:#fff;font:400 12px "Lilita One",system-ui,sans-serif;letter-spacing:.4px;padding:5px 10px 6px;border-radius:10px;border:2px solid #ffd23f;box-shadow:0 3px 0 rgba(0,0,0,.35);opacity:0;transform:translateY(-4px);transition:opacity .15s,transform .15s;white-space:nowrap}
+#marcPista.visible{opacity:1;transform:none}

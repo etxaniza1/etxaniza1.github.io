@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=43';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=44';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=43';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=44';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -405,7 +405,7 @@ function applyQuality(reason) {
   // sombras "blob" bajo los personajes: más suaves si hay sombra real (siguen dando contacto con el suelo)
   let acts = []; try { acts = actors; } catch (_) {}
   for (const a of acts) { if (a.shadow) { a.shadow.material.opacity = on ? 0.16 : 0.3; a.shadow.visible = !q.noCharShadow; } applyLOD(a); }
-  OUTLINE_MAT.visible = AJ.quality !== 'baja';   // update 20: contorno caricatura apagado en Baja
+  OUTLINE_MAT.visible = OUTLINE_MAT_EST.visible = AJ.quality !== 'baja';   // update 20: contorno caricatura apagado en Baja
   try { if (campoDeco) campoDeco.group.traverse((o) => { if (o.isPoints) o.visible = AJ.quality !== 'baja'; }); } catch (_) {}   // update 39: partículas del campo fuera en Baja
   applyTextureQuality();
   window.__game && (window.__game.quality = { level: AJ.quality, pixelRatio: renderer.getPixelRatio(), shadows: on ? size : 0, soft: on && soft, shadowEvery: on ? shadowEvery : 0, lod: q.lod, fallbackSteps: QS.steps, prStep: QS.prStep, shadowLevel: QS.shadowLevel });
@@ -816,6 +816,22 @@ OUTLINE_MAT.onBeforeCompile = (sh) => {
 	gl_Position.z += 0.0004 * gl_Position.w;`);
 };
 OUTLINE_MAT.customProgramCacheKey = () => 'mlOutline21';
+// update 44: contorno para mallas ESTÁTICAS (decorado exterior nuevo). En OUTLINE_MAT la rama sin skinning usa oNormal sin invertir y
+// FLIP_SIDED la invertía -> el casco iba hacia dentro y no se veía. Aquí sale hacia fuera. (OUTLINE_MAT no se toca: personajes y vallas igual)
+const OUTLINE_MAT_EST = new THREE.MeshBasicMaterial({ color: 0x101116, side: THREE.BackSide, toneMapped: false });
+OUTLINE_MAT_EST.userData.outline = true;
+OUTLINE_MAT_EST.onBeforeCompile = (sh) => {
+  sh.uniforms.uOutline = TOON.outline;
+  sh.vertexShader = sh.vertexShader.replace('void main() {', 'attribute vec3 oNormal;\nuniform vec4 uOutline;\nvoid main() {')
+    .replace('#include <beginnormal_vertex>', SMOOTH_NORMAL_VS)
+    .replace('#include <project_vertex>', `#include <project_vertex>
+	vec3 onrm = normalize( normalMatrix * oNormal );
+	vec2 cn = ( projectionMatrix * vec4( onrm, 0.0 ) ).xy; float cl = length( cn );
+	float kd = clamp( uOutline.z / max( gl_Position.w, 0.01 ), uOutline.w, 1.0 );
+	if ( cl > 1e-5 ) gl_Position.xy += cn / cl * uOutline.xy * kd * gl_Position.w;
+	gl_Position.z += 0.0004 * gl_Position.w;`);
+};
+OUTLINE_MAT_EST.customProgramCacheKey = () => 'mlOutlineEst44';
 // grosor del contorno en píxeles del destino (pantalla o render target de los retratos)
 function setOutlinePx(w, h, px = TOON.px) { TOON.outline.value.set((2 * px) / Math.max(1, w), (2 * px) / Math.max(1, h), TOON.near, TOON.minK); }
 const _dbs = new THREE.Vector2();
@@ -1275,7 +1291,10 @@ function doAction(kind, b) {
   if (kind === 'entrada') return tryDash(user);
   return false;
 }
-function bufferAction(kind) { input.buf = { kind, until: performance.now() + INPUT_BUFFER_MS }; }
+// update 44 (t95u): durante el SOMBRERITO (balón en el aire, aún sin control) los botones de ataque siguen a la vista y se pueden
+// pulsar: la acción queda en espera durante todo el vuelo y sale en cuanto controlas el balón.
+const hatVivo = () => !!(user && user.pm && user.pm.type === 'hat' && !ball.owner && S.mode === 'play');
+function bufferAction(kind) { input.buf = { kind, until: performance.now() + (hatVivo() ? 2600 : INPUT_BUFFER_MS), hat: hatVivo() }; if (input.buf.hat) LOG('accion_en_espera_sombrerito', user, { kind }); }
 function runBuffer() {
   const b = input.buf; if (!b) return;
   if (performance.now() > b.until) { input.buf = null; return; }
@@ -1576,7 +1595,7 @@ const PAT_NAMES = { R: 'RUEDA ►', L: '◄ RUEDA', B: 'ARRASTRE ▼', SR: 'BICI
 // update 43 (t93u): SOMBRERITOS. ↓ y luego ↑ = SOMBRERITO: levanta el balón por encima del defensor hacia delante y corre a por él.
 // ↑ y luego ↓ = SOMBRERITO HACIA ATRÁS: taconazo en vaselina por encima de la cabeza hacia atrás, media vuelta y a por él.
 // Mientras el balón va alto, ningún rival lo puede tocar (ni de cabeza): solo cuando baja a la altura del pie. El sombrerito cierra la cadena.
-const HAT = { H: { lift: 0.16, apex: 2.6, dist: 5.6, run: 1.12 }, HB: { lift: 0.2, apex: 2.4, dist: 5.0, run: 1.3 }, safe: 0.6, max: 1.7 };
+const HAT = { H: { lift: 0.16, apex: 3.7, dist: 6.0, run: 1.12 }, HB: { lift: 0.2, apex: 3.4, dist: 5.4, run: 1.3 }, safe: 0.6, max: 2.2 };   // update 44: cumbre mucho más alta (antes 2,6 / 2,4 m)
 function patParse(dots) {   // dots: índices 0-8 (fila*3+col, fila 0 = arriba) -> fichas (se mantiene para compatibilidad)
   const dirs = [];
   for (let i = 1; i < dots.length; i++) {
@@ -1698,7 +1717,7 @@ function hatStep(a, pm, dt) {
   }
   pm.tf += dt;
   if (ball.owner === a) { patEnd(a, false); return true; }                       // ¡controlado!
-  if (ball.owner || S.mode !== 'play' || pm.t >= pm.dur) { patEnd(a, true); return false; }   // se la quedó otro / fuera / tiempo
+  if (ball.owner || S.mode !== 'play' || pm.t >= pm.dur) { if (a === user && input.buf && input.buf.hat) input.buf = null; patEnd(a, true); return false; }   // se la quedó otro / fuera / tiempo (u44: se anula la acción en espera)
   // media vuelta (de tacón) y carrera hacia donde va a caer el balón
   const lead = Math.min(0.25, Math.max(0, 0.9 - pm.tf)), pr = Math.min(1, pm.tf / pm.tLow), off = pm.amp * Math.sin(Math.PI * pr);
   const tx = ball.pos.x + ball.vel.x * lead + pm.lat.x * off - a.pos.x, ty = ball.pos.y + ball.vel.y * lead + pm.lat.y * off - a.pos.y, L = Math.hypot(tx, ty);
@@ -1876,6 +1895,15 @@ function kickLocal(a) {   // posición del balón en el impacto (m, relativo al 
 // θ en total hasta llegar al punto apuntado (cuerda L), así que acaba donde apuntas. θ = EF_THETA · EFECTO · k: Zorro (80) ~115°,
 // 50 ~72°, 10 ~14°, 0 = recto. Después del punto apuntado sigue recto. Cualquier choque (palo, portero, jugador, valla) la anula.
 const EF_THETA = 2.5, _efO = new THREE.Vector2();
+// update 44: curva más bonita y legible = 'plátano' progresivo: curvatura κ(u) = κ̄·(EF_A + EF_B·u) (u = progreso 0..1): sale casi
+// recta y se cierra cada vez más al final (antes C de curvatura constante). Sigue acabando EXACTAMENTE donde apuntas (ángulo de salida
+// y longitud del arco calculados numéricamente). θ escala con EFECTO de forma más visible en valores medios: θ = EF_THETA·1,08·EFECTO^0,85.
+const EF_A = 0.45, EF_B = 1.1;
+function efShape(th) {   // integra la trayectoria unitaria: ángulo de la cuerda respecto a la salida y cuerda/arco
+  let cx = 0, cy = 0; const N = 24;
+  for (let i = 0; i < N; i++) { const u = (i + 0.5) / N, ph = th * (EF_A * u + EF_B * u * u / 2); cx += Math.cos(ph); cy += Math.sin(ph); }
+  return { ang: Math.atan2(cy, cx), ratio: Math.hypot(cx, cy) / N };
+}
 function effectPlan(a, dir, sp, k = 1, toward = null, Lfix = null, o = null) {
   const c0 = (a.sf && a.sf.cur) || 0; if (c0 <= 0.001 || sp < 4) return null;
   o = o || a.pos;
@@ -1887,7 +1915,7 @@ function effectPlan(a, dir, sp, k = 1, toward = null, Lfix = null, o = null) {
     else L = Math.abs((g.y - o.y) / dir.y);   // hasta la línea de gol en la dirección apuntada
   }
   L = THREE.MathUtils.clamp(L, 5, 36);
-  const th = Math.min(2.2, EF_THETA * c0 * k * THREE.MathUtils.clamp(L / 14, 0.55, 1));
+  const th = Math.min(2.3, EF_THETA * 1.08 * Math.pow(c0, 0.85) * k * THREE.MathUtils.clamp(L / 14, 0.55, 1));   // update 44
   if (th < 0.01) return null;
   // sentido del giro: el que hace que el balón llegue a la línea de gol menos 'tumbado' (más fácil de meter y de leer para el portero);
   // si da igual (tiro de frente), se cierra hacia el centro de la portería como en v31
@@ -1898,14 +1926,18 @@ function effectPlan(a, dir, sp, k = 1, toward = null, Lfix = null, o = null) {
   if (toward || Math.abs(ePlus - eMinus) < 0.17) {
     const nx = -dir.y, ny = dir.x; sgn = Math.sign(nx * (g.x - o.x) + ny * (g.y - o.y)); if (!sgn) sgn = (o.x * Math.sign(gy || 1)) > 0 ? 1 : -1;
   } else sgn = (ePlus > eMinus ? 1 : -1) * fy;   // con fy < 0 (ataca hacia y-) el espejo invierte el sentido
-  const R = L / (2 * Math.sin(th / 2));
-  return { rot: -sgn * th / 2, ef: sgn / R, efS: R * th, th, L, sgn };
+  let th2 = th, sh = efShape(th2);   // update 44: arco progresivo
+  // update 44: tiro a portería: que no llegue 'tumbado' a la línea (con la rosca máxima y la portería de frente acababa casi paralelo
+  // a la línea de fondo y daba en la pared junto al palo). Llegada ≥ ~29° respecto a la línea; si no, se reduce el giro.
+  if (!toward) { const sp2 = sgn * fy; for (let i = 0; i < 14 && endA(ang + sp2 * (th2 - sh.ang)) < 0.5 && th2 > 0.3; i++) { th2 *= 0.92; sh = efShape(th2); } }
+  const S_ = L / sh.ratio;
+  return { rot: -sgn * sh.ang, ef: sgn * th2 / S_, efS: S_, efS0: S_, th: th2, L, sgn };
 }
 function effectCurve(a, dir, L, sp, k = 1, toward = null) {   // compat (tests v31): aplica el plan a 'dir' y devuelve la curvatura con signo (1/m)
   const pl = effectPlan(a, dir, sp, k, toward, L); if (!pl) return 0;
   dir.rotateAround(new THREE.Vector2(), pl.rot); return pl.ef;
 }
-function applyEffect(pl) { ball.fx.ef = pl ? pl.ef : 0; ball.fx.efS = pl ? pl.efS : 0; ball.fx.efH = null; }
+function applyEffect(pl) { ball.fx.ef = pl ? pl.ef : 0; ball.fx.efS = pl ? pl.efS : 0; ball.fx.efS0 = pl ? pl.efS0 || pl.efS : 0; ball.fx.efH = null; }
 // update 32: TIRO/PASE (botón de chut normal): tiro / pase controlado, mucho más lento que el antiguo CHUTAR.
 // Opción AJ.tiroPase (SÍ por defecto; NO = CHUTAR con la potencia de antes). CHUT ALTO y chut por deslizamiento no cambian.
 function tpOn() { return AJ.tiroPase !== false; }
@@ -1972,6 +2004,12 @@ function releaseShot(a, dir, power, assist, loft, hspeed, soft) {
   ball.pos.z = Math.max(ball.pos.z, BR + 0.05);
   ball.vel.set(dir.x * sp, dir.y * sp, loft !== undefined ? loft : soft ? 0.35 + 1.1 * power * power + efLift * 0.4 : 0.8 + 3.2 * power * power + efLift);   // chut normal: raso / poca altura (con EFECTO, algo más alto para que se vea la rosca)
   if (hspeed !== undefined) ball.pos.z = BR + 0.02;
+  if (hspeed !== undefined && a.lobErr) {   // update 44: chut alto con poca TIR: desvío + potencia irregular + vuelo errático
+    const er = a.lobErr, c = Math.cos(er.rot), s_ = Math.sin(er.rot), vx = ball.vel.x;
+    ball.vel.x = (vx * c - ball.vel.y * s_) * er.pot; ball.vel.y = (vx * s_ + ball.vel.y * c) * er.pot; ball.vel.z *= 0.5 + 0.5 * er.pot;
+    ball.fx.curve += er.curve; ball.fx.dip = Math.max(ball.fx.dip || 0, er.dip);
+  }
+  if (hspeed !== undefined) a.lobErr = null;
   // giro: chut raso = rueda hacia delante; chut alto = efecto de retroceso (más en la vaselina suave)
   ball.backspin = hspeed !== undefined ? THREE.MathUtils.clamp(1.1 - hspeed / 28, 0.1, 1) * (bfx ? bfx.backspin : 1) : 0;
   if (bfx && bfx.dip) ball.backspin = 0;
@@ -1995,7 +2033,7 @@ function moveActor(a, wish, speed, dt) {
   else if (a.scaredT > 0 && a.stun <= 0) { a.vel.lerp(a.scaredDir.clone().multiplyScalar(5.5), 1 - Math.exp(-10 * dt)); a.face.copy(a.scaredDir).multiplyScalar(-1); }   // AULLIDO: recula asustado
   else if (a.diveT > 0) {
     a.diveT -= dt; const el = a.diveDur - a.diveT;
-    if (el < 0.38) a.vel.copy(a.diveDir).multiplyScalar(7.5 * (a.keeper ? a.sf.est * (a.shellT > 0 ? GK_SHELL_K : 1) : a.sf.ref) * (1 - el / 0.5)); else a.vel.multiplyScalar(Math.exp(-8 * dt));
+    if (el < 0.38) a.vel.copy(a.diveDir).multiplyScalar(GK44.diveV * (a.keeper ? a.sf.est * (a.shellT > 0 ? GK_SHELL_K : 1) : a.sf.ref) * (1 - el / 0.5)); else a.vel.multiplyScalar(Math.exp(-8 * dt));
   } else if (a.stun > 0) { a.stun -= dt; a.vel.multiplyScalar(Math.exp(-6 * dt)); if (a.pm) patEnd(a, true); }
   else if (a.pm && patStep(a, dt)) { /* update 35: truco del patrón */ }
   else if (a.dribbleT > 0) { a.dribbleT -= dt; a.vel.copy(a.face).multiplyScalar(a.dribSp); }
@@ -2063,7 +2101,7 @@ function airStep(p, v, dt, fx) {
   // perdiendo); lift = sustentación por retroceso; dip = 'hoja seca': sin giro, cae de golpe en la bajada
   if (fx && fx.ef && fx.efS > 0) {   // update 34: EFECTO en C -> gira la velocidad horizontal ef rad por metro recorrido (también rodando)
     const sh = Math.hypot(v.x, v.y), ds = Math.min(sh * dt, fx.efS);
-    if (ds > 0) { const an = fx.ef * ds, c = Math.cos(an), s_ = Math.sin(an), vx = v.x; v.x = vx * c - v.y * s_; v.y = vx * s_ + v.y * c; fx.efS -= ds; }
+    if (ds > 0) { const u = fx.efS0 > 0 && fx.efS <= fx.efS0 + 1e-6 ? 1 - (fx.efS - ds / 2) / fx.efS0 : 0.5, an = fx.ef * (EF_A + EF_B * u) * ds, c = Math.cos(an), s_ = Math.sin(an), vx = v.x; v.x = vx * c - v.y * s_; v.y = vx * s_ + v.y * c; fx.efS -= ds; }
     if (fx.efS <= 1e-4) { fx.ef = 0; fx.efS = 0; }
   }
   if (fx && p.z > BR + 0.02) {
@@ -2074,10 +2112,10 @@ function airStep(p, v, dt, fx) {
   p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt;
 }
 // predicción del vuelo hasta el primer bote (misma integración que el balón real; sin colisiones)
-const _pp = new THREE.Vector3(), _pv = new THREE.Vector3(), _pfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 };
+const _pp = new THREE.Vector3(), _pv = new THREE.Vector3(), _pfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0, efS0: 0 };
 function predictFlight(pos, vel, out, maxT = 5, h = 1 / 120, fx) {
   _pp.copy(pos); _pv.copy(vel); let t = 0, peak = pos.z;
-  const pf = fx ? Object.assign(_pfx, { ef: 0, efS: 0 }, fx) : null;
+  const pf = fx ? Object.assign(_pfx, { ef: 0, efS: 0, efS0: 0 }, fx) : null;
   if (out) out.length = 0;
   while (t < maxT) {
     airStep(_pp, _pv, h, pf); t += h; peak = Math.max(peak, _pp.z);
@@ -2096,11 +2134,18 @@ const ALTO_CHARGE_S = 1.1, ALTO_PERFECT = [0.45, 0.6];
 // update 37: NERF del chut alto/largo: TIR 99 rinde como antes TIR 70 (potencia, distancia y precisión) y escala proporcional hacia
 // abajo (TIR equivalente = 30 + (TIR − 30)·40/69); con 30 o menos sigue siendo malo. El indicador usa esta misma función.
 const LOB_NERF = (t) => t <= 30 ? t : 30 + (t - 30) * 40 / 69;
+// update 44 (Aritz: «para que se chute fácilmente sea 99 y con 60 la trompa cueste»): la potencia/alcance sale de la TIR real
+// (sin el nerf de la v37): 99 = 1 (la trompa entera), 90 ~0,79, 80 ~0,57, 70 ~0,35, 60 ~0,14 (vaselina corta), <=52 = 0.
+const lobTir = (a) => a && a.sf && a.sf.t ? a.sf.t.tir : a && STATS[a.charKey] ? STATS[a.charKey].tir : 80;
 function lobStatK(a) {
-  const t = LOB_NERF(a && a.sf && a.sf.t ? a.sf.t.tir : a && STATS[a.charKey] ? STATS[a.charKey].tir : 80);
-  // update 35: curva nueva (antes 54->0 y 60->0,05: con 60 la vaselina era corta). Ahora <=30 = vaselina corta (0), 45 ~0,46,
-  // 54 ~0,68, 60 ~0,80 (lejos y bien), 70 ~0,94, >=80 = 1 (máximo)
-  const x = THREE.MathUtils.clamp((t - 30) / (80 - 30), 0, 1); return 1 - Math.pow(1 - x, 1.75);
+  const x = THREE.MathUtils.clamp((lobTir(a) - 52) / (99 - 52), 0, 1); return Math.pow(x, 1.1);
+}
+// update 44: ERROR del chut alto (0 con TIR 99 -> 1 con TIR 60): desvío de dirección, potencia irregular y vuelo errático (se va de lado / cae)
+function lobErrK(a) { return Math.pow(THREE.MathUtils.clamp((99 - lobTir(a)) / 39, 0, 1), 1.2); }
+const LOB_ERR = { deg: 12, pot: 0.22, curve: 0.32, dip: 0.3 };
+function lobErrRoll(e) {
+  const r = () => (Math.random() + Math.random()) - 1;   // triangular -1..1 (más casos cerca del centro)
+  return { e, rot: THREE.MathUtils.degToRad(LOB_ERR.deg * e * r()), pot: 1 - LOB_ERR.pot * e * Math.random(), curve: LOB_ERR.curve * e * r(), dip: Math.random() < 0.5 ? LOB_ERR.dip * e * Math.random() : 0 };
 }
 const LOB_K_MAX = () => lobStatK({ sf: { t: { tir: 99 } } });   // update 37: tope (TIR 99 nerfeado = antes TIR 70)
 function lobParams(c, k = 1) {
@@ -2114,8 +2159,9 @@ function lobParams(c, k = 1) {
 }
 function shootLob(a, dir, c) {
   const lp = lobParams(c, AJ.largoStat === false ? LOB_K_MAX() : lobStatK(a));
+  const er = lobErrRoll(AJ.largoStat === false ? 0 : lobErrK(a)); a.lobErr = er;   // update 44: se aplica al soltar el balón (releaseShot)
   shoot(a, dir, 0.3 + 0.7 * lp.c, false, lp.vz, lp.h);
-  LOG('chut_alto', a, { k: +lp.k.toFixed(2), c: +lp.c.toFixed(2), v: +lp.v.toFixed(1), ang: Math.round(THREE.MathUtils.radToDeg(lp.ang)) });
+  LOG('chut_alto', a, { k: +lp.k.toFixed(2), c: +lp.c.toFixed(2), v: +lp.v.toFixed(1), ang: Math.round(THREE.MathUtils.radToDeg(lp.ang)), err: +er.e.toFixed(2), rot: +THREE.MathUtils.radToDeg(er.rot).toFixed(1), pot: +er.pot.toFixed(2), curve: +er.curve.toFixed(2), dip: +er.dip.toFixed(2) });
 }
 // ---- RED DE GOL CON FÍSICA (update 16) ----
 // La red es un muelle muy amortiguado: el balón la abomba (hasta ~0,7 m), pierde casi toda la velocidad y cae dentro.
@@ -2132,7 +2178,7 @@ function netPush(b, ax, sgn, lim, dt, gl, s) {
   const f = Math.exp(-5 * dt);                              // la malla agarra el balón: frena lo tangencial
   for (const k of ['x', 'y', 'z']) if (k !== ax && !(k === 'z' && b.vel.z < 0)) b.vel[k] *= f;
   if (ax !== 'z') b.backspin = 0;
-  if (b.fx) { b.fx.curve = 0; b.fx.ef = 0; b.fx.efS = 0; }
+  if (b.fx) { b.fx.curve = 0; b.fx.ef = 0; b.fx.efS = 0; b.fx.efS0 = 0; }
   netImpact(b, ax, sgn, Math.min(pen, NET_MAXPEN));
 }
 // deformación visual: impactos con amplitud que sigue al balón mientras empuja y luego oscila amortiguada hasta 0
@@ -2417,6 +2463,9 @@ function aiFieldRaw(a, opp, dt) {
   if (wish.lengthSq() > 0.04) wish.normalize(); else wish.set(0, 0);
   return wish;
 }
+// update 44: PORTEROS MEJORES (Aritz: «haz que los porteros sean mejores»). Antes: reacción 0,15-0,30 s, ventana de estirada 0,5 s,
+// hueco para estirarse 1,0, alcance 1,1 / 1,75, estirada 7,5 m/s, lectura de rosca 1,15−1,6·tt, blocaje 1,5−v/30. Siguen escalando con sus stats.
+const GK44 = { r0: 0.06, r1: 0.08, diveWin: 0.6, diveGap: 0.8, reach: 1.2, reachDive: 1.85, diveV: 8.4, diveAct: 0.06, curveRead: 1.3, antic: 0.45, c0: 1.6, c1: 32 };   // diveAct: la estirada cuenta desde 0,06 s (antes 0,12: los tiros de cerca llegaban antes)
 function aiKeeper(k, dt) {
   const s = k.team === 0 ? -1 : 1;           // portería propia: azul abajo (y-), rojo arriba (y+)
   const lineY = s * (HL - 0.9);
@@ -2449,13 +2498,13 @@ function aiKeeper(k, dt) {
     if (tt > 0 && tt < 2) tx = gc ? gc.x : B.pos.x + B.vel.x * tt;
   }
   k.react = (k.react || 0) - dt; if (k.shellT > 0) k.react = Math.min(k.react, 0);   // update 37: CAPARAZÓN -> reacción inmediata
-  if (k.react > 0) tx = k.lastTx ?? tx; else { k.lastTx = tx; if (comingIn && !k.wasComing) { k.react = (0.15 + Math.random() * 0.15) * (2 - k.sf.ref); if (k.fetidaT > 0 && B === ball) { k.react = 0.6 + Math.random() * 0.15; k.fetidaT = 0; LOG('fetida_reaccion_tarde', k, {}); } } }   // BOMBA FÉTIDA: reacciona tarde
+  if (k.react > 0) tx = k.lastTx ?? tx; else { k.lastTx = tx; if (comingIn && !k.wasComing) { k.react = (GK44.r0 + Math.random() * GK44.r1) * (2 - k.sf.ref); if (k.fetidaT > 0 && B === ball) { k.react = 0.6 + Math.random() * 0.15; k.fetidaT = 0; LOG('fetida_reaccion_tarde', k, {}); } } }   // BOMBA FÉTIDA: reacciona tarde
   k.wasComing = comingIn;
   if (comingIn && k.diveT <= 0 && k.react <= 0 && !bOwner) {
     const tt = gc ? gc.tt : (lineY - B.pos.y) / B.vel.y;
     const bx = gc ? gc.x : B.pos.x + B.vel.x * tt;
     const bz = gc ? gc.z : gkBallZ(B, tt);
-    if (tt > 0.05 && tt < 0.5 && Math.abs(bx - k.pos.x) > 1.0 * ESCALA && Math.abs(bx) < GW + 0.6) startDive(k, bx, bz);
+    if (tt > 0.05 && tt < GK44.diveWin && Math.abs(bx - k.pos.x) > GK44.diveGap * ESCALA && Math.abs(bx) < GW + 0.6) startDive(k, bx, bz);
     else if (gkPlus() && tt > 0.05 && tt < 0.55 && Math.abs(bx) < GW + 0.6 && Math.abs(bx - k.pos.x) < 1.6 * ESCALA && k.gkJumpT <= 0 && !k.gkJumpQ && bz > GK_REACH * ESCALA - 0.25 && bz < GH + 0.6 && Math.abs(k.pos.y - lineY) < 1.8) startGkJump(k, bz, tt);   // update 30: salta a por el balón alto
   }
   tx = THREE.MathUtils.clamp(tx, -GW + 0.6, GW - 0.6);
@@ -2475,6 +2524,10 @@ function aiKeeper(k, dt) {
     const dGoal = Math.abs(s * HL - h.pos.y);
     const out = THREE.MathUtils.clamp((18 - dGoal) * 0.4, 0, dGoal < 10 && Math.abs(h.pos.x) < GW + 2 ? 5 : 4) * THREE.MathUtils.clamp(k.sf.pos || 1, 0.75, 1.15);   // update 37: COLOCACIÓN   // 1 contra 1: sale más
     if (out > 0) { ty = lineY - s * out; tx = THREE.MathUtils.clamp(h.pos.x * 0.45, -GW + 0.6, GW - 0.6); }
+    // update 44: ANTICIPACIÓN: si el rival arma el chut (o apunta), se adelanta un poco hacia donde mira su cuerpo
+    if (h.kickPending || (h === user && aim.active && (aim.kind === 'chutar' || aim.kind === 'alto'))) {
+      const fy = h.face.y * s; if (fy > 0.2) { const px = h.pos.x + h.face.x / h.face.y * (ty - h.pos.y); tx = THREE.MathUtils.clamp(tx + (THREE.MathUtils.clamp(px, -GW, GW) - tx) * GK44.antic * THREE.MathUtils.clamp(k.sf.pos || 1, 0.8, 1.2), -GW + 0.5, GW - 0.5); }
+    }
     k.outY = ty;
   }
   // vaselina por encima: vuelve a la línea andando hacia atrás (más lento)
@@ -2488,7 +2541,7 @@ function aiKeeper(k, dt) {
   const f = k.face.clone(); const r = moveKeeperFace(k, s); return { wish, face: r };
 }
 // update 34: dónde y cuándo cruza la línea del portero un balón con curva en C (misma integración que el balón; suelo aproximado)
-const _gq = new THREE.Vector3(), _gv = new THREE.Vector3(), _gfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 }, _gcr = { tt: 9, x: 0, z: 0 };
+const _gq = new THREE.Vector3(), _gv = new THREE.Vector3(), _gfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0, efS0: 0 }, _gcr = { tt: 9, x: 0, z: 0 };
 function gkCurveCross(lineY, s) {
   if (S.t === _gcr.st && lineY === _gcr.ly) return _gcr.tt < 9 ? _gcr : null;
   _gcr.st = S.t; _gcr.ly = lineY; _gcr.tt = 9;
@@ -2505,7 +2558,7 @@ function gkCurveCross(lineY, s) {
 const _gl = { tt: 9, x: 0, z: 0 };
 function gkLeeCurva(B, lineY, s) {
   const gc = gkCurveCross(lineY, s); if (!gc) return null;
-  const w = THREE.MathUtils.clamp(1.15 - gc.tt * 1.6, 0.1, 1), xl = B.pos.x + B.vel.x * gc.tt;
+  const w = THREE.MathUtils.clamp(GK44.curveRead - gc.tt * 1.4, 0.15, 1), xl = B.pos.x + B.vel.x * gc.tt;   // update 44: lee la rosca antes
   _gl.tt = gc.tt; _gl.z = gc.z; _gl.x = xl + (gc.x - xl) * w; return _gl;
 }
 function startDive(k, bx, bz) {
@@ -2525,9 +2578,9 @@ function moveKeeperFace(k, s) { const d = new THREE.Vector2(ball.pos.x - k.pos.x
 function keeperContact(k) {
   if (ball.owner === k || window.__game.noKeepers) return;   // noKeepers: solo pruebas automáticas (tiros a la red)
   if (ball.noCatch === k && ball.noCatchT > 0) return;
-  const diving = k.diveT > 0 && (k.diveDur - k.diveT) > 0.12 && (k.diveDur - k.diveT) < 0.6;
+  const diving = k.diveT > 0 && (k.diveDur - k.diveT) > GK44.diveAct && (k.diveDur - k.diveT) < 0.6;
   const kj = k.kJumpZ || 0, hd = diving && k.diveHigh ? (k.diveLiftMax || 0) : 0;   // update 30: salto / estirada alta
-  const shK = k.shellT > 0 ? GK_SHELL_K : 1, reach = (diving ? 1.75 : k.backpedal ? 0.8 : kj > 0.1 ? 1.25 : 1.1) * ESCALA * shK, d = Math.hypot(ball.pos.x - k.pos.x, ball.pos.y - k.pos.y);   // reculando llega peor
+  const shK = k.shellT > 0 ? GK_SHELL_K : 1, reach = (diving ? GK44.reachDive : k.backpedal ? 0.85 : kj > 0.1 ? 1.3 : GK44.reach) * ESCALA * shK, d = Math.hypot(ball.pos.x - k.pos.x, ball.pos.y - k.pos.y);   // reculando llega peor
   const reachZ = (diving ? GK_REACH_DIVE : GK_REACH) * ESCALA * (k.sf.sal || 1) * shK + kj + hd * 1.15;     // por encima de esto (vaselina) no llega
   if (d > reach + BR || ball.pos.z - BR > reachZ) return;
   // solo dentro de su área grande aprox.
@@ -2538,7 +2591,7 @@ function keeperContact(k) {
     return;
   }
   const sp = Math.hypot(ball.vel.x, ball.vel.y);
-  const pCatch = THREE.MathUtils.clamp(1.5 - sp / 30, 0.2, 1) * (hd > 0.2 ? 0.45 : 1) * (kj > 0.2 ? 0.75 : 1);   // estirado / en el aire blocca peor
+  const pCatch = THREE.MathUtils.clamp(GK44.c0 - sp / GK44.c1, 0.25, 1) * (hd > 0.2 ? 0.45 : 1) * (kj > 0.2 ? 0.75 : 1);   // estirado / en el aire blocca peor
   const edge = Math.min(reachZ - (ball.pos.z - BR), reach + BR - d);   // update 30: en el límite de su alcance solo la roza
   if ((kj > 0.2 || hd > 0.2) && gkPlus() && (hd > 0.2 || Math.abs(ball.pos.x - k.pos.x) > 0.9) && edge < (hd > 0.2 ? 0.5 : 0.3) && Math.random() < (hd > 0.2 ? 0.65 : 0.45)) {
     ball.vel.x *= 0.8; ball.vel.y *= 0.8; ball.vel.z += 0.8; ball.noCatch = k; ball.noCatchT = 0.5; k.kickT = 0.3; sfx.save(); LOG('portero_roza', k, { edge: +edge.toFixed(2) }); return;
@@ -3087,9 +3140,12 @@ function espAI(a, opp, dt) {
 // BUTÓN · REFLEJOS (update 42; antes BOTÓN DE PAUSA, que congelaba al que entraba a tirar): tiro rival -> reacción inmediata y alcance ×1,3 1,2 s.
 // TURTOBOLA · CAPARAZÓN: tiro rival hacia su portería -> se blinda 1,6 s (alcance ×1,3, estirada ×1,3, reacción inmediata).
 const GK_SHELL_T = 1.6, GK_SHELL_K = 1.3, GK_REFLEJO_T = 1.2;
+// update 44: en PRÁCTICA no hay porteros (ocultos y aparcados fuera): su especial NUNCA salta si el portero no está en el campo.
+const gkEnCampo = (k) => !!k && !S.practice && k.root && k.root.visible && actors.includes(k) && Math.abs(k.pos.y) < HL + 6;
 function gkEspUpdate(dt, playing) {
   for (const k of [gkA, gkB]) {
     if (!k || !isGK(k.charKey)) continue;
+    if (!gkEnCampo(k)) { k.shellT = 0; continue; }
     if (k.shellT > 0) k.shellT = Math.max(0, k.shellT - dt);
     if (!playing || !espOn() || S.mode !== 'play') continue;
     if (k.esp < 1) { k.esp = Math.min(1, k.esp + dt / ESP_T); continue; }
@@ -3102,6 +3158,7 @@ function gkEspUpdate(dt, playing) {
   }
 }
 function gkEspFire(k, foe) {
+  if (!gkEnCampo(k)) return false;   // update 44
   const e = ESPECIALES[k.charKey]; k.esp = 0; k.espUsedT = S.t;
   if (k.charKey === 'buton') {   // update 42: REFLEJOS: reacción inmediata y más alcance 1,2 s, con un destello amarillo (sin congelar, sin icono II)
     k.shellT = GK_REFLEJO_T; k.react = 0;
@@ -3312,6 +3369,12 @@ const ROT_LOG = [];
 // update 33: rótulos ligeros — nodos creados UNA vez y reutilizados; animación solo transform/opacity; reinicio alternando .p1 (sin forzar reflow)
 banner.innerHTML = '<div class="rtB"></div><div class="rt"><span class="rtI"></span></div><div class="rtSub"></div>'; banner.className = 'r33';
 const bnI = banner.querySelector('.rtI'), bnSub = banner.querySelector('.rtSub');
+// update 44 (Aritz t95u: «quita el mensajito de fuera, gol y así, son molestos»): los avisos de EVENTO del partido (GOL, FUERA,
+// POR ENCIMA, EN PROPIA, PARADA) ya NO sacan cartel de texto. Se registran (ROT_LOG / LOGS) y el gol mantiene confeti + sonido + marcador.
+function avisoEvento(txt, cls = '', sub = '') {
+  ROT_LOG.push({ t: S.t, txt, kind: 'oculto', cls, sub, oculto: true }); if (ROT_LOG.length > 30) ROT_LOG.shift();
+  LOG('aviso_oculto', null, { txt });
+}
 function showBanner(txt, cls = '', ms = 1400, sub = '') {
   clearTimeout(showBanner.t); clearTimeout(showBanner.t2);
   if (!txt) { banner.className = 'r33'; return; }
@@ -3621,8 +3684,8 @@ function applyPracticeHud() {
   marcadorSet();
 }
 function practiceLine(ev) {
-  if (ev.type === 'gol' && ev.s > 0) { S.score[0]++; S.goals++; showBanner('¡GOL!', 'bAzul', 900); sfx.goal(); }
-  else showBanner(ev.type === 'gol' ? '¡EN PROPIA!' : (ev.type === 'fuera' && ev.z > GH - 0.3 ? '¡POR ENCIMA!' : '¡FUERA!'), '', 800);
+  if (ev.type === 'gol' && ev.s > 0) { S.score[0]++; S.goals++; avisoEvento('¡GOL!', 'bAzul'); confeti(0); sfx.goal(); }
+  else avisoEvento(ev.type === 'gol' ? '¡EN PROPIA!' : (ev.type === 'fuera' && ev.z > GH - 0.3 ? '¡POR ENCIMA!' : '¡FUERA!'), '');   // update 44: sin cartel
   LOG(ev.type === 'gol' ? 'practica_gol' : 'practica_fuera', user, { s: ev.s });
   if (aim.active) aimEnd(null, true);
   if (ev.type === 'gol') { S.mode = 'goal'; S.pauseT = 1.8; ball.owner = null; user.kickPending = null; return; }   // se ve el balón en la red
@@ -3721,14 +3784,14 @@ function msShow() {
 function rotParada(k) {   // update 32
   MS_ev('parada', k);
   if (S.practice || S.mode !== 'play' || S.t - (S.paradaT || -9) < 1.2) return; S.paradaT = S.t;
-  showBanner('¡PARADA!', k.team === 0 ? 'bAzul' : 'bRojo', 850);
+  avisoEvento('¡PARADA!', k.team === 0 ? 'bAzul' : 'bRojo');   // update 44: sin cartel
 }
 function goalScored(team) {
   if (S.practice) { practiceLine({ type: 'gol', s: team === 0 ? 1 : -1 }); return; }
   S.score[team]++; S.goals++; MS_goal(team); LOG('gol', null, { team });
   elA.textContent = S.score[0]; elB.textContent = S.score[1]; marcGol(team);
   const lt = ball.lastTouch, propia = lt && !lt.keeper && lt.team !== team, gn = lt ? (ALL_CHARS.find((c) => c.key === lt.charKey) || {}).name : '';
-  showBanner('¡GOOOL!', team === 0 ? 'bAzul' : 'bRojo', 1800, gn ? (propia ? 'EN PROPIA · ' + gn : gn) : ''); sfx.goal();
+  avisoEvento('¡GOOOL!', team === 0 ? 'bAzul' : 'bRojo', gn ? (propia ? 'EN PROPIA · ' + gn : gn) : ''); confeti(team); sfx.goal();   // update 44: sin cartel (confeti + sonido + marcador)
   S.mode = 'goal'; S.pauseT = 2.6; ball.owner = null;   // update 16: tiempo para ver el balón en la red
   for (const a of actors) { a.celebrate = a.team === team; a.kickPending = null; a.diveT = 0; a.tackleT = 0; a.kickAnimT = 0; }
 }
@@ -3750,7 +3813,7 @@ function carriedLine(o) {
 function ballOut(ev) {   // update 37: solo línea de fondo (las bandas son paredes)
   S.mode = 'out'; S.pauseT = 1.3; S.outSide = ev.s; S.outKind = 'fondo';
   LOG('fuera', ball.lastTouch, { s: ev.s, k: S.outKind, carried: !!ev.carried, z: +(ev.z || 0).toFixed(2) });
-  showBanner(ev.z > GH - 0.3 ? '¡POR ENCIMA!' : '¡FUERA!', '', 1100, '');
+  avisoEvento(ev.z > GH - 0.3 ? '¡POR ENCIMA!' : '¡FUERA!', '');   // update 44: sin cartel
   if (ball.owner) { ball.owner = null; ball.vel.set(0, 0, 0); }   // conducido: el balón se queda donde salió
   for (const a of actors) { a.kickPending = null; }
   if (aim.active) aimEnd(null, true);
@@ -3944,7 +4007,7 @@ function update(dt) {
   if (PG.id !== null && (ball.owner !== user || S.mode !== 'play')) pgEnd(null, true);   // update 35: sin balón el patrón se cancela
   pgBufUpdate(dt);   // update 36
   // --- UI botones ---
-  const hasBall = ball.owner === user;
+  const hasBall = ball.owner === user || hatVivo();   // update 44: en el sombrerito siguen los botones de ataque
   if (!editor.on) {
     acciones.classList.toggle('con-balon', !!hasBall);
     acciones.classList.toggle('sin-balon', !hasBall);
@@ -4003,6 +4066,24 @@ function makeLobPreview() {
   flightMark = new THREE.Mesh(new THREE.RingGeometry(LAND_R - 0.22, LAND_R, 36).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }));
   flightMark.renderOrder = 3;
   for (const o of [lobArc, lobGround, lobLand, flightMark]) { o.visible = false; o.frustumCulled = false; scene.add(o); }
+  makeEfTrail();   // update 44
+}
+// update 44: ESTELA del tiro con EFECTO: puntos que se encogen detrás del balón mientras dura la curva (se ve la rosca en vuelo)
+const EF_TRAIL_N = 26; let efTrail = null; const efTr = { pts: [], last: 0, hold: 0 };
+function makeEfTrail() {   // update 44: estela del tiro con EFECTO (no depende de haber apuntado un CHUT ALTO antes)
+  if (efTrail) return;
+  efTrail = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.8, depthWrite: false }), EF_TRAIL_N);
+  efTrail.visible = false; efTrail.frustumCulled = false; efTrail.renderOrder = 3; scene.add(efTrail);
+}
+function updateEfTrail() {
+  if (!efTrail) { if (ball.owner || !(ball.fx && ball.fx.ef)) return; makeEfTrail(); }
+  const now = performance.now(), act = !ball.owner && ball.fx && ball.fx.ef && ball.fx.efS > 0 && S.mode !== 'menu';
+  if (act) efTr.hold = now + 380;
+  if (act || (now < efTr.hold && !ball.owner)) { if (now - efTr.last > 28) { efTr.last = now; efTr.pts.push(ball.pos.x, ball.pos.y, ball.pos.z); if (efTr.pts.length > EF_TRAIL_N * 3) efTr.pts.splice(0, 3); } }
+  else if (efTr.pts.length) efTr.pts.splice(0, 6);
+  const n = efTr.pts.length / 3; efTrail.visible = n > 1; if (n < 2) return;
+  for (let i = 0; i < n; i++) { const sc = 0.25 + 0.75 * (i + 1) / n; _m4.makeScale(sc, sc, sc).setPosition(efTr.pts[i * 3], efTr.pts[i * 3 + 2], -efTr.pts[i * 3 + 1]); efTrail.setMatrixAt(i, _m4); }
+  efTrail.count = n; efTrail.instanceMatrix.needsUpdate = true;
 }
 // barra de carga del CHUT ALTO encima del botón (zona perfecta marcada); c < 0 = oculta
 const cargaBarra = document.getElementById('cargaBarra'), cargaFill = cargaBarra && cargaBarra.querySelector('.fill');
@@ -4026,8 +4107,8 @@ function updateChargeBar(c) {
     cargaBarra.dataset.z = c < ALTO_PERFECT[0] ? 'suave' : c <= ALTO_PERFECT[1] ? 'perfecta' : 'alta';
   }
 }
-const _efDir = new THREE.Vector2(), _efFx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 };
-function efFx(bf, pl) { _efFx.curve = bf ? bf.curve || 0 : 0; _efFx.lift = bf ? bf.lift || 0 : 0; _efFx.dip = bf ? bf.dip || 0 : 0; _efFx.ef = pl ? pl.ef : 0; _efFx.efS = pl ? pl.efS : 0; return _efFx; }
+const _efDir = new THREE.Vector2(), _efFx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0, efS0: 0 };
+function efFx(bf, pl) { _efFx.curve = bf ? bf.curve || 0 : 0; _efFx.lift = bf ? bf.lift || 0 : 0; _efFx.dip = bf ? bf.dip || 0 : 0; _efFx.ef = pl ? pl.ef : 0; _efFx.efS = pl ? pl.efS : 0; _efFx.efS0 = pl ? pl.efS0 || pl.efS : 0; return _efFx; }
 function updateShotPreview() {   // update 15: con botas de efecto, el chut con mini-joystick enseña su trayectoria (curva / caída)
   lobArc.count = lobGround.count = LOB_DOTS;
   const bf = bootShot(aim.dir, false, true), pw = 0.35 + 0.65 * aim.power, sp = (tpOn() ? (TP_V0 + TP_V1 * pw) * Math.sqrt(user.sf.tir) : 13 + 19 * pw) * bf.speed;
@@ -4071,6 +4152,7 @@ function updateLobPreview(on, shotPrev) {
   }
   lobArc.instanceMatrix.needsUpdate = true; lobGround.instanceMatrix.needsUpdate = true;
   lobLand.position.set(land.x, 0, -land.y);
+  lobLand.scale.setScalar(1 + 1.3 * (AJ.largoStat === false ? 0 : lobErrK(user)));   // update 44: diana más grande = chut alto impreciso (TIR baja)
   lobLand.children[0].material.color.setHex(0xffffff);   // update 22: diana de caída siempre blanca (sin pista verde/roja)
   aim.lobLand = { c: +aim.lobP.toFixed(2), x: +land.x.toFixed(2), y: +land.y.toFixed(2), peak: +land.peak.toFixed(2), dist: +land.dist.toFixed(2) };
   const perf = aim.lobP >= ALTO_PERFECT[0] && aim.lobP <= ALTO_PERFECT[1];
@@ -4086,9 +4168,10 @@ function updateFlightMark() {
   flightMark.scale.setScalar(1);   // update 31: radio fijo = zona real donde se puede cabecear
 }
 function updateAimLine() {
+  updateEfTrail();   // update 44: la estela va aparte (no depende de la línea de apuntado)
   if (!aimLine) return;
   const on = aim.active && aim.shown && !aim.cancel && user && (aim.kind === 'entrada' ? ball.owner !== user : ball.owner === user) && S.mode === 'play';
-  updateLobPreview(on && aim.kind === 'alto', on && aim.kind === 'chutar' && aim.dragged && bootEquip() !== 'clasicas');
+  updateLobPreview(on && aim.kind === 'alto', on && aim.kind === 'chutar' && aim.dragged && (bootEquip() !== 'clasicas' || (user.sf.cur || 0) >= 0.12));   // update 44: con EFECTO se ve la curva al apuntar
   updateFlightMark();
   if (aimJoy) { const be = !!on && aim.kind === 'alto' && lobDeEspaldas(user, aim.dragged ? aim.dir : lobDir()); if (aimJoy._be !== be) { aimJoy._be = be; aimJoy.classList.toggle('deEspaldas', be); } }   // update 35
   aimLine.visible = !!on && aim.kind !== 'alto';
@@ -4189,13 +4272,31 @@ function quitMatch() {
 // del partido). Salida discreta y deliberada: MANTENER PULSADO el marcador 0,8 s abre el menú del partido (seguir / salir / ajustes).
 // Si la pestaña se oculta, requestAnimationFrame se detiene y el partido se congela en silencio (dt máx. 0,05 s al volver): sin cartel.
 const MARC_HOLD = 800; let marcHold = null;
+// update 44: en PRÁCTICA no se podía salir (Aritz tocaba el marcador como antes de la v42 y no pasaba nada; y en móvil real el gesto largo
+// podía morir por un pointercancel del navegador). Ahora: en PRÁCTICA basta un TOQUE (no hay reloj, una pausa sin querer no cuesta nada);
+// en partido sigue siendo MANTENER 0,8 s, pero robusto (captura del puntero, preventDefault, el pointercancel ya no lo anula) y un toque
+// corto enseña la pista «MANTÉN PULSADO PARA EL MENÚ».
+const marcPistaEl = document.createElement('div'); marcPistaEl.id = 'marcPista'; marcPistaEl.textContent = 'MANTÉN PULSADO PARA EL MENÚ'; document.body.appendChild(marcPistaEl);
+let marcPistaT = 0;
+function marcPista() {
+  const b = marcadorEl.getBoundingClientRect(); marcPistaEl.style.left = Math.round(b.left) + 'px'; marcPistaEl.style.top = Math.round(b.bottom + 6) + 'px';
+  marcPistaEl.classList.add('visible'); clearTimeout(marcPistaT); marcPistaT = setTimeout(() => marcPistaEl.classList.remove('visible'), 1600); LOG('marcador_pista', null, {});
+}
 const marcSoltar = () => { if (marcHold) { clearTimeout(marcHold.t); marcHold = null; } marcadorEl.classList.remove('manteniendo'); };
+const marcPuede = () => ['play', 'kickoff', 'goal', 'out'].includes(S.mode) && !S.paused;
 marcadorEl.addEventListener('pointerdown', (e) => {
-  e.stopPropagation(); marcSoltar(); if (!['play', 'kickoff', 'goal', 'out'].includes(S.mode) || S.paused) return;
+  e.stopPropagation(); if (e.cancelable) e.preventDefault(); marcSoltar(); if (!marcPuede()) return;
+  try { marcadorEl.setPointerCapture(e.pointerId); } catch (er) {}
   marcadorEl.classList.add('manteniendo');
-  marcHold = { id: e.pointerId, t: setTimeout(() => { marcHold = null; marcadorEl.classList.remove('manteniendo'); openPause(); }, MARC_HOLD) };
+  marcHold = { id: e.pointerId, t0: performance.now(), t: setTimeout(() => { marcHold = null; marcadorEl.classList.remove('manteniendo'); marcPistaEl.classList.remove('visible'); openPause(); }, MARC_HOLD) };
 });
-for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) marcadorEl.addEventListener(ev, marcSoltar);
+marcadorEl.addEventListener('pointerup', (e) => {
+  const h = marcHold; if (!h || h.id !== e.pointerId) return;
+  marcSoltar(); if (!marcPuede()) return;
+  if (S.practice) { openPause(); LOG('pausa_toque_practica', null, {}); } else marcPista();
+});
+marcadorEl.addEventListener('pointerleave', (e) => { if (marcHold && !marcadorEl.hasPointerCapture(e.pointerId) && e.pointerType === 'mouse') marcSoltar(); });   // dedo: con captura no se suelta por salirse un poco
+marcadorEl.addEventListener('contextmenu', (e) => e.preventDefault());
 document.getElementById('btnReanudar').addEventListener('click', resumeGame);
 document.getElementById('btnSalir').addEventListener('click', quitMatch);
 document.getElementById('btnReiniciarBalon').addEventListener('click', () => { if (!S.practice) return; practiceBall(false); resumeGame(); LOG('practica_reiniciar', user, {}); });
@@ -5274,7 +5375,7 @@ function buildCampo(key) {
   window.__game.campoSuelos = T && T.suelos ? window.__game.campoSuelos : {};
   { let tes = 0; campoRoot.traverse((o) => { if (o.isMesh && o.name === 'Campo_Fusionado') tes += teselarSuelo(o); }); window.__game.campoTeselado = tes; }   // update 41 (los 4 campos: en el estadio también saltaba el césped)
   setupNet();
-  campoDeco = T ? buildDeco(THREE, key, { mergeStatic, ensureSmoothN, outlineMat: OUTLINE_MAT, baja: AJ.quality === 'baja' }) : null;
+  campoDeco = T ? buildDeco(THREE, key, { mergeStatic, ensureSmoothN, outlineMat: OUTLINE_MAT, outlineMatEst: OUTLINE_MAT_EST, baja: AJ.quality === 'baja' }) : null;
   if (campoDeco) campoRoot.add(campoDeco.group);
   scene.add(campoRoot);
   scene.background = new THREE.Color(T ? T.bg : '#a8d8f5');
@@ -5641,7 +5742,7 @@ Object.assign(window.__game, {
   // pruebas: simula con la física real (stepBall, con postes/larguero/red) un chut alto con carga c desde D m de la línea de gol
   simAlto: (c, D, dt = 1 / 120) => {
     const sv = { pos: ball.pos.clone(), vel: ball.vel.clone(), owner: ball.owner, le: ball.lineEvent, bs: ball.backspin };
-    const lp = lobParams(c); ball.owner = null; ball.lineEvent = null; ball.backspin = 0; const fx0 = { ...ball.fx }; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 });
+    const lp = lobParams(c); ball.owner = null; ball.lineEvent = null; ball.backspin = 0; const fx0 = { ...ball.fx }; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0, efS0: 0 });
     ball.pos.set(0, HL - D, BR + 0.02); ball.vel.set(0, lp.h, lp.vz);
     const prev = new THREE.Vector3(); let t = 0, zGoal = null, tGoal = null, tBounce = null, peak = 0;
     for (; t < 6 && !ball.lineEvent; t += dt) {
@@ -5734,7 +5835,7 @@ function releasePass(a, tgt, lofted, m) {
   MS_pass(a);   // update 32
   const d = new V2(tgt.x - a.pos.x, tgt.y - a.pos.y), L = Math.max(1, d.length()); d.normalize();
   const j = THREE.MathUtils.degToRad(a.sf.jitterDeg * 0.45) * (Math.random() * 2 - 1); if (j) d.rotateAround(new V2(), j);   // PRECISIÓN
-  ball.owner = null; ball.noCatch = a; ball.noCatchT = 0.3; ball.lastTouch = a; ball.backspin = 0; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 });
+  ball.owner = null; ball.noCatch = a; ball.noCatchT = 0.3; ball.lastTouch = a; ball.backspin = 0; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0, efS0: 0 });
   const off = PR + BR + 0.15;
   ball.pos.set(a.pos.x + d.x * off, a.pos.y + d.y * off, BR + 0.05);
   if (lofted) {   // elevado: si el receptor está en el área rival llega a la altura de la cabeza (centro para rematar)
@@ -5957,9 +6058,9 @@ function trampaBot(a, w) {
 }
 
 // ---------- SALTO Y CABEZAZO ----------
-const _ap = new THREE.Vector3(), _av = new THREE.Vector3(), _afx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 };
+const _ap = new THREE.Vector3(), _av = new THREE.Vector3(), _afx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0, efS0: 0 };
 // update 31: círculo de caída (la marca blanca del suelo). Solo se puede cabecear estando DENTRO (usuario y bots)
-const _lp = { x: 0, y: 0, k: -1, t: -1 }, _lq = new THREE.Vector3(), _lv = new THREE.Vector3(), _lfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 };
+const _lp = { x: 0, y: 0, k: -1, t: -1 }, _lq = new THREE.Vector3(), _lv = new THREE.Vector3(), _lfx = { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0, efS0: 0 };
 function landPt() {
   if (ball.owner || ball.pos.z <= BR + 0.05) return null;
   const key = ball.kickN || 0;
@@ -6072,7 +6173,7 @@ function doHeader(a, intent) {
   } else {   // despeje: hacia delante, alto y lejos del centro de nuestra área
     dir = new V2(a.pos.x * 0.4 + (Math.random() - 0.5) * 8, dirY * 12).normalize(); sp = 13 + Math.random() * 3; vz = 6;
   }
-  ball.owner = null; ball.lastTouch = a; ball.noCatch = a; ball.noCatchT = 0.35; ball.backspin = 0; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0 });
+  ball.owner = null; ball.lastTouch = a; ball.noCatch = a; ball.noCatchT = 0.35; ball.backspin = 0; Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0, ef: 0, efS: 0, efS0: 0 });
   ball.pos.set(a.pos.x + dir.x * PR * 0.6, a.pos.y + dir.y * PR * 0.6, z0);
   ball.vel.set(dir.x * sp, dir.y * sp, vz);
   ball.w.set(0, 1, 0).cross(_wv.set(ball.vel.x, 0, -ball.vel.y)).multiplyScalar(0.3 / BR);
@@ -6266,7 +6367,7 @@ let possRing = null;
 function u30UI() {
   trampaUpdate();
   if (editor.on) return;
-  const air = !!user && S.mode === 'play' && ball.owner !== user && headersOn() && !!((S.uAir && inLandCircle(user)) || user.jumping || user.jumpQ);
+  const air = !!user && S.mode === 'play' && ball.owner !== user && !hatVivo() && headersOn() && !!((S.uAir && inLandCircle(user)) || user.jumping || user.jumpQ);
   if (acciones._air !== air) {
     acciones._air = air; acciones.classList.toggle('aereo', air); btnChutar.classList.toggle('cabeza', air);
     const t = btnChutar.querySelector('.btnTxt'); if (t) t.textContent = air ? 'CABEZA' : chutLbl();
@@ -6374,18 +6475,19 @@ Object.assign(window.__game, {
   open2v2, close2v2, play2v2, M2, ai2Raw,
 });
 Object.assign(window.__game, { cardHTML, shoot, THREE, effectCurve, applyTeamDiscs, discosOn, trampaFire: (x, y) => trampaFire(x === undefined ? null : { x, y }), screenToField, trampaPointer, landPt: () => { const l = landPt(); return l && { x: l.x, y: l.y }; }, inLandCircle: (a) => inLandCircle(a || user), LAND_R });   // update 31
-Object.assign(window.__game, { MS_get, msShow, msHide, get MS() { return MS; }, marcadorSet, marcGol, CTRL, TR, applyComboTR, applyTiroPase, showBanner, ROT_LOG, confeti, lobStatK: (k) => lobStatK({ charKey: k }), tpOn });   // update 32
+Object.assign(window.__game, { avisoEvento, hatVivo, MS_get, msShow, msHide, get MS() { return MS; }, marcadorSet, marcGol, CTRL, TR, applyComboTR, applyTiroPase, showBanner, ROT_LOG, confeti, lobStatK: (k) => lobStatK({ charKey: k }), tpOn });   // update 32
 Object.defineProperties(window.__game, { perf: { get: () => PERF, configurable: true }, rueda: { get: () => ({ pos: RUEDA.pos, target: RUEDA.target, sp: RUEDA.sp, n: RUEDA.items.length }), configurable: true } });   // update 35 (getters de verdad: Object.assign los congela)
 Object.defineProperty(window.__game, 'campoDeco', { get: () => campoDeco, configurable: true });   // update 39
 Object.defineProperty(window.__game, 'campoRoot', { get: () => campoRoot, configurable: true });   // update 40: para el escaneo del terreno de juego
 Object.assign(window.__game, { buildCampo, setCampo, campoAplicar, CAMPO_OPS, CROP: { CROP_X, CROP_Y, CROP_H }, GEO: { HW, HL, WX, WY, SIDE_X, GW, POST_X, POST_R, GH, GD, NET_X, NET_Z, BR }, CAMS, CAMPOS, TEMAS, NOVEDADES, comboOn, patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
 Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS, GK_ONLY, GK_STATS, GK_STAT_KEYS, statsAt, progCurve, lvCost, LV_MAX, LV_REF, TIERS, tierDe, progMejorar, monedasPartido, monedasTitulo, MON_PARTIDO, MON_TITULO,
-  rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, LOB_NERF, LOB_K_MAX, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
+  rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, gkEnCampo, LOB_NERF, LOB_K_MAX, GK44, lobErrK, lobErrRoll, LOB_ERR, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
   progReload: () => { PROG = progLoad(); lbRender(); return PROG; }, alinReload: () => { ALIN = alinLoad(); return ALIN; },
   setLv: (k, lv) => { PROG.lv[k] = lv; progSave(); lbRender(); }, setMon: (m) => { PROG.mon = m; progSave(); lbRender(); } });   // update 37
 Object.assign(window.__game, { HL, lobStatKTir: (t) => lobStatK({ sf: { t: { tir: t } } }) });
 Object.defineProperties(window.__game, { META: { get: () => META, configurable: true }, PROG: { get: () => PROG, configurable: true }, ALIN: { get: () => ALIN, configurable: true }, matchSig: { get: () => matchSig, configurable: true } });
-Object.assign(window.__game, { effectPlan, EF_THETA, gkCurveCross: (lineY, s) => { const r = gkCurveCross(lineY, s); return r && { tt: r.tt, x: r.x, z: r.z }; } });   // update 34
+Object.assign(window.__game, { effectPlan, EF_THETA, EF_A, EF_B, efShape, gkCurveCross: (lineY, s) => { const r = gkCurveCross(lineY, s); return r && { tt: r.tt, x: r.x, z: r.z }; } });   // update 34
+Object.defineProperty(window.__game, 'efTrail', { get: () => efTrail, configurable: true });   // update 44 (getter vivo: Object.assign lo congelaba)
 Object.defineProperty(window.__game, 'trampa', { get: () => trampa && { t0: trampa.t0, tgt: trampa.tgt, held: trampa.held, pid: trampa.pid }, configurable: true });
 Object.defineProperties(window.__game, {
   mateA: { get: () => mateA, configurable: true }, mateB: { get: () => mateB, configurable: true },

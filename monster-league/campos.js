@@ -39,7 +39,7 @@ function rng(seed) { let a = seed >>> 0; return () => { a |= 0; a = (a + 0x6D2B7
 // Kit: acumula piezas (geometría + transformación + color) y las fusiona en una malla por tipo.
 class Kit {
   constructor(T) {
-    this.T = T; this.L = { prop: [], flat: [], glow: [] }; this.stack = [new T.Matrix4()];
+    this.T = T; this.L = { prop: [], flat: [], glow: [], liso: [] }; this.stack = [new T.Matrix4()];
     this._m = new T.Matrix4(); this._q = new T.Quaternion(); this._e = new T.Euler(); this._p = new T.Vector3(); this._s = new T.Vector3(); this.G = {};
   }
   // coords de juego: x derecha, y hacia la portería rival, h altura. ry = giro (0 = mira a +y)
@@ -55,8 +55,8 @@ class Kit {
     this.L[kind].push({ geo, m, c: new this.T.Color(c), c2: o.c2 ? new this.T.Color(o.c2) : null });
   }
   geo(k, f) { return this.G[k] || (this.G[k] = f()); }
-  build(kind) {
-    const T = this.T, L = this.L[kind]; if (!L.length) return null;
+  build(kind, filt) {
+    const T = this.T, L = filt ? this.L[kind].filter(filt) : this.L[kind]; if (!L.length) return null;
     let nv = 0, ni = 0;
     for (const p of L) { nv += p.geo.attributes.position.count; ni += p.geo.index ? p.geo.index.count : p.geo.attributes.position.count; }
     const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), C = new Float32Array(nv * 3), I = new Uint32Array(ni);
@@ -188,34 +188,7 @@ function volcan(T, k, r) {
     k.add('prop', g.dode, '#4a4043', s * 5.28, gy, 4.32, { s: 0.42 });
     k.add('prop', g.cone4, '#2a2326', s * 5.5, gy, 4.5, { s: [0.12, 0.55, 0.12], rz: s * 0.5 });
   }
-  // ríos de lava a los lados y lago al fondo
-  const riv = (s) => { const pts = []; for (let y = -75; y <= 70; y += 3) pts.push([s * (34 + 3.2 * Math.sin(y / 9 + s)), y, 6 + 1.5 * Math.sin(y / 5)]); return pts; };
-  for (const s of [-1, 1]) {
-    const pts = riv(s); const rb = ribbon(T, pts, 6, 0.04);
-    k.add('glow', rb, '#ffb12e', 0, 0, 0); k.L.glow[k.L.glow.length - 1].edge = rb.userData.edge;
-    for (const p of pts) for (const e of [-1, 1]) if (r() < 0.85) { const sz = 0.6 + r() * 1.3; k.add('prop', g.ico, rock(), p[0] + e * (p[2] / 2 + 0.4 + r() * 0.8), p[1] + (r() - 0.5) * 2, sz * 0.35, { s: [sz, sz * (0.55 + r() * 0.4), sz], ry: r() * 6 }); }
-  }
-  { const pts = []; for (let x = -38; x <= 38; x += 3) pts.push([x, 46 + 3 * Math.sin(x / 7), 9 + 2 * Math.sin(x / 4)]); const rb = ribbon(T, pts, 9, 0.04); k.add('glow', rb, '#ffb12e', 0, 0, 0); k.L.glow[k.L.glow.length - 1].edge = rb.userData.edge; }
-  // banda entre la valla y el río: escombros bajos + gárgolas
-  for (const s of [-1, 1]) {
-    for (let n = 0; n < 34; n++) { const x = s * (24.2 + r() * 5.5), y = -40 + r() * 76, sz = 0.35 + r() * 0.8; k.add('prop', g.ico, rock(), x, y, sz * 0.3, { s: [sz, sz * 0.7, sz], ry: r() * 6 }); }
-    for (const y of [-14, 3, 20]) gargola(T, k, g, s * 28, y, faceTo(s * 28, y, 0, y), 1);
-    // grietas de lava en el suelo exterior
-    for (let n = 0; n < 10; n++) { let x = s * (25 + r() * 4), y = -35 + r() * 68, a = r() * 6; const pts = [[x, y]]; for (let q = 0; q < 4; q++) { a += (r() - 0.5) * 1.2; x += Math.cos(a) * 1.4; y += Math.sin(a) * 1.4; pts.push([x, y]); } (pts.every((p) => Math.abs(p[0]) >= 23) ? k.add : nada).call(k, 'glow', ribbon(T, pts, 0.16, 0.02), '#e3540f', 0, 0, 0); }   // update 40: ninguna grieta entra por dentro de las vallas
-  }
-  // agujas y peñascos de roca volcánica más allá de los ríos
-  for (const s of [-1, 1]) for (let n = 0; n < 30; n++) {
-    const x = s * (41 + r() * 24), y = -60 + r() * 120, h = 6 + r() * 16, rr = 2 + r() * 3.5;
-    k.add('prop', r() < 0.5 ? g.cone5 : g.cone6, '#262022', x, y, -0.2, { s: [rr, h, rr * (0.8 + r() * 0.4)], ry: r() * 6, c2: '#4b3d3d' });
-    if (r() < 0.6) { const b = 1.4 + r() * 2; k.add('prop', g.dode, rock(), x + (r() - 0.5) * 5, y + (r() - 0.5) * 5, b * 0.4, { s: [b, b * 0.8, b], ry: r() * 6 }); }
-  }
-  // fondo rival: escombros, dos gárgolas grandes y el volcán
-  for (let n = 0; n < 26; n++) { const x = -26 + r() * 52, y = 31 + r() * 9, sz = 0.5 + r() * 1.1; k.add('prop', g.ico, rock(), x, y, sz * 0.3, { s: [sz, sz * 0.7, sz], ry: r() * 6 }); }
-  for (const s of [-1, 1]) gargola(T, k, g, s * 13, 34, faceTo(s * 13, 34, 0, 0), 1.25);
-  for (const s of [-1, 1]) for (let n = 0; n < 7; n++) { const x = s * (16 + r() * 18), y = 36 + r() * 6, h = 4 + r() * 7, rr = 1.6 + r() * 2.2; k.add('prop', g.cone5, '#262022', x, y, -0.2, { s: [rr, h, rr], ry: r() * 6, c2: '#4b3d3d' }); }
-  k.add('prop', k.geo('volc', () => new T.CylinderGeometry(7, 34, 30, 11, 3).translate(0, 15, 0)), '#241c1e', 0, 78, -0.5, { c2: '#4a3634' });
-  k.add('glow', k.geo('crater', () => new T.CylinderGeometry(6.2, 6.6, 0.6, 11).translate(0, 0.3, 0)), '#ffb12e', 0, 78, 29.6);
-  // (sin coladas en la ladera: con la cámara del juego solo se ve la falda del volcán y quedaban como barras)
+  volcanExt(T, k, r);   // update 44: exterior nuevo (estatuas modeladas, rocas biseladas, agujas)
 }
 // cinta sobre la ladera del volcán (h según el radio: cono de 30 m)
 function ribbonSlope(T, pts, H) {
@@ -227,18 +200,6 @@ function ribbonSlope(T, pts, H) {
   }
   const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new T.Float32BufferAttribute(N, 3)); g.setIndex(I); return g;
 }
-function gargola(T, k, g, x, y, ry, s) {
-  k.at(x, y, 0, ry, s, () => {
-    k.add('prop', g.box, '#3b3235', 0, 0, 0, { s: [2.2, 1.45, 2.2] });
-    k.add('prop', g.box, '#4c4245', 0, 0, 1.45, { s: [2.5, 0.25, 2.5] });
-    k.add('prop', g.sph, '#5c5357', 0, -0.1, 2.55, { s: [0.85, 1.05, 0.8] });
-    for (const e of [-1, 1]) { k.add('prop', g.box, '#4f4649', e * 0.45, 0.45, 1.7, { s: [0.4, 0.55, 0.6] }); k.add('prop', g.cone3, '#463d41', e * 0.95, -0.35, 2.3, { s: [0.9, 2.3, 0.16], rz: -e * 0.75, ry: e * 0.25 }); }
-    k.add('prop', g.dode, '#655c60', 0, 0.35, 3.75, { s: [0.6, 0.55, 0.62] });
-    k.add('prop', g.box, '#574e52', 0, 0.85, 3.55, { s: [0.5, 0.32, 0.45] });
-    for (const e of [-1, 1]) { k.add('prop', g.cone4, '#292225', e * 0.32, 0.2, 4.1, { s: [0.13, 0.7, 0.13], rz: -e * 0.55, rx: -0.35 }); k.add('glow', g.sphLo, '#ff8a1e', e * 0.22, 0.86, 3.86, { s: 0.09 }); }
-  });
-}
-
 // =============== HIELO ===============
 function hielo(T, k, r) {
   const g = G(k, T);
@@ -259,38 +220,7 @@ function hielo(T, k, r) {
     k.add('prop', g.box, '#ffffff', 0, gy, 4.22, { s: [10.9, 0.26, 0.5] });
     for (const s of [-1, 1]) { k.add('prop', g.sph, '#ffffff', s * 5.28, gy, 4.3, { s: [0.42, 0.26, 0.42] }); for (const hh of [1.4, 2.9]) k.add('prop', g.torus, '#bfe8ff', s * 5.28, gy, hh, { s: [0.34, 0.5, 0.34] }); }   // escarcha en los postes (nada en el suelo del campo)
   }
-  // gradas de glaciar con muñecos de nieve
-  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
-    const x0 = 27 + i * 3.3, hh = 0.9 + i * 1.3;
-    const segs = [];
-    for (let y = -36; y < 42; y += 6) { const dh = (r() - 0.5) * 0.35, L = 6 - 0.2; segs.push([y + 3, hh + dh + 0.22]); k.add('prop', g.box, ice(), s * (x0 + 1.65), y + 3, 0, { s: [3.3, hh + dh, L] }); k.add('prop', g.box, r() < 0.6 ? '#eef6fd' : '#dcecf9', s * (x0 + 1.65 + 0.35), y + 3, hh + dh, { s: [2.7, 0.22, L - 0.3] }); if (r() < 0.22) cristales(T, k, g, s * (x0 + 2.4), y + 1 + r() * 4, 3, 1.3 + r() * 1.4, r); }
-    for (let n = 0; n < 4; n++) { const sg = segs[1 + ((r() * (segs.length - 2)) | 0)], y = sg[0] + (r() - 0.5) * 4, sc = 0.95 + r() * 0.45; munyeco(T, k, g, s * (x0 + 1.5 + (r() - 0.5) * 0.8), y, sg[1] - 0.02, faceTo(s * x0, y, 0, y + (r() - 0.5) * 20), sc, r); }   // apoyado sobre su bloque (nada flotando)
-  }
-  // pinos nevados detrás de las gradas y al fondo
-  const pino = (x, y, h) => { k.add('prop', g.cyl6, '#5a3d2a', x, y, 0, { s: [0.35, h * 0.22, 0.35] }); for (let t = 0; t < 3; t++) { const w = h * (0.34 - t * 0.08), y0 = h * (0.16 + t * 0.22); k.add('prop', g.cone7, '#2c5e4c', x, y, y0, { s: [w, h * 0.36, w], ry: t }); k.add('prop', g.cone7, '#f3f8ff', x, y, y0 + h * 0.17, { s: [w * 0.72, h * 0.2, w * 0.72], ry: t + 0.3 }); } };
-  for (const s of [-1, 1]) for (let n = 0; n < 22; n++) pino(s * (41.5 + r() * 24), -55 + r() * 115, 7 + r() * 8);
-  for (let n = 0; n < 14; n++) pino(-45 + r() * 90, 44 + r() * 30, 8 + r() * 8);
-  // cristales en las esquinas y castillo de hielo al fondo
-  for (const [x, y] of [[-25, 31.5], [25, 31.5], [-25.5, -31], [25.5, -31]]) cristales(T, k, g, x, y, y < 0 ? 4 : 6, y < 0 ? 1.4 : 3.5, r);
-  for (let n = 0; n < 12; n++) cristales(T, k, g, -24 + r() * 48, 32.5 + r() * 5, 3, 2 + r() * 3.5, r);
-  for (let n = 0; n < 18; n++) { const x = (r() - 0.5) * 30, y = 52 + r() * 14, h = 8 + r() * 20, w = 1.2 + r() * 1.6; k.add('prop', g.crys, r() < 0.5 ? '#86d2ff' : '#bdeaff', x, y, 0, { s: [w, h, w], ry: r() * 6, rx: (r() - 0.5) * 0.2 }); }
-  // montículos de nieve
-  for (let n = 0; n < 40; n++) { const s = r() < 0.5 ? -1 : 1, x = s * (24 + r() * 40), y = -50 + r() * 110, R = 1 + r() * 2.5; if (Math.abs(x) < 26 && y > -31 && y < 31) continue; k.add('prop', g.sphLo, '#f6fbff', x, y, -R * 0.25, { s: [R, R * 0.45, R * 1.2], ry: r() * 6 }); }
-}
-function cristales(T, k, g, x, y, n, h, r) {
-  for (let i = 0; i < n; i++) { const a = r() * 6, d = i ? 0.3 + r() * 0.7 : 0, hh = h * (i ? 0.45 + r() * 0.5 : 1), w = hh * (0.16 + r() * 0.06); k.add('prop', g.crys, r() < 0.5 ? '#7ccdfb' : '#b8e9ff', x + Math.cos(a) * d, y + Math.sin(a) * d, -0.05, { s: [w, hh, w], ry: r() * 6, rx: (r() - 0.5) * 0.55, rz: (r() - 0.5) * 0.55 }); }
-}
-function munyeco(T, k, g, x, y, h, ry, s, r) {
-  const BUF = ['#e8343a', '#2f6fe0', '#33b35a', '#ffb21e'][(r() * 4) | 0];
-  k.at(x, y, h, ry, s, () => {
-    k.add('prop', g.sph, '#ffffff', 0, 0, 0.5, { s: 0.55 });
-    k.add('prop', g.sph, '#ffffff', 0, 0, 1.25, { s: 0.42 });
-    k.add('prop', g.sph, '#ffffff', 0, 0, 1.85, { s: 0.3 });
-    k.add('prop', g.torus, BUF, 0, 0, 1.58, { s: [0.32, 0.4, 0.32] });
-    k.add('prop', g.cone5, '#ff8a1e', 0, 0.27, 1.86, { s: [0.06, 0.32, 0.06], rx: Math.PI / 2 });
-    for (const e of [-1, 1]) { k.add('prop', g.sphLo, '#14161c', e * 0.1, 0.25, 1.95, { s: 0.045 }); k.add('prop', g.cyl6, '#5a3d2a', e * 0.38, 0, 1.3, { s: [0.035, 0.55, 0.035], rz: -e * 1.0 }); }
-    if (r() < 0.5) { k.add('prop', g.cyl8, '#1d2030', 0, 0, 2.08, { s: [0.3, 0.05, 0.3] }); k.add('prop', g.cyl8, '#1d2030', 0, 0, 2.1, { s: [0.2, 0.3, 0.2] }); }
-  });
+  hieloExt(T, k, r);   // update 44: exterior nuevo (gradas redondeadas, cristales facetados, pinos festoneados, muñecos detallados)
 }
 
 // =============== BOSQUE DE SETAS ===============
@@ -317,25 +247,9 @@ function setas(T, k, r) {
       for (const hh of [0.7, 1.9, 3.1]) k.add('prop', g.torus, moss[(r() * 3) | 0], s * 5.28, gy, hh, { s: [0.36, 0.7, 0.36], ry: r() });   // hiedra/musgo enrollado en los postes (nada en el suelo del campo)
     }
   }
-  // setas gigantes: cerca de la valla pequeñas, más lejos enormes
-  for (const s of [-1, 1]) {
-    for (let n = 0; n < 16; n++) { const x = s * (25 + r() * 6), y = -38 + r() * 76; seta(T, k, g, x, y, 0, 0.9 + r() * 1.4, CAPS[(r() * CAPS.length) | 0], r); }
-    for (let n = 0; n < 12; n++) { const x = s * (33 + r() * 10), y = -45 + r() * 90; seta(T, k, g, x, y, 0, 2.8 + r() * 2.8, CAPS[(r() * CAPS.length) | 0], r); }
-    for (let n = 0; n < 10; n++) { const x = s * (46 + r() * 20), y = -55 + r() * 115; seta(T, k, g, x, y, 0, 5 + r() * 4, CAPS[(r() * CAPS.length) | 0], r); }
-    // árboles enormes del bosque (troncos)
-    for (let n = 0; n < 8; n++) { const x = s * (55 + r() * 18), y = -50 + r() * 120, R = 2.2 + r() * 1.6; k.add('prop', g.cyl8, '#4a2f1f', x, y, 0, { s: [R, 40, R * 1.05], ry: r() }); for (let q = 0; q < 4; q++) { const a = q * 1.57 + r() * 0.5; k.add('prop', g.cone4, '#3f281a', x + Math.cos(a) * R, y + Math.sin(a) * R, 0, { s: [R * 0.5, R * 1.6, R * 0.5], rz: -Math.cos(a) * 0.5, rx: Math.sin(a) * 0.5 }); } }
-  }
-  for (let n = 0; n < 12; n++) { const x = -27 + r() * 54, y = 31.5 + r() * 6; seta(T, k, g, x, y, 0, 1 + r() * 1.8, CAPS[(r() * CAPS.length) | 0], r); }
-  for (let n = 0; n < 8; n++) { const x = -30 + r() * 60, y = 40 + r() * 10; seta(T, k, g, x, y, 0, 3 + r() * 3, CAPS[(r() * CAPS.length) | 0], r); }
-  for (let n = 0; n < 6; n++) { const x = -40 + r() * 80, y = 55 + r() * 20, R = 2.5 + r() * 1.5; k.add('prop', g.cyl8, '#4a2f1f', x, y, 0, { s: [R, 40, R] }); }
-  // helechos, matas, rocas con musgo, flores y setitas que brillan
-  const zona = () => { const s = r() < 0.5 ? -1 : 1; return r() < 0.8 ? [s * (23.6 + r() * 22), -40 + r() * 80] : [-26 + r() * 52, 30.8 + r() * 10]; };
-  for (let n = 0; n < 70; n++) { const [x, y] = zona(), R = 0.4 + r() * 0.9; k.add('prop', g.ico, r() < 0.5 ? '#2f6a2a' : '#3d8a32', x, y, R * 0.25, { s: [R, R * 0.6, R], ry: r() * 6 }); }
-  for (let n = 0; n < 40; n++) { const [x, y] = zona(); for (let q = 0; q < 5; q++) k.add('prop', g.cone3, '#3f8f35', x, y, 0, { s: [0.12, 0.9 + r() * 0.5, 0.05], ry: q * 1.25, rx: 0.6 }); }
-  for (let n = 0; n < 18; n++) { const [x, y] = zona(), R = 0.6 + r() * 0.9; k.add('prop', g.dode, '#6b6f78', x, y, R * 0.3, { s: [R, R * 0.7, R], ry: r() * 6 }); k.add('prop', g.sphLo, '#5f9a35', x, y, R * 0.75, { s: [R * 0.8, R * 0.25, R * 0.8] }); }
-  for (let n = 0; n < 60; n++) { const [x, y] = zona(); k.add('prop', g.cyl6, '#3d7f30', x, y, 0, { s: [0.03, 0.35, 0.03] }); k.add('prop', g.ico, ['#b36bff', '#6fa8ff', '#ff7ac8', '#ffe066'][(r() * 4) | 0], x, y, 0.38, { s: 0.14 }); }
-  for (let n = 0; n < 34; n++) { const [x, y] = zona(); for (let q = 0; q < 3; q++) { const dx = (r() - 0.5) * 0.8, dy = (r() - 0.5) * 0.8, hh = 0.18 + r() * 0.25; k.add('prop', g.cyl6, '#e9e0c8', x + dx, y + dy, 0, { s: [0.035, hh, 0.035] }); k.add('glow', g.cap, r() < 0.5 ? '#72f2ff' : '#ff8ad8', x + dx, y + dy, hh, { s: [0.12, 0.08, 0.12] }); } }
+  setasExt(T, k, r);   // update 44: exterior nuevo (setas-árbol, troncos con raíces, matas, helechos)
 }
+// seta clásica: solo para las setitas de las porterías (borde del campo, sin cambios)
 function seta(T, k, g, x, y, h, R, cap, r, mini) {
   const H = R * (mini ? 1.4 : (R > 4 ? 0.85 + r() * 0.35 : 1.1 + r() * 0.5)), lean = mini ? 0 : (r() - 0.5) * 0.18;
   k.at(x, y, h, r() * 6, 1, () => {
@@ -347,10 +261,304 @@ function seta(T, k, g, x, y, h, R, cap, r, mini) {
   });
 }
 
+// =============== update 44: DECORADO EXTERIOR PULIDO (capa 'liso') ===============
+// Geometría soldada con normales suaves (rocas biseladas, estatuas modeladas, setas-árbol, pinos, muñecos...) en una sola
+// malla con sombreado toon de 3 tonos + contorno (como los personajes). Detalle según distancia a la cámara de juego y calidad Baja.
+function hash3(x, y, z) { const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return h - Math.floor(h); }
+function vnoise(x, y, z) {
+  const xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z), xf = x - xi, yf = y - yi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf), L = (a, b, t) => a + (b - a) * t;
+  const c = (i, j, k) => hash3(xi + i, yi + j, zi + k);
+  return L(L(L(c(0, 0, 0), c(1, 0, 0), u), L(c(0, 1, 0), c(1, 1, 0), u), v), L(L(c(0, 0, 1), c(1, 0, 1), u), L(c(0, 1, 1), c(1, 1, 1), u), v), w) * 2 - 1;
+}
+const fbm = (x, y, z) => vnoise(x, y, z) * 0.6 + vnoise(x * 2.1 + 7, y * 2.1, z * 2.1) * 0.3 + vnoise(x * 4.3, y * 4.3 + 3, z * 4.3) * 0.1;
+// suelda vértices por posición (indexada) y recalcula normales suaves; quita triángulos degenerados
+function soldar(T, g, tol = 1e4) {
+  const P = g.attributes.position, map = new Map(), pos = [], vid = new Int32Array(P.count), src = g.index ? g.index.array : null, n = src ? src.length : P.count;
+  for (let i = 0; i < P.count; i++) { const x = P.getX(i), y = P.getY(i), z = P.getZ(i), key = Math.round(x * tol) + ',' + Math.round(y * tol) + ',' + Math.round(z * tol); let id = map.get(key); if (id === undefined) { id = pos.length / 3; map.set(key, id); pos.push(x, y, z); } vid[i] = id; }
+  const I = []; for (let j = 0; j + 2 < n; j += 3) { const a = vid[src ? src[j] : j], b = vid[src ? src[j + 1] : j + 1], c = vid[src ? src[j + 2] : j + 2]; if (a !== b && b !== c && a !== c) I.push(a, b, c); }
+  const o = new T.BufferGeometry(); o.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); o.setIndex(I); o.computeVertexNormals(); return o;
+}
+// deforma (fn(v) recibe Vector3 en coords three: y = arriba) y recalcula normales
+function deformar(T, g, fn) { const P = g.attributes.position, v = new T.Vector3(); for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i); fn(v, i); P.setXYZ(i, v.x, v.y, v.z); } g.computeVertexNormals(); g.computeBoundingBox(); return g; }
+function facetas(T, g) { const o = g.index ? g.toNonIndexed() : g; o.deleteAttribute && o.deleteAttribute('uv'); o.computeVertexNormals(); return o; }
+function unir(T, gs) {
+  let nv = 0, ni = 0; for (const g of gs) { nv += g.attributes.position.count; ni += g.index ? g.index.count : g.attributes.position.count; }
+  const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), I = new Uint32Array(ni); let vo = 0, io = 0;
+  for (const g of gs) { P.set(g.attributes.position.array, vo * 3); N.set(g.attributes.normal.array, vo * 3); if (g.index) for (let i = 0; i < g.index.count; i++) I[io++] = g.index.getX(i) + vo; else for (let i = 0; i < g.attributes.position.count; i++) I[io++] = i + vo; vo += g.attributes.position.count; }
+  const o = new T.BufferGeometry(); o.setAttribute('position', new T.BufferAttribute(P, 3)); o.setAttribute('normal', new T.BufferAttribute(N, 3)); o.setIndex(new T.BufferAttribute(I, 1)); return o;
+}
+function espejoX(T, g) { const o = g.clone(), P = o.attributes.position; for (let i = 0; i < P.count; i++) P.setX(i, -P.getX(i)); const I = o.index.array; for (let j = 0; j < I.length; j += 3) { const t = I[j + 1]; I[j + 1] = I[j + 2]; I[j + 2] = t; } o.computeVertexNormals(); return o; }
+const torno = (T, pts, seg) => soldar(T, new T.LatheGeometry(pts.map((p) => new T.Vector2(p[0], p[1])), seg));
+const bola = (T, w, h) => soldar(T, new T.SphereGeometry(1, w, h));
+// tubo con radio variable por una curva (puntos en coords de JUEGO: x, y adelante, h arriba)
+function tubo(T, pts, r0, r1, rad = 8, seg = 10, rf) {
+  const c = new T.CatmullRomCurve3(pts.map((p) => new T.Vector3(p[0], p[2], -p[1]))), fr = c.computeFrenetFrames(seg, false), P = [], I = [];
+  for (let i = 0; i <= seg; i++) { const t = i / seg, p = c.getPointAt(t), N = fr.normals[i], B = fr.binormals[i], R = rf ? rf(t) : r0 + (r1 - r0) * t; for (let j = 0; j < rad; j++) { const a = (j / rad) * Math.PI * 2, cs = Math.cos(a), sn = Math.sin(a); P.push(p.x + R * (cs * N.x + sn * B.x), p.y + R * (cs * N.y + sn * B.y), p.z + R * (cs * N.z + sn * B.z)); } }
+  for (let i = 0; i < seg; i++) for (let j = 0; j < rad; j++) { const a = i * rad + j, b = i * rad + ((j + 1) % rad), cc = (i + 1) * rad + j, d = (i + 1) * rad + ((j + 1) % rad); I.push(a, b, cc, b, d, cc); }
+  // tapa de la base (punto central)
+  const p0 = c.getPointAt(0), ci = P.length / 3; P.push(p0.x, p0.y, p0.z); for (let j = 0; j < rad; j++) I.push(ci, (j + 1) % rad, j);
+  const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute(P, 3)); g.setIndex(I); g.computeVertexNormals(); return g;
+}
+// caja redondeada (unidad, base en y=0)
+function cajaR(T, rr, s = 3) {
+  const g = new T.BoxGeometry(1, 1, 1, s, s, s), P = g.attributes.position, v = new T.Vector3(), q = new T.Vector3(), h = 0.5 - rr;
+  for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i); q.set(Math.max(-h, Math.min(h, v.x)), Math.max(-h, Math.min(h, v.y)), Math.max(-h, Math.min(h, v.z))); const d = v.clone().sub(q); if (d.lengthSq() > 1e-9) v.copy(q.add(d.normalize().multiplyScalar(rr))); P.setXYZ(i, v.x, v.y + 0.5, v.z); }
+  return soldar(T, g);
+}
+// roca biselada: icosaedro subdividido + ruido + cortes planos (caras amplias con aristas redondeadas) + base plana
+function rocaG(T, seed, det) {
+  const g = soldar(T, new T.IcosahedronGeometry(1, det)), rr = rng(seed), cuts = [];
+  for (let i = 0; i < 5; i++) { const a = rr() * 6.283, e = (rr() - 0.25) * 1.3; cuts.push([Math.cos(a) * Math.cos(e), Math.sin(e), Math.sin(a) * Math.cos(e), 0.5 + rr() * 0.28]); }
+  const o = rr() * 50;
+  return deformar(T, g, (v) => {
+    const s = 1 + 0.17 * fbm(v.x * 1.5 + o, v.y * 1.5, v.z * 1.5); v.multiplyScalar(s);
+    for (const c of cuts) { const d = v.x * c[0] + v.y * c[1] + v.z * c[2]; if (d > c[3]) { const k = (d - c[3]) * 0.82; v.x -= c[0] * k; v.y -= c[1] * k; v.z -= c[2] * k; } }
+    if (v.y < -0.42) v.y = -0.42 + (v.y + 0.42) * 0.15;
+  });
+}
+// aguja de roca volcánica (torno con ruido y punta curvada)
+function agujaG(T, seed, det) {
+  const rows = det ? 10 : 6, pts = []; for (let i = 0; i <= rows; i++) { const t = i / rows; pts.push([Math.max(0.02, Math.pow(1 - t, 0.85) * (1 + 0.1 * Math.sin(t * 8 + seed))), t]); } pts.push([0, 1.02]);
+  const g = torno(T, pts, det ? 9 : 7), o = seed * 3.1;
+  return deformar(T, g, (v) => { const a = Math.atan2(v.z, v.x), t = v.y, k = 1 + 0.22 * fbm(Math.cos(a) * 1.3 + o, t * 4, Math.sin(a) * 1.3); v.x *= k; v.z *= k; v.x += 0.35 * t * t; });
+}
+// ala de gárgola (murciélago): perfil festoneado extruido con bisel + varillas
+function alaG(T) {
+  const s = new T.Shape(); s.moveTo(0, -0.05); s.lineTo(0, 0.5); s.quadraticCurveTo(0.55, 1.15, 1.65, 1.45); s.lineTo(1.72, 1.32);
+  s.quadraticCurveTo(1.38, 1.0, 1.4, 0.55); s.quadraticCurveTo(1.12, 0.48, 0.95, 0.12); s.quadraticCurveTo(0.62, 0.15, 0.4, -0.12); s.quadraticCurveTo(0.2, 0.02, 0, -0.05);
+  const e = soldar(T, new T.ExtrudeGeometry(s, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.035, bevelSize: 0.03, bevelSegments: 1, curveSegments: 6 }).translate(0, 0, -0.025));
+  deformar(T, e, (v) => { v.z += 0.18 * v.x * v.x * 0.4 - 0.05 * v.y; });
+  const rib = (x, y) => tubo(T, [[0.02, 0.025, 0.48], [x * 0.5, -(0.18 * (x * 0.5) ** 2 * 0.4 - 0.05 * y * 0.5) + 0.0, y * 0.55 + 0.25], [x, -(0.18 * x * x * 0.4 - 0.05 * y), y]], 0.065, 0.02, 6, 8);
+  return unir(T, [e, rib(1.66, 1.4), rib(1.4, 0.58), rib(0.96, 0.15), rib(0.42, -0.08)]);
+}
+// cono de seta (unidad: radio 1, alto 1; se escala [R, R·0.62, R] como antes): sombrero con borde enrollado
+const SOMB = [[0, 0.13], [0.4, 0.09], [0.82, 0.03], [0.98, 0.0], [1.05, 0.06], [1.04, 0.17], [0.96, 0.38], [0.81, 0.62], [0.57, 0.85], [0.3, 0.97], [0, 1.0]];
+function sombY(rho) { const top = SOMB.slice(5); for (let i = 0; i < top.length - 1; i++) { const [r0, y0] = top[i], [r1, y1] = top[i + 1]; if (rho <= r0 && rho >= r1) { const t = (r0 - rho) / ((r0 - r1) || 1); return [y0 + (y1 - y0) * t, (y1 - y0) / ((r1 - r0) || -1)]; } } return [1, 0]; }
+function sombreroG(T, det, seed) { const g = torno(T, SOMB, det ? 20 : 12); return deformar(T, g, (v) => { const a = Math.atan2(v.z, v.x), rr = Math.hypot(v.x, v.z); if (rr > 0.9) v.y += 0.035 * Math.sin(a * 5 + seed); const k = 1 + 0.025 * Math.sin(a * 3 + seed * 2); v.x *= k; v.z *= k; }); }
+function laminasG(T, det) { const n = det ? 32 : 16, g = torno(T, [[0.17, 0.12], [0.5, 0.07], [0.97, 0.012]], n); return deformar(T, g, (v) => { const a = Math.atan2(v.z, v.x), rr = Math.hypot(v.x, v.z); v.y -= 0.03 * Math.abs(Math.sin(a * n / 4)) * Math.min(1, (rr - 0.17) * 3); }); }
+// pie de seta: base ensanchada (bulbo), cintura, falda (anillo)
+const PIE = [[0, 0], [1.3, 0], [1.22, 0.05], [1.02, 0.14], [0.86, 0.32], [0.8, 0.6], [0.8, 0.86], [0.92, 0.98], [0.55, 1.0], [0, 1.0]];
+function pieG(T, det, seed) { const g = torno(T, PIE, det ? 12 : 8); return deformar(T, g, (v) => { const a = Math.atan2(v.z, v.x), k = 1 + 0.06 * Math.sin(a * 4 + seed) * (1 - v.y) + 0.03 * Math.sin(v.y * 14 + a * 2); v.x *= k; v.z *= k; }); }
+function faldaG(T, det) { return torno(T, [[0.78, 0.8], [0.78, 0.74], [0.98, 0.69], [1.2, 0.61], [1.22, 0.64], [1.02, 0.74], [0.78, 0.8]], det ? 12 : 8); }
+// tronco gigante con raíces de contrafuerte y corteza
+function troncoG(T, det, seed) {
+  const ys = [0, 0.006, 0.014, 0.026, 0.042, 0.065, 0.1, 0.2, 0.4, 0.7, 1], rs = [1.9, 1.62, 1.38, 1.2, 1.08, 1.02, 1, 0.97, 0.93, 0.88, 0.84];
+  const g = torno(T, ys.map((y, i) => [rs[i], y]).concat([[0, 1]]), det ? 28 : 14);
+  return deformar(T, g, (v) => { const a = Math.atan2(v.z, v.x), y = v.y, bf = Math.max(0, 1 - y / 0.07), c = Math.max(0, Math.cos(a * 5 + seed)); const k = 1 + bf * c * c * c * 0.95 + 0.045 * Math.sin(a * 11 + y * 40 + seed) * (y < 0.999 ? 1 : 0); v.x *= k; v.z *= k; });
+}
+// pino nevado: troncos/escalones de ramas festoneados + nieve encima (dos geometrías, mismo origen; alto 1)
+function pinoG(T, det, seed) {
+  const seg = det ? 14 : 9, verde = [], nieve = [];
+  for (let t = 0; t < 4; t++) {
+    const R = 0.36 - t * 0.075, yb = 0.16 + t * 0.19, hT = 0.34 - t * 0.04;
+    const fest = (v, amp) => { const a = Math.atan2(v.z, v.x), rr = Math.hypot(v.x, v.z); if (rr > R * 0.55) { const c = Math.cos(a * 9 + t + seed); const k = 1 + amp * c; v.x *= k; v.z *= k; v.y -= (rr / R) * 0.03 * (1 - c); } };
+    verde.push(deformar(T, torno(T, [[0, yb + 0.12 * hT], [R * 0.96, yb - 0.02], [R, yb + 0.02], [R * 0.56, yb + 0.45 * hT], [R * 0.2, yb + 0.86 * hT], [0, yb + hT]], seg), (v) => fest(v, 0.09)));
+    nieve.push(deformar(T, torno(T, [[0, yb + 0.25 * hT], [R * 0.86, yb + 0.07 * hT + 0.02], [R * 0.9, yb + 0.12 * hT + 0.025], [R * 0.55, yb + 0.5 * hT + 0.02], [R * 0.2, yb + 0.88 * hT + 0.015], [0, yb + hT + 0.02]], seg), (v) => fest(v, 0.12)));
+  }
+  const tronco = torno(T, [[0, 0], [0.05, 0], [0.04, 0.25], [0, 0.26]], det ? 8 : 6);
+  return { verde: unir(T, verde), nieve: unir(T, nieve), tronco };
+}
+// cristal de hielo: prisma hexagonal biselado con punta (facetado nítido)
+function cristalG(T) { return facetas(T, new T.LatheGeometry([[0, 0], [0.86, 0], [1, 0.05], [1, 0.66], [0.9, 0.73], [0.12, 0.98], [0, 1]].map((p) => new T.Vector2(p[0], p[1])), 6)); }
+// mata (arbusto): bola con bultos
+function mataG(T, seed) { const g = soldar(T, new T.IcosahedronGeometry(1, 2)); return deformar(T, g, (v) => { const k = 1 + 0.2 * fbm(v.x * 2.2 + seed, v.y * 2.2, v.z * 2.2); v.multiplyScalar(k); if (v.y < -0.3) v.y = -0.3; }); }
+
+function LIB(k, T) {
+  const c = (key, f) => k.geo(key, f);
+  return {
+    roca: (i, d) => c('roca' + i + d, () => rocaG(T, 101 + i * 37, d)),   // det 1 (42 v) cerca; 0 (12 v, se suaviza con normales) lejos
+    aguja: (i, d) => c('aguja' + i + d, () => agujaG(T, 1 + i * 1.7, d)),
+    bola: (d) => c('bola' + d, () => bola(T, d ? 14 : 10, d ? 10 : 7)),
+    bolaLo: () => c('bolaLo', () => bola(T, 8, 6)),
+    caja: () => c('cajaR', () => cajaR(T, 0.1, 3)),
+    cajaB: () => c('cajaRb', () => cajaR(T, 0.22, 3)),
+    ala: (e) => c('ala' + e, () => (e > 0 ? alaG(T) : espejoX(T, alaG(T)))),
+    sombrero: (d, i) => c('somb' + d + i, () => sombreroG(T, d, i)),
+    laminas: (d) => c('lam' + d, () => laminasG(T, d)),
+    pie: (d, i) => c('pie' + d + i, () => pieG(T, d, i)),
+    falda: (d) => c('falda' + d, () => faldaG(T, d)),
+    tronco: (d, i) => c('tronco' + d + i, () => troncoG(T, d, i * 1.3)),
+    pino: (d, i) => c('pino' + d + i, () => pinoG(T, d, i * 0.7)),
+    cristal: () => c('cristalF', () => cristalG(T)),
+    mata: (i) => c('mata' + i, () => mataG(T, i * 5.3)),
+    cono: (d) => c('conoS' + d, () => torno(T, [[0, 0], [1, 0], [0.62, 0.45], [0.25, 0.85], [0, 1]], d ? 10 : 6)),
+    cil: (d) => c('cilS' + d, () => torno(T, [[0, 0], [1, 0], [1, 1], [0, 1]], d ? 12 : 7)),
+  };
+}
+// detalle: 1 = cerca de la cámara de juego, 0 = lejos o calidad Baja
+const detalle = (k, x, y, sz = 1) => (k.baja || Math.abs(x) > 38 || y > 44 || y < -46 || sz < 0.6 ? 0 : 1);
+// gárgola modelada (mismo concepto: pedestal + gárgola agazapada con alas, cuernos y ojos de brasa). Mira a +y local.
+function gargolaN(T, k, L, x, y, ry, s) {
+  const d = detalle(k, x, y), B = L.bola(d), Bl = L.bolaLo(), C = L.caja(), P0 = '#2e272a', ST = '#4a4246', ST2 = '#6d6468', h0 = 1.83;
+  const g = (key, f) => k.geo('garg_' + key + d, f);
+  k.at(x, y, 0, ry, s, () => {
+    // pedestal con zócalo, fuste y cornisa (aristas redondeadas)
+    k.add('liso', C, P0, 0, 0, 0, { s: [2.5, 0.32, 2.5], c2: '#3a3235' });
+    k.add('liso', C, '#3a3235', 0, 0, 0.3, { s: [2.05, 1.12, 2.05], c2: '#463d41' });
+    k.add('liso', L.cajaB(), '#4a4145', 0, 0, 1.4, { s: [2.6, 0.32, 2.6], c2: '#5a5054' });
+    for (const [ex, ey] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) k.add('liso', C, '#2a2427', ex * 0.95, ey * 0.95, 0.3, { s: [0.28, 1.12, 0.28] });
+    // patas traseras (muslos) y garras
+    for (const e of [-1, 1]) {
+      k.add('liso', B, ST, e * 0.45, -0.2, h0 + 0.32, { s: [0.38, 0.34, 0.55], c2: ST2 });
+      k.add('liso', B, ST, e * 0.5, 0.18, h0 + 0.1, { s: [0.2, 0.12, 0.3] });
+      for (const q of [-1, 0, 1]) k.add('liso', g('garra', () => tubo(T, [[0, 0, 0.05], [0, 0.12, 0.04], [0, 0.2, -0.04]], 0.05, 0.008, 6, 5)), '#2a2326', e * 0.5 + q * 0.09, 0.36, h0, { ry: -q * 0.25 });
+    }
+    // torso inclinado hacia delante, pecho y cola
+    k.add('liso', B, ST, 0, 0.02, h0 + 0.95, { s: [0.56, 0.78, 0.5], rx: -0.38, c2: ST2 });
+    k.add('liso', B, '#564d51', 0, 0.3, h0 + 1.05, { s: [0.4, 0.5, 0.25], rx: -0.4 });
+    k.add('liso', g('cola', () => tubo(T, [[0, -0.35, 0.35], [0, -0.85, 0.12], [0.55, -1.0, 0.05], [0.95, -0.6, 0.05], [1.0, -0.15, 0.1]], 0.12, 0.03, 7, 14)), ST, 0, 0, h0);
+    k.add('liso', L.cono(d), '#2a2326', 1.0, -0.12, h0 + 0.1, { s: [0.13, 0.28, 0.06], rx: -1.45 });
+    // brazos apoyados en las rodillas
+    for (const e of [-1, 1]) {
+      k.add('liso', g('brazo' + e, () => tubo(T, [[e * 0.5, 0.1, 1.42], [e * 0.66, 0.32, 0.95], [e * 0.42, 0.52, 0.5]], 0.17, 0.1, 8, 10)), ST, 0, 0, h0);
+      k.add('liso', B, ST2, e * 0.42, 0.56, h0 + 0.45, { s: [0.15, 0.12, 0.18] });
+      k.add('liso', B, ST, e * 0.62, 0.05, h0 + 1.45, { s: [0.24, 0.22, 0.24], c2: ST2 });   // hombros
+    }
+    // cabeza: cráneo, cejas, hocico con mandíbula y dientes, orejas, cuernos curvados
+    const hz = h0 + 1.78;
+    k.add('liso', B, ST, 0, 0.42, hz, { s: [0.36, 0.34, 0.36], c2: ST2 });
+    k.add('liso', B, '#5d5458', 0, 0.68, hz + 0.06, { s: [0.32, 0.1, 0.12], rx: -0.2 });
+    k.add('liso', B, ST, 0, 0.74, hz - 0.12, { s: [0.24, 0.17, 0.24], c2: ST2 });
+    k.add('liso', B, '#3e3639', 0, 0.68, hz - 0.27, { s: [0.2, 0.08, 0.2] });
+    if (d) for (const e of [-1, 1]) k.add('liso', L.cono(0), '#cfc6b8', e * 0.1, 0.88, hz - 0.29, { s: [0.035, 0.1, 0.035], rx: Math.PI });
+    for (const e of [-1, 1]) {
+      k.add('liso', g('oreja' + e, () => tubo(T, [[e * 0.28, 0.42, 0.08], [e * 0.48, 0.32, 0.18], [e * 0.6, 0.22, 0.2]], 0.07, 0.01, 6, 5)), ST, 0, 0, hz);
+      k.add('liso', g('cuerno' + e, () => tubo(T, [[e * 0.16, 0.42, 0.24], [e * 0.36, 0.28, 0.48], [e * 0.44, 0.0, 0.66], [e * 0.38, -0.32, 0.72]], 0.09, 0.012, 7, 12)), '#2a2326', 0, 0, hz, { c2: '#4b4245' });
+      k.add('glow', Bl, '#ff8a1e', e * 0.13, 0.75, hz + 0.0, { s: [0.075, 0.06, 0.05] });
+    }
+    // alas plegadas hacia atrás y arriba
+    for (const e of [-1, 1]) k.add('liso', L.ala(e), '#3f373b', e * 0.36, -0.22, h0 + 1.38, { ry: -e * 0.25, rz: e * 0.42, c2: '#5a5155' });
+  });
+}
+
+// =============== VOLCÁN: exterior ===============
+function volcanExt(T, k, r) {
+  const L = LIB(k, T), ROCK = ['#3b3337', '#443a3e', '#4d4245', '#55494c'], rock = () => ROCK[(r() * ROCK.length) | 0];
+  const roca = (x, y, sz, sq = 0.7, base = -0.12) => { const d = detalle(k, x, y, sz), c = rock(); if (k.baja && sz < 0.9 && r() < 0.5) return; k.add('liso', L.roca((r() * 6) | 0, d), '#241e21', x, y, sz * sq * 0.42 + base * sz, { s: [sz, sz * sq, sz * (0.8 + r() * 0.4)], ry: r() * 6, c2: c }); };
+  // ríos de lava a los lados y lago al fondo (mismas cintas), orillas de rocas biseladas
+  const riv = (s) => { const pts = []; for (let y = -75; y <= 70; y += 3) pts.push([s * (34 + 3.2 * Math.sin(y / 9 + s)), y, 6 + 1.5 * Math.sin(y / 5)]); return pts; };
+  for (const s of [-1, 1]) {
+    const pts = riv(s); const rb = ribbon(T, pts, 6, 0.04);
+    k.add('glow', rb, '#ffb12e', 0, 0, 0); k.L.glow[k.L.glow.length - 1].edge = rb.userData.edge;
+    for (const p of pts) for (const e of [-1, 1]) if (r() < 0.7) roca(p[0] + e * (p[2] / 2 + 0.5 + r() * 0.8), p[1] + (r() - 0.5) * 2, 0.6 + r() * 1.3, 0.5 + r() * 0.35);
+  }
+  { const pts = []; for (let x = -38; x <= 38; x += 3) pts.push([x, 46 + 3 * Math.sin(x / 7), 9 + 2 * Math.sin(x / 4)]); const rb = ribbon(T, pts, 9, 0.04); k.add('glow', rb, '#ffb12e', 0, 0, 0); k.L.glow[k.L.glow.length - 1].edge = rb.userData.edge; }
+  // banda entre la valla y el río: escombros, gárgolas y grietas
+  for (const s of [-1, 1]) {
+    for (let n = 0; n < 30; n++) roca(s * (24.4 + r() * 5.2), -40 + r() * 76, 0.35 + r() * 0.8, 0.55 + r() * 0.3);
+    for (const y of [-14, 3, 20]) gargolaN(T, k, L, s * 28, y, faceTo(s * 28, y, 0, y), 1);
+    for (let n = 0; n < 10; n++) { let x = s * (25 + r() * 4), y = -35 + r() * 68, a = r() * 6; const pts = [[x, y]]; for (let q = 0; q < 4; q++) { a += (r() - 0.5) * 1.2; x += Math.cos(a) * 1.4; y += Math.sin(a) * 1.4; pts.push([x, y]); } (pts.every((p) => Math.abs(p[0]) >= 23) ? k.add : nada).call(k, 'glow', ribbon(T, pts, 0.16, 0.02), '#e3540f', 0, 0, 0); }
+  }
+  // agujas de roca volcánica y peñascos más allá de los ríos
+  const aguja = (x, y, h, rr) => { const d = detalle(k, x, y, rr); k.add('liso', L.aguja((r() * 4) | 0, d), '#221b1e', x, y, -0.3, { s: [rr, h, rr * (0.8 + r() * 0.4)], ry: r() * 6, c2: '#56474a' }); };
+  for (const s of [-1, 1]) for (let n = 0; n < 30; n++) {
+    const x = s * (41 + r() * 24), y = -60 + r() * 120, h = 6 + r() * 16, rr = 2 + r() * 3.5; aguja(x, y, h, rr);
+    if (r() < 0.6) roca(x + (r() - 0.5) * 5, y + (r() - 0.5) * 5, 1.4 + r() * 2, 0.75);
+  }
+  // fondo rival: escombros, dos gárgolas grandes, agujas y el volcán
+  for (let n = 0; n < 24; n++) roca(-26 + r() * 52, 31.2 + r() * 8.8, 0.5 + r() * 1.1, 0.6);
+  for (const s of [-1, 1]) gargolaN(T, k, L, s * 13, 34, faceTo(s * 13, 34, 0, 0), 1.25);
+  for (const s of [-1, 1]) for (let n = 0; n < 7; n++) aguja(s * (16 + r() * 18), 36 + r() * 6, 4 + r() * 7, 1.6 + r() * 2.2);
+  {
+    const ys = [0, 0.08, 0.2, 0.36, 0.55, 0.75, 0.9, 0.97, 1], pts = ys.map((t) => [7 + 27 * Math.pow(1 - t, 1.6), t * 30]); pts.push([6.4, 30.05], [0, 29.7]);
+    const vg = k.geo('volc44', () => deformar(T, torno(T, pts, 30), (v) => { const a = Math.atan2(v.z, v.x), t = v.y / 30; if (t < 0.985) { const kk = 1 + 0.09 * fbm(Math.cos(a) * 2.5, t * 3, Math.sin(a) * 2.5) * (1 - t) + 0.05 * Math.sin(a * 9) * (1 - t); v.x *= kk; v.z *= kk; } }));
+    k.add('liso', vg, '#201819', 0, 78, -0.5, { c2: '#55403d' });
+  }
+  k.add('glow', k.geo('crater', () => new T.CylinderGeometry(6.2, 6.6, 0.6, 11).translate(0, 0.3, 0)), '#ffb12e', 0, 78, 29.6);
+}
+
+// =============== HIELO: exterior ===============
+function munyecoN(T, k, L, x, y, h, ry, s, r) {
+  const d = detalle(k, x, y), B = L.bola(d), Bl = L.bolaLo(), BUF = ['#e8343a', '#2f6fe0', '#33b35a', '#ffb21e'][(r() * 4) | 0], NV = '#dfeaf7', NV2 = '#ffffff';
+  const g = (key, f) => k.geo('mun_' + key + d, f), sombrero = r() < 0.5;
+  k.at(x, y, h, ry, s, () => {
+    k.add('liso', B, NV, 0, 0, 0.5, { s: [0.58, 0.52, 0.56], c2: NV2 });
+    k.add('liso', B, NV, 0, 0, 1.24, { s: [0.43, 0.4, 0.42], c2: NV2 });
+    k.add('liso', B, NV, 0, 0, 1.86, { s: [0.31, 0.3, 0.31], c2: NV2 });
+    k.add('liso', g('bufanda', () => soldar(T, new T.TorusGeometry(0.33, 0.085, 8, d ? 22 : 12).rotateX(Math.PI / 2))), BUF, 0, 0, 1.58);
+    k.add('liso', L.caja(), BUF, 0.14, 0.3, 1.18, { s: [0.13, 0.4, 0.06], rz: 0.15, rx: 0.2 });
+    k.add('liso', g('zanah', () => tubo(T, [[0, 0, 0], [0, 0.18, -0.01], [0, 0.36, -0.05]], 0.055, 0.006, 7, 6)), '#ff8a1e', 0, 0.27, 1.88);
+    for (const e of [-1, 1]) {
+      k.add('liso', Bl, '#14161c', e * 0.11, 0.26, 1.98, { s: [0.045, 0.05, 0.03] });
+      k.add('liso', g('brazo' + e, () => unir(T, [tubo(T, [[e * 0.36, 0, 1.38], [e * 0.62, 0.05, 1.55], [e * 0.86, 0.02, 1.85]], 0.035, 0.018, 5, 6), tubo(T, [[e * 0.7, 0.03, 1.65], [e * 0.78, 0.12, 1.66], [e * 0.86, 0.2, 1.62]], 0.02, 0.008, 5, 4)])), '#5a3d2a', 0, 0, 0);
+    }
+    if (d) for (let q = -2; q <= 2; q++) k.add('liso', Bl, '#14161c', q * 0.06, 0.29, 1.77 - 0.025 * (2 - Math.abs(q)), { s: 0.022 });
+    for (const hb of [1.08, 1.27, 1.46]) k.add('liso', Bl, '#14161c', 0, Math.sqrt(Math.max(0, 0.42 * 0.42 - (hb - 1.24) ** 2)) * 0.96, hb, { s: [0.04, 0.04, 0.025] });
+    if (sombrero) { k.add('liso', L.cil(d), '#1d2030', 0, 0, 2.08, { s: [0.3, 0.04, 0.3] }); k.add('liso', L.cil(d), '#1d2030', 0, 0, 2.1, { s: [0.2, 0.3, 0.2], c2: '#2a2f45' }); k.add('liso', L.cil(d), BUF, 0, 0, 2.13, { s: [0.205, 0.06, 0.205] }); }
+    else { k.add('liso', L.cil(d), '#3f7fd6', 0, 0, 2.05, { s: [0.24, 0.2, 0.24], rz: 0.15, c2: '#6aa2ee' }); }
+  });
+}
+function hieloExt(T, k, r) {
+  const L = LIB(k, T), ICE = ['#7fc2ee', '#93cff3', '#6bb5e8', '#a6daf6'], ice = () => ICE[(r() * ICE.length) | 0];
+  const cristales = (x, y, n, h) => { for (let i = 0; i < n; i++) { const a = r() * 6, dd = i ? 0.3 + r() * 0.7 : 0, hh = h * (i ? 0.45 + r() * 0.5 : 1), w = hh * (0.16 + r() * 0.06); k.add('liso', L.cristal(), r() < 0.5 ? '#3f97d8' : '#5fb3ea', x + Math.cos(a) * dd, y + Math.sin(a) * dd, -0.05, { s: [w, hh, w], ry: r() * 6, rx: (r() - 0.5) * 0.55, rz: (r() - 0.5) * 0.55, c2: '#e6f7ff' }); } };
+  // gradas de glaciar (bloques redondeados) con nieve que cae por el borde y muñecos de nieve
+  for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {
+    const x0 = 27 + i * 3.3, hh = 0.9 + i * 1.3, segs = [];
+    for (let y = -36; y < 42; y += 6) {
+      const dh = (r() - 0.5) * 0.35, Lg = 6 - 0.2; segs.push([y + 3, hh + dh + 0.24]);
+      k.add('liso', L.cajaB(), lerpC(T, ice(), '#4f8fc4', 0.35), s * (x0 + 1.65), y + 3, 0, { s: [3.3, hh + dh, Lg], c2: ice() });
+      k.add('liso', L.cajaB(), r() < 0.6 ? '#e4eef9' : '#d2e4f5', s * (x0 + 1.65 + 0.3), y + 3, hh + dh - 0.06, { s: [2.85, 0.3, Lg - 0.2], c2: '#ffffff' });
+      if (r() < 0.22) cristales(s * (x0 + 2.4), y + 1 + r() * 4, 3, 1.3 + r() * 1.4);
+    }
+    for (let n = 0; n < 4; n++) { const sg = segs[1 + ((r() * (segs.length - 2)) | 0)], y = sg[0] + (r() - 0.5) * 4, sc = 0.95 + r() * 0.45; munyecoN(T, k, L, s * (x0 + 1.5 + (r() - 0.5) * 0.8), y, sg[1] - 0.02, faceTo(s * x0, y, 0, y + (r() - 0.5) * 20), sc, r); }
+  }
+  // pinos nevados detrás de las gradas y al fondo
+  const pino = (x, y, h) => { const d = detalle(k, x, y), i = (r() * 3) | 0, p = L.pino(d, i), ry = r() * 6, sc = [h * (0.9 + r() * 0.2), h, h * (0.9 + r() * 0.2)]; k.add('liso', p.tronco, '#4a3122', x, y, 0, { s: sc, ry }); k.add('liso', p.verde, '#1f4a3d', x, y, 0, { s: sc, ry, c2: '#3a7a5f' }); k.add('liso', p.nieve, '#dbe8f6', x, y, 0, { s: sc, ry, c2: '#ffffff' }); };
+  for (const s of [-1, 1]) for (let n = 0; n < 22; n++) pino(s * (41.5 + r() * 24), -55 + r() * 115, 7 + r() * 8);
+  for (let n = 0; n < 14; n++) pino(-45 + r() * 90, 44 + r() * 30, 8 + r() * 8);
+  // cristales en las esquinas y castillo de hielo al fondo
+  for (const [x, y] of [[-25, 31.5], [25, 31.5], [-25.5, -31], [25.5, -31]]) cristales(x, y, y < 0 ? 4 : 6, y < 0 ? 1.4 : 3.5);
+  for (let n = 0; n < 12; n++) cristales(-24 + r() * 48, 32.5 + r() * 5, 3, 2 + r() * 3.5);
+  for (let n = 0; n < 18; n++) { const x = (r() - 0.5) * 30, y = 52 + r() * 14, h = 8 + r() * 20, w = 1.2 + r() * 1.6; k.add('liso', L.cristal(), r() < 0.5 ? '#3f97d8' : '#6cbcf0', x, y, 0, { s: [w, h, w], ry: r() * 6, rx: (r() - 0.5) * 0.2, c2: '#eaf8ff' }); }
+  // montículos de nieve (suaves)
+  for (let n = 0; n < 40; n++) { const s = r() < 0.5 ? -1 : 1, x = s * (24 + r() * 40), y = -50 + r() * 110, R = 1 + r() * 2.5; if (Math.abs(x) < 26 && y > -31 && y < 31) continue; k.add('liso', L.bola(0), '#d8e6f5', x, y, -R * 0.25, { s: [R, R * 0.45, R * 1.2], ry: r() * 6, c2: '#ffffff' }); }
+}
+
+// =============== SETAS: exterior ===============
+// seta-árbol: pie curvado con bulbo y falda, sombrero con borde enrollado, láminas debajo y lunares sobre la superficie
+function setaN(T, k, L, x, y, h, R, cap, r) {
+  const d = detalle(k, x, y, R * 0.5), H = R * (R > 4 ? 0.85 + r() * 0.35 : 1.1 + r() * 0.5), lean = (r() - 0.5) * 0.18, v = (r() * 3) | 0, top = H * 0.98;
+  const capC = new k.T.Color(cap), dark = '#' + capC.clone().multiplyScalar(0.62).getHexString();
+  k.at(x, y, h, r() * 6, 1, () => {
+    k.add('liso', L.pie(d, v), '#d9c9a6', 0, 0, 0, { s: [R * 0.26, H, R * 0.26], rz: lean, c2: '#f7efdc' });
+    k.add('liso', L.falda(d), '#efe4cc', 0, 0, 0, { s: [R * 0.26, H, R * 0.26], rz: lean });
+    const ox = -Math.sin(lean) * top;   // el sombrero sigue la inclinación del pie
+    k.add('liso', L.laminas(d), '#c9b48c', ox, 0, top, { s: [R, R * 0.62, R], rz: lean * 0.6 });
+    k.add('liso', L.sombrero(d, v), dark, ox, 0, top, { s: [R, R * 0.62, R], rz: lean * 0.6, c2: cap });
+    const nd = d ? 5 + ((r() * 3) | 0) : k.baja ? 2 : 3;
+    for (let i = 0; i < nd; i++) {
+      const rho = 0.18 + r() * 0.72, th = r() * 6.283, [yy, sl] = sombY(rho), tilt = Math.atan(sl * 0.62), dx = Math.cos(th) * rho * R, dz = Math.sin(th) * rho * R, sz = R * (0.1 + r() * 0.06);
+      k.add('liso', L.bolaLo(), '#fffaf0', ox + dx, dz, top + yy * R * 0.62 - 0.01 * R, { s: [sz, sz * 0.32, sz], ry: -Math.atan2(-dz, dx), rz: tilt });
+    }
+  });
+}
+function setasExt(T, k, r) {
+  const L = LIB(k, T), g = G(k, T), CAPS = ['#e2382d', '#2f7fe6', '#8b52dc', '#f2892b', '#e2382d', '#2f7fe6'], capR = () => CAPS[(r() * CAPS.length) | 0];
+  const arbol = (x, y, R, Hh = 40) => { const d = detalle(k, x, y), i = (r() * 3) | 0; k.add('liso', L.tronco(d, i), '#3a2416', x, y, 0, { s: [R, Hh, R * 1.05], ry: r() * 6, c2: '#5e3d26' }); };
+  for (const s of [-1, 1]) {
+    for (let n = 0; n < 16; n++) setaN(T, k, L, s * (25 + r() * 6), -38 + r() * 76, 0, 0.9 + r() * 1.4, capR(), r);
+    for (let n = 0; n < 12; n++) setaN(T, k, L, s * (33 + r() * 10), -45 + r() * 90, 0, 2.8 + r() * 2.8, capR(), r);
+    for (let n = 0; n < 10; n++) setaN(T, k, L, s * (46 + r() * 20), -55 + r() * 115, 0, 5 + r() * 4, capR(), r);
+    for (let n = 0; n < 8; n++) arbol(s * (55 + r() * 18), -50 + r() * 120, 2.2 + r() * 1.6);
+  }
+  for (let n = 0; n < 12; n++) setaN(T, k, L, -27 + r() * 54, 31.5 + r() * 6, 0, 1 + r() * 1.8, capR(), r);
+  for (let n = 0; n < 8; n++) setaN(T, k, L, -30 + r() * 60, 40 + r() * 10, 0, 3 + r() * 3, capR(), r);
+  for (let n = 0; n < 6; n++) arbol(-40 + r() * 80, 55 + r() * 20, 2.5 + r() * 1.5);
+  // matas, helechos, rocas con musgo, flores y setitas que brillan
+  const zona = () => { const s = r() < 0.5 ? -1 : 1; return r() < 0.8 ? [s * (23.8 + r() * 22), -40 + r() * 80] : [-26 + r() * 52, 31.2 + r() * 10]; };
+  for (let n = 0; n < 60; n++) { const [x, y] = zona(), R = 0.4 + r() * 0.9; if (k.baja && n % 2) continue; k.add('liso', L.mata((r() * 4) | 0), r() < 0.5 ? '#24561f' : '#2f6e28', x, y, R * 0.28, { s: [R, R * 0.65, R], ry: r() * 6, c2: r() < 0.5 ? '#4f9a3a' : '#5fae44' }); }
+  const fronda = k.geo('fronda', () => tubo(T, [[0, 0, 0], [0, 0.35, 0.55], [0, 0.85, 0.62], [0, 1.15, 0.35]], 0.07, 0.01, 4, 8, (t) => 0.09 * Math.sin(Math.PI * Math.min(1, t * 1.15)) + 0.006));
+  for (let n = 0; n < 40; n++) { const [x, y] = zona(), sc = 0.8 + r() * 0.5, ry0 = r() * 6; if (k.baja && n % 2) continue; for (let q = 0; q < 5; q++) k.add('liso', fronda, '#2f7a2a', x, y, 0, { s: [sc * 1.6, sc, sc], ry: ry0 + q * 1.25, c2: '#5fb043' }); }
+  for (let n = 0; n < 18; n++) { const [x, y] = zona(), R = 0.6 + r() * 0.9, d = detalle(k, x, y, R), i = (r() * 6) | 0; k.add('liso', L.roca(i, d), '#4e535c', x, y, R * 0.18, { s: [R, R * 0.7, R], ry: r() * 6, c2: '#7d828c' }); k.add('liso', L.mata((r() * 4) | 0), '#4c8a2c', x, y, R * 0.55, { s: [R * 0.75, R * 0.22, R * 0.75], c2: '#77b84a' }); }
+  for (let n = 0; n < 60; n++) { const [x, y] = zona(); k.add('prop', g.cyl6, '#3d7f30', x, y, 0, { s: [0.03, 0.35, 0.03] }); k.add('liso', L.bolaLo(), ['#b36bff', '#6fa8ff', '#ff7ac8', '#ffe066'][(r() * 4) | 0], x, y, 0.38, { s: [0.14, 0.1, 0.14] }); }
+  for (let n = 0; n < 34; n++) { const [x, y] = zona(); for (let q = 0; q < 3; q++) { const dx = (r() - 0.5) * 0.8, dy = (r() - 0.5) * 0.8, hh = 0.18 + r() * 0.25; k.add('prop', g.cyl6, '#e9e0c8', x + dx, y + dy, 0, { s: [0.035, hh, 0.035] }); k.add('glow', g.cap, r() < 0.5 ? '#72f2ff' : '#ff8ad8', x + dx, y + dy, hh, { s: [0.12, 0.08, 0.12] }); } }
+}
+
 // ---------- montaje ----------
 export function buildDeco(T, key, o = {}) {
   const tema = TEMAS[key]; if (!tema || key === 'dbg') return null;
-  const k = new Kit(T), r = rng({ volcan: 11, hielo: 23, setas: 37 }[key] || 1);
+  const k = new Kit(T), r = rng({ volcan: 11, hielo: 23, setas: 37 }[key] || 1); k.baja = !!o.baja;
   if (key === 'volcan') volcan(T, k, r); else if (key === 'hielo') hielo(T, k, r); else if (key === 'setas') setas(T, k, r);
   const group = new T.Group(); group.name = 'Decorado_' + key; const upd = [];
   const pg = k.build('prop');
@@ -358,6 +566,16 @@ export function buildDeco(T, key, o = {}) {
     const m = new T.Mesh(pg, new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, flatShading: true }));
     m.name = 'Deco_Props'; m.userData.deco = true; group.add(m);
     if (o.outlineMat && o.ensureSmoothN) { o.ensureSmoothN(pg); const ol = new T.Mesh(pg, o.outlineMat); ol.name = 'Deco_Contorno'; ol.userData.outline = true; group.add(ol); }
+  }
+  const lg = k.build('liso');   // update 44: props pulidos, sombreado toon de 3 tonos + contorno
+  if (lg) {
+    const gm = new T.DataTexture(new Uint8Array([105, 185, 255]), 3, 1, T.RedFormat); gm.minFilter = gm.magFilter = T.NearestFilter; gm.needsUpdate = true;
+    const m = new T.Mesh(lg, new T.MeshToonMaterial({ vertexColors: true, gradientMap: gm }));
+    m.name = 'Deco_Liso'; m.userData.deco = true; group.add(m);
+    // contorno solo de lo que está cerca de la cámara de juego (lo lejano ocupa pocos píxeles): geometría aparte, mismas draw calls
+    const cerca = (p) => { const e = p.m.elements, x = e[12], y = -e[14]; return Math.abs(x) < 40 && y > -46 && y < 44; };
+    const og = o.baja ? null : k.build('liso', cerca);   // en Baja el contorno está apagado: ni se construye
+    if (og && (o.outlineMatEst || o.outlineMat) && o.ensureSmoothN) { o.ensureSmoothN(og); const ol = new T.Mesh(og, o.outlineMatEst || o.outlineMat); ol.name = 'Deco_Liso_Contorno'; ol.userData.outline = true; group.add(ol); }
   }
   const fg = k.build('flat');
   if (fg) { const m = new T.Mesh(fg, new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); m.name = 'Deco_Suelo'; m.userData.deco = true; m.receiveShadow = true; group.add(m); }
@@ -378,5 +596,5 @@ export function buildDeco(T, key, o = {}) {
     if (pk) { const pts = particles(T, pk[0], pk[1], pk[2], pk[3], r); pts.visible = !o.baja; group.add(pts); upd.push((dt, cam) => { if (pts.visible) pts.userData.update(dt, cam); }); }
   }
   for (const m of group.children) if (m.isMesh) { m.castShadow = false; m.matrixAutoUpdate = false; m.updateMatrix(); }
-  return { group, key, update: (dt, cam) => { for (const f of upd) f(dt, cam); }, stats: { props: pg ? pg.attributes.position.count : 0, flat: fg ? fg.attributes.position.count : 0, glow: gg ? gg.attributes.position.count : 0 } };
+  return { group, key, update: (dt, cam) => { for (const f of upd) f(dt, cam); }, stats: { liso: lg ? lg.attributes.position.count : 0, props: pg ? pg.attributes.position.count : 0, flat: fg ? fg.attributes.position.count : 0, glow: gg ? gg.attributes.position.count : 0 } };
 }
