@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=45';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=46';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=45';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=46';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -769,15 +769,18 @@ function ensureSmoothN(g) {
   return g;
 }
 const SMOOTH_NORMAL_VS = 'vec3 objectNormal = oNormal;\n#ifdef USE_TANGENT\n\tvec3 objectTangent = vec3( tangent.xyz );\n#endif';
+// update 46: BRILLO opcional por máscara (skin SOMBRA del Gecko: ojos de color animado). Negro y apagado por defecto.
+const GLOW_NEGRO = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1); GLOW_NEGRO.needsUpdate = true;
 function toonPatch(m) {
   m.toneMapped = false; m.userData.toon = true;
-  const u = m.userData.toonU = { uToonShadow: { value: TOON.shadow }, uDye: { value: new THREE.Color(1, 1, 1) }, uDyeAmt: { value: 0 } };
+  const u = m.userData.toonU = { uToonShadow: { value: TOON.shadow }, uDye: { value: new THREE.Color(1, 1, 1) }, uDyeAmt: { value: 0 },
+    uGlowMap: { value: GLOW_NEGRO }, uGlow: { value: new THREE.Color(0, 0, 0) }, uGlowAmt: { value: 0 } };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader.replace('void main() {', 'attribute vec3 oNormal;\nvarying vec3 vToonN;\nvoid main() {')
       .replace('#include <beginnormal_vertex>', SMOOTH_NORMAL_VS)
       .replace('#include <fog_vertex>', '#include <fog_vertex>\n#ifdef USE_SKINNING\n\tvToonN = normalize( transformedNormal );\n#else\n\tvToonN = normalize( normalMatrix * oNormal );\n#endif');
-    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'varying vec3 vToonN;\nuniform float uToonShadow;\nuniform float uDyeAmt;\nuniform vec3 uDye;\nvoid main() {')
+    sh.fragmentShader = sh.fragmentShader.replace('void main() {', 'varying vec3 vToonN;\nuniform float uToonShadow;\nuniform float uDyeAmt;\nuniform vec3 uDye;\nuniform sampler2D uGlowMap;\nuniform vec3 uGlow;\nuniform float uGlowAmt;\nvoid main() {')
       .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', `vec3 outgoingLight = reflectedLight.indirectDiffuse;
 	vec3 tn = normalize( vToonN );
 	float nl = dot( tn, normalize( vec3( -0.45, 0.62, 0.64 ) ) );
@@ -786,9 +789,12 @@ function toonPatch(m) {
 	float rim = smoothstep( 0.0, 0.35, tn.z );                    // los bordes que se curvan se oscurecen un poco (volumen)
 	outgoingLight *= mix( uToonShadow, 1.0, lit ) * mix( 0.9, 1.0, rim );
 	float lumT = dot( outgoingLight, vec3( 0.299, 0.587, 0.114 ) );
-	outgoingLight = mix( outgoingLight, uDye * ( 0.3 + 1.1 * lumT ), uDyeAmt );`);
+	outgoingLight = mix( outgoingLight, uDye * ( 0.3 + 1.1 * lumT ), uDyeAmt );
+	#ifdef USE_MAP
+	outgoingLight += uGlow * texture2D( uGlowMap, vMapUv ).r * uGlowAmt;
+	#endif`);
   };
-  m.customProgramCacheKey = () => 'mlToon21';
+  m.customProgramCacheKey = () => 'mlToon46';
   return m;
 }
 function makeToonMat(src) {
@@ -1107,7 +1113,7 @@ function setJoy(x, y) { joyBase.style.left = x + 'px'; joyBase.style.top = y + '
 const swallow = (e) => { if (e.cancelable !== false) e.preventDefault(); };   // sin aviso si el navegador ya no permite cancelar
 // update 25: los paneles con scroll (ajustes, tienda, colección, torneo/liga) SÍ se desplazan con el dedo.
 // Antes este preventDefault global en touchmove bloqueaba cualquier scroll táctil (AJUSTES no bajaba en el móvil).
-const SCROLL_SEL = '#lbNovCuerpo, .ajCaja, .tiCaja, .coLado, .coCuadro, .coLiga, #coCuerpo, .scrollPanel';
+const SCROLL_SEL = '#lbNovCuerpo, .ajCaja, .tiCaja, #tiendaScroll, #tiendaTabs, .tiDetInfo, .coLado, .coCuadro, .coLiga, #coCuerpo, .scrollPanel';   // update 46: tienda nueva (tira horizontal + pestañas)
 function inScroller(t) {
   const el = t && t.closest ? t.closest(SCROLL_SEL) : null;
   for (let e = el; e && e !== document.body; e = e.parentElement) if (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) { const cs = getComputedStyle(e); if (/(auto|scroll)/.test(cs.overflowY + cs.overflowX)) return true; }
@@ -1115,6 +1121,9 @@ function inScroller(t) {
   // SCROLL_SEL -> en la ALINEACIÓN el dedo no bajaba. Fuera del partido (el HUD de juego no tiene listas con scroll).
   for (let e = t && t.nodeType === 1 ? t : t && t.parentElement; e && e !== document.body; e = e.parentElement)
     if (e.scrollHeight > e.clientHeight + 1) { const cs = getComputedStyle(e); if (/(auto|scroll)/.test(cs.overflowY)) return true; }
+  // update 46 (t98u): también listas con scroll HORIZONTAL (tira de la tienda, pestañas de ronda...): antes el dedo no movía la tienda
+  for (let e = t && t.nodeType === 1 ? t : t && t.parentElement; e && e !== document.body; e = e.parentElement)
+    if (e.scrollWidth > e.clientWidth + 1) { const cs = getComputedStyle(e); if (/(auto|scroll)/.test(cs.overflowX)) return true; }
   return false;
 }
 document.addEventListener('touchmove', (e) => { if (e.touches.length === 1 && inScroller(e.target)) return; swallow(e); }, { passive: false });
@@ -1185,7 +1194,7 @@ function showAimJoy(on) {
     aimJoy.style.top = (aim.cy - ar.top - aim.R) + 'px';
     aimJoy.className = 'on ' + aim.kind; aimJoy._z = '';
     if (aim.kind === 'alto') {   // zonas del chut alto en el anillo: suave / perfecta / alta, según la distancia al centro
-      const d0 = aimDeadPx() / aim.R, f = (c) => ((d0 + c * (1 - d0)) * 100).toFixed(1) + '%';
+      const d0 = aimDeadPx() / aim.R, sv = altoSensU(), f = (c) => ((d0 + Math.min(1, c * sv) * (1 - d0)) * 100).toFixed(1) + '%';   // update 46: zonas comprimidas con poca TIR
       aimJoy.style.setProperty('--z0', f(0)); aimJoy.style.setProperty('--z1', f(ALTO_PERFECT[0])); aimJoy.style.setProperty('--z2', f(ALTO_PERFECT[1]));
     }
   } else { aimJoy.className = ''; aimJoy._z = ''; aimKnob.style.transform = ''; }
@@ -1216,6 +1225,7 @@ function aimUpdateFromPointer(x, y) {
   }
   if (aimJoy) aimJoy.classList.toggle('porteria', !!aim.onGoal && !aim.cancel);
   aim.power = THREE.MathUtils.clamp((Math.min(L, aim.R) - aimDeadPx()) / (aim.R - aimDeadPx()), 0, 1);
+  if (aim.kind === 'alto') aim.power = Math.min(1, aim.power / altoSensU());   // update 46: con poca TIR la trompa se estira MÁS RÁPIDO (cuesta apuntar)
   if (aim.kind === 'alto' && aimJoy) {
     const z = !aim.dragged || aim.cancel ? '' : aim.power < ALTO_PERFECT[0] ? 'zSuave' : aim.power <= ALTO_PERFECT[1] ? 'zPerfecta' : 'zAlta';
     if (aimJoy._z !== z) { aimJoy.classList.remove('zSuave', 'zPerfecta', 'zAlta'); if (z) aimJoy.classList.add(z); aimJoy._z = z; }
@@ -1285,7 +1295,7 @@ function aimedLob(dir, p) {
 // el toque (~1,1 s al 100 %, zona perfecta 45-60 %) y el mini-joystick solo da la dirección; un toque = vaselina suave. Opción 'Disparo instantáneo al tocar': Chutar/Regate en el pointerdown, sin apuntar. Si la acción no es posible aún (sin balón, enfriamiento),
 // se guarda 150 ms en un buffer y se ejecuta en cuanto se pueda.
 const INPUT_BUFFER_MS = 150;
-function altoCharge(t0) { return THREE.MathUtils.clamp((performance.now() - t0 - 60) / 1000 / ALTO_CHARGE_S, 0, 1); }   // 60 ms de margen: un toque = vaselina mínima
+function altoCharge(t0) { return THREE.MathUtils.clamp((performance.now() - t0 - 60) / 1000 / (ALTO_CHARGE_S * altoSensU()), 0, 1); }   // 60 ms de margen: un toque = vaselina mínima
 function doAction(kind, b) {
   if (S.mode !== 'play' || !user || S.paused) return false;
   if (kind === 'swipe') return swipeShoot(b.m);
@@ -2133,6 +2143,11 @@ function predictFlight(pos, vel, out, maxT = 5, h = 1 / 120, fx) {
 // altura bajo el larguero. Mucha carga = muy rápido y recto pero llega demasiado alto y se va por encima. Al subir la carga sube la
 // velocidad, baja el ángulo de salida y (a partir de la mitad) sube la altura con la que llega a la portería.
 const ALTO_CHARGE_S = 1.1, ALTO_PERFECT = [0.45, 0.6];
+// update 46 (t98u: «la trompa direccional de tiro se extienda más rápido si se tiene menos stats de tiro dificultando puntería»):
+// fracción del recorrido del mini-joystick (o del tiempo de carga con Q) que hace falta para la carga COMPLETA del chut alto.
+// TIR 99 = 1 (todo el recorrido, lenta y controlable), 75 ~0,63, 60 = 0,4 (la trompa sale disparada con poco dedo), <60 hasta 0,32.
+function altoSens(t) { return t >= 60 ? 0.4 + 0.6 * THREE.MathUtils.clamp((t - 60) / 39, 0, 1) : Math.max(0.32, 0.4 - (60 - t) * 0.004); }
+function altoSensU() { return AJ.largoStat === false || !user ? 1 : altoSens(lobTir(user)); }
 // update 32: el CHUT LARGO depende de la stat TIR de la carta (k 0-1, interpolación suave): k = 1 (TIR alto) = la 'trompa de elefante'
 // de siempre (larga, potente); k = 0 (TIR bajo) = vaselina suave: salida alta y lenta que no llega lejos aunque cargues al máximo.
 // update 37: NERF del chut alto/largo: TIR 99 rinde como antes TIR 70 (potencia, distancia y precisión) y escala proporcional hacia
@@ -2154,7 +2169,8 @@ function lobErrRoll(e) {
 const LOB_K_MAX = () => lobStatK({ sf: { t: { tir: 99 } } });   // update 37: tope (TIR 99 nerfeado = antes TIR 70)
 function lobParams(c, k = 1) {
   c = THREE.MathUtils.clamp(c, 0, 1); k = THREE.MathUtils.clamp(k, 0, 1);
-  const vHi = 10 + 23 * c, vLo = 8.5 + 2.8 * c;
+  // update 46 (t98u «el chut alto sigue muy chetado aún en 60»): tiro más FLOJO: TIR 99 al máximo ~30 m (antes 52), 75 ~16 m (antes 33), 60 ~8 m (antes 17)
+  const vHi = 9 + 13.5 * c, vLo = 6.2 + 1.6 * c;
   const v = vLo + (vHi - vLo) * k;
   let s = Math.min(1, c / 0.55); s = s * s * (3 - 2 * s);
   const angHi = 62 - 42 * s + 1.5 * Math.max(0, c - 0.55) / 0.45, angLo = 58 - 8 * c;
@@ -3450,6 +3466,7 @@ function startGame() {
   document.body.classList.toggle('m2v2', is2v2());   // update 30
   applyTeamDiscs();   // update 31
   applyBoots(user.model, bootEquip());
+  for (const k of [gkA, gkB]) if (k && SKINS[k.charKey]) applySkin(k.model, k.charKey, k === gkA ? skinOf(k.charKey) : null);   // update 46: TU portero lleva su skin (Turtobola); el rival, el original
   if (SKINS[user.charKey]) applySkin(user.model, user.charKey, skinOf(user.charKey));   // update 42: tu skin (solo tu jugador: un rival con el mismo personaje va con el original)
   pantalla.classList.remove('visible'); menuEl.classList.remove('visible'); hudSet(true);
   precompileFx();   // update 35: shaders de indicadores / efectos compilados ANTES de la primera acción (antes: tirón al primer chut alto, apuntado...)
@@ -3526,8 +3543,16 @@ const SKINS = {
   carnero: [{ k: 'algodon', name: 'ALGODÓN DE AZÚCAR', precio: 300, pal: ['#fbd3e6', '#3a3a3a', '#3fe6ff'] }, { k: 'galaxia', name: 'DJ GALAXIA', precio: 450, pal: ['#a88be0', '#25283f', '#ff4fd8'] }],
   frogetto: [{ k: 'esmeralda', name: 'MAGO ESMERALDA', precio: 300, pal: ['#14663f', '#e0b034', '#9dff3f'] }, { k: 'fuego', name: 'BRUJO DE FUEGO', precio: 450, pal: ['#7a1420', '#ff8a24', '#ffe14a'] }],
   pepi: [{ k: 'guindilla', name: 'GUINDILLA', precio: 300, pal: ['#c8241e', '#7a1410', '#1a1a1a'] }, { k: 'oro', name: 'PEPINILLO DE ORO', precio: 450, pal: ['#e0b028', '#8a6410', '#1a1a1a'] }],
+  // update 46 (t99u): Licky Gecko NUEVO (skins_src/gen_gecko_u46.py, por zonas 3D) · Bat Vampire · Conazo · Turtobola (portero)
+  gecko: [{ k: 'sombra', name: 'SOMBRA ARCOÍRIS', precio: 600, pal: ['#0c0c12', '#ff3df0', '#3dfbff'], fx: 'ojos' },
+    { k: 'cebra', name: 'CEBRA MONOCROMO', precio: 450, pal: ['#f2f2f2', '#141414', '#8a8a8a'] },
+    { k: 'galaxia', name: 'GECKO GALAXIA', precio: 300, pal: ['#2a1660', '#ff4fd8', '#5ff4ff'] }],
+  murcielago: [{ k: 'carmesi', name: 'CONDE CARMESÍ', precio: 300, pal: ['#5a1020', '#ffc63d', '#1a1014'] }, { k: 'espectral', name: 'MURCIÉLAGO ESPECTRAL', precio: 450, pal: ['#1f6a72', '#7dff5a', '#0c1a1c'] }],
+  conazo: [{ k: 'helado', name: 'CONO HELADO', precio: 300, pal: ['#6fd3f2', '#ffffff', '#2a3440'] }, { k: 'oro', name: 'CONAZO DE ORO', precio: 450, pal: ['#f2b51f', '#1a1a1a', '#fff0b0'] }],
+  turtobola: [{ k: 'lava', name: 'TORTUGA DE LAVA', precio: 300, pal: ['#c4301c', '#ffd23f', '#1a1a1a'] }, { k: 'glaciar', name: 'TORTUGA GLACIAR', precio: 450, pal: ['#5aa8e0', '#eaf8ff', '#1a2430'] }],
 };
 const SKIN_KEY = 'ml_skins_v1';
+const GK_PROB = {};   // update 46: modelos de probador de los porteros (ver probModel)
 function skinsLoad() {
   let b = null; try { b = JSON.parse(localStorage.getItem(SKIN_KEY) || 'null'); } catch (_) {}
   b = b && typeof b === 'object' ? b : {};
@@ -3540,10 +3565,18 @@ let SKINS_ST = skinsLoad();
 function skinsSave() { try { localStorage.setItem(SKIN_KEY, JSON.stringify(SKINS_ST)); } catch (_) {} }
 const skinOf = (c) => SKINS_ST.equip[c] || null;
 const SKIN_TEX = {};
-function skinTex(c, k) {
+// update 46: materiales con brillo animado (ojos de la skin SOMBRA): el color recorre el arcoíris con pulso suave
+const GLOW_MATS = new Set();
+function glowTick(t) {
+  if (!GLOW_MATS.size) return;
+  const c = _glowC.setHSL((t * 0.22) % 1, 1, 0.55), amt = 0.85 + 0.35 * Math.sin(t * 3.1);
+  for (const m of GLOW_MATS) { m.userData.toonU.uGlow.value.copy(c); m.userData.toonU.uGlowAmt.value = amt; }
+}
+const _glowC = new THREE.Color();
+function skinTex(c, k, ext = 'jpg') {
   const id = c + '_' + k; if (SKIN_TEX[id]) return SKIN_TEX[id];
   return (SKIN_TEX[id] = new Promise((res) => {
-    new THREE.TextureLoader().load(`assets/skins/${id}.jpg?${ASSET_V}`, (t) => res(t), undefined, () => { console.warn('skin sin textura', id); res(null); });
+    new THREE.TextureLoader().load(`assets/skins/${id}.${ext}?${ASSET_V}`, (t) => res(t), undefined, () => { console.warn('skin sin textura', id); res(null); });
   }));
 }
 // pone (o quita, k = null) la skin en un modelo de ese personaje; devuelve una promesa (la textura se carga una vez y se comparte)
@@ -3552,7 +3585,11 @@ function applySkin(model, c, k) {
   const mats = []; model.traverse((o) => { if (o.isMesh && !o.userData.outline) for (const m of (Array.isArray(o.material) ? o.material : [o.material])) if (m && m.map !== undefined) mats.push(m); });
   for (const m of mats) if (!m.userData.mapOrig) m.userData.mapOrig = m.map;
   model.userData.skin = k || null;
+  const fx = k && (SKINS[c].find((x) => x.k === k) || {}).fx;
+  for (const m of mats) if (m.userData.toonU) { m.userData.toonU.uGlowAmt.value = 0; m.userData.toonU.uGlowMap.value = GLOW_NEGRO; GLOW_MATS.delete(m); }   // update 46
   if (!k) { for (const m of mats) if (m.userData.mapOrig) m.map = m.userData.mapOrig; return Promise.resolve(true); }
+  if (fx) skinTex(c, k + '_fx', 'png').then((g) => { if (!g || model.userData.skin !== k) return; g.flipY = false; g.colorSpace = THREE.NoColorSpace; g.needsUpdate = true;
+    for (const m of mats) if (m.userData.toonU) { m.userData.toonU.uGlowMap.value = g; m.userData.toonU.uGlowAmt.value = 1; GLOW_MATS.add(m); } });
   return skinTex(c, k).then((t) => {
     if (!t || model.userData.skin !== k) return false;
     for (const m of mats) { const o = m.userData.mapOrig; if (!o) continue;
@@ -3565,6 +3602,9 @@ function applySkin(model, c, k) {
 function refreshSkinsVisual(prev) {
   const ps = CHARS.map((c, i) => { const m = menuChars[i]; if (!m || !SKINS[c.key]) return null; const k = prev && prev.c === c.key ? prev.k : skinOf(c.key); return m.model.userData.skin === (k || null) ? null : applySkin(m.model, c.key, k); }).filter(Boolean);
   if (user && SKINS[user.charKey] && !prev) ps.push(applySkin(user.model, user.charKey, skinOf(user.charKey)));
+  if (prev && SKINS[prev.c] && !CHARS.some((x) => x.key === prev.c)) probModel(prev.c);   // update 46: el probador del portero existe ANTES de pintar la skin
+  for (const [c, m] of Object.entries(GK_PROB)) { const k = prev && prev.c === c ? prev.k : skinOf(c); if (m.model.userData.skin !== (k || null)) ps.push(applySkin(m.model, c, k)); }   // update 46: porteros
+  if (!prev && gkA && SKINS[gkA.charKey]) ps.push(applySkin(gkA.model, gkA.charKey, skinOf(gkA.charKey)));
   return Promise.all(ps).then((r) => {
     if (prev) return r.length;
     const firma = CHARS.map((c, i) => (menuChars[i] && menuChars[i].model.userData.skin) || '').join();   // retratos hechos con estas skins
@@ -3736,7 +3776,7 @@ function tiendaSkinVer(c, k) {   // prueba la skin en el PROBADOR (ficha) sin ca
 }
 function probadorPinta(c, k) {
   const el = document.getElementById('tiendaProbador'); if (!el) return;
-  const i = CHARS.findIndex((x) => x.key === c), url = i >= 0 ? renderProbador(i) : null;
+  const i = CHARS.findIndex((x) => x.key === c), url = renderProbador(i >= 0 ? i : c);   // update 46: porteros con su propio modelo
   const sk = (SKINS[c] || []).find((x) => x.k === k), ch = ALL_CHARS.find((x) => x.key === c);
   el.innerHTML = url ? `<img src="${url}" alt=""><div class="tpNom">${ch ? ch.name : ''}<small>${sk ? sk.name : 'ORIGINAL'}</small></div>` : '';
   el.dataset.c = c; el.dataset.k = k || '';
@@ -4380,6 +4420,7 @@ let last = performance.now(), fpsAcc = 0, fpsN = 0;
 frame.n = 0;
 window.__game.fps = 0;
 function frame(now) {
+  glowTick(now / 1000);   // update 46: ojos de color animado (skin SOMBRA)
   requestAnimationFrame(frame);
   if (HORIZONTAL && (++frame.n % 30) === 0 && vpKey() !== lastVP) onViewportChange();   // tamaño cambiado sin evento
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
@@ -4460,98 +4501,16 @@ function hudSet(on) { for (const e of hudEls) if (e) e.style.visibility = on ? '
 // update 25: la zona de deslizamiento solo existe en partido (antes tapaba el menú y la pantalla final -> "se congela")
 function setEnPartido(on) { document.body.classList.toggle('enPartido', !!on); if (!on && typeof swipeEnd === 'function') swipeEnd(null, true); }
 const menuScene = new THREE.Scene();
-menuScene.background = new THREE.Color('#1b3fb0');
-// update 45: fondo del lobby PINTADO estilo Brawl Stars: estadio nocturno de los Beast Strikers.
-// Gradas a los lados con luces, focos verdes/azules, escudo dorado con la bestia detrás del personaje,
-// foco radial y suelo de escenario. Se repinta al tamaño real de la pantalla (sin estirarse).
-const lbFondoCv = document.createElement('canvas'), lbFondoTx = new THREE.CanvasTexture(lbFondoCv);
-lbFondoTx.colorSpace = THREE.SRGBColorSpace; lbFondoTx.minFilter = THREE.LinearFilter; lbFondoTx.generateMipmaps = false;
-function lbFondoPintar(W, H) {
-  const asp = W / H, cw = Math.min(1600, Math.max(900, Math.round(W * Math.min(2, window.devicePixelRatio || 1) * 0.75))), ch = Math.round(cw / asp);
-  if (lbFondoPintar.k === cw + 'x' + ch && lbFondoPintar.f === !!document.fonts?.check?.('20px "Lilita One"')) return;
-  lbFondoPintar.k = cw + 'x' + ch; lbFondoPintar.f = !!document.fonts?.check?.('20px "Lilita One"');
-  const cv = lbFondoCv; cv.width = cw; cv.height = ch; const g = cv.getContext('2d'), U = ch / 100;   // U = 1 % del alto
-  const cx = cw / 2, cy = ch * 0.42;
-  let gr = g.createLinearGradient(0, 0, 0, ch);
-  gr.addColorStop(0, '#0a1450'); gr.addColorStop(0.38, '#173aa8'); gr.addColorStop(0.68, '#2f56dc'); gr.addColorStop(1, '#3a1f9a');
-  g.fillStyle = gr; g.fillRect(0, 0, cw, ch);
-  // patrón de rombos muy suave
-  g.save(); g.globalAlpha = 0.06; g.strokeStyle = '#ffffff'; g.lineWidth = Math.max(1, U * 0.25);
-  for (let x = -ch; x < cw + ch; x += U * 9) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + ch, ch); g.stroke(); g.beginPath(); g.moveTo(x, ch); g.lineTo(x + ch, 0); g.stroke(); }
-  g.restore();
-  // gradas (izquierda y derecha) con filas de luces
-  const grada = (lado) => {
-    g.save(); if (lado > 0) { g.translate(cw, 0); g.scale(-1, 1); }
-    for (let f = 0; f < 3; f++) {
-      const y0 = ch * (0.30 + f * 0.11), x1 = cw * (0.36 - f * 0.05);
-      gr = g.createLinearGradient(0, y0, 0, y0 + ch * 0.12); gr.addColorStop(0, f % 2 ? '#101a5e' : '#0d1550'); gr.addColorStop(1, '#0a1040');
-      g.fillStyle = gr; g.beginPath(); g.moveTo(0, y0 - ch * 0.06); g.quadraticCurveTo(x1 * 0.6, y0 - ch * 0.02, x1, y0 + ch * 0.05); g.lineTo(x1, y0 + ch * 0.13); g.lineTo(0, y0 + ch * 0.13); g.closePath(); g.fill();
-      g.strokeStyle = f === 0 ? 'rgba(80,255,170,.55)' : 'rgba(90,190,255,.45)'; g.lineWidth = U * 0.45; g.beginPath(); g.moveTo(0, y0 - ch * 0.06); g.quadraticCurveTo(x1 * 0.6, y0 - ch * 0.02, x1, y0 + ch * 0.05); g.stroke();
-      for (let i = 0; i < 26; i++) {   // público: puntitos de luz
-        const t = i / 26, x = t * x1 * 0.96, y = y0 - ch * 0.06 + (ch * 0.11) * t * t * 0.9 + ch * 0.03 + ((i * 37) % 7) * U * 0.6;
-        g.fillStyle = ['rgba(255,210,63,.55)', 'rgba(110,220,255,.5)', 'rgba(120,255,170,.5)', 'rgba(255,255,255,.35)'][(i + f) % 4];
-        g.beginPath(); g.arc(x, y, U * (0.35 + ((i * 13) % 3) * 0.15), 0, Math.PI * 2); g.fill();
-      }
-    }
-    g.restore();
-  };
-  grada(-1); grada(1);
-  // focos del estadio arriba a los lados + haces de luz (verde izquierda, azul derecha)
-  g.save(); g.globalCompositeOperation = 'lighter';
-  const haz = (x0, col, xa, xb) => { const hg = g.createLinearGradient(x0, 0, (xa + xb) / 2, ch); hg.addColorStop(0, col.replace('A', '.38')); hg.addColorStop(0.7, col.replace('A', '.07')); hg.addColorStop(1, col.replace('A', '0'));
-    g.fillStyle = hg; g.beginPath(); g.moveTo(x0 - U * 2, 0); g.lineTo(x0 + U * 2, 0); g.lineTo(xb, ch); g.lineTo(xa, ch); g.closePath(); g.fill(); };
-  haz(cw * 0.12, 'rgba(70,255,160,A)', cw * 0.30, cw * 0.48); haz(cw * 0.22, 'rgba(90,200,255,A)', cw * 0.40, cw * 0.56);
-  haz(cw * 0.88, 'rgba(90,190,255,A)', cw * 0.52, cw * 0.70); haz(cw * 0.78, 'rgba(70,255,160,A)', cw * 0.44, cw * 0.60);
-  g.restore();
-  for (const fx of [0.12, 0.22, 0.78, 0.88]) {   // focos
-    g.fillStyle = '#0a1040'; g.fillRect(cw * fx - U * 4, -U * 1, U * 8, U * 4.6);
-    for (let i = 0; i < 3; i++) { const rg = g.createRadialGradient(cw * fx - U * 2.6 + i * U * 2.6, U * 1.4, 0, cw * fx - U * 2.6 + i * U * 2.6, U * 1.4, U * 2.4); rg.addColorStop(0, '#ffffff'); rg.addColorStop(0.4, 'rgba(200,255,240,.8)'); rg.addColorStop(1, 'rgba(200,255,240,0)'); g.fillStyle = rg; g.fillRect(cw * fx - U * 6, -U, U * 12, U * 6); }
-  }
-  // foco radial detrás del personaje
-  let rg = g.createRadialGradient(cx, cy, 0, cx, cy, ch * 0.62); rg.addColorStop(0, 'rgba(170,235,255,.55)'); rg.addColorStop(0.35, 'rgba(110,190,255,.22)'); rg.addColorStop(1, 'rgba(110,190,255,0)');
-  g.fillStyle = rg; g.fillRect(0, 0, cw, ch);
-  // escudo de los BEAST STRIKERS (dorado) con la bestia
-  const R = ch * 0.255, sx = cx, sy = cy + ch * 0.005;
-  const escudo = (s) => { g.beginPath(); g.moveTo(sx - R * 0.82 * s, sy - R * 0.78 * s); g.quadraticCurveTo(sx, sy - R * 1.02 * s, sx + R * 0.82 * s, sy - R * 0.78 * s);
-    g.quadraticCurveTo(sx + R * 0.9 * s, sy + R * 0.25 * s, sx, sy + R * 1.05 * s); g.quadraticCurveTo(sx - R * 0.9 * s, sy + R * 0.25 * s, sx - R * 0.82 * s, sy - R * 0.78 * s); g.closePath(); };
-  g.save(); g.globalAlpha = 0.85;
-  escudo(1.12); g.fillStyle = '#0a1040'; g.fill();
-  escudo(1.06); gr = g.createLinearGradient(0, sy - R, 0, sy + R); gr.addColorStop(0, '#fff2a0'); gr.addColorStop(0.45, '#ffd23f'); gr.addColorStop(1, '#c8861a'); g.fillStyle = gr; g.fill();
-  escudo(0.94); gr = g.createLinearGradient(0, sy - R, 0, sy + R); gr.addColorStop(0, '#1c2f8f'); gr.addColorStop(1, '#0d1550'); g.fillStyle = gr; g.fill();
-  g.save(); escudo(0.94); g.clip(); g.globalAlpha = 0.18; g.fillStyle = '#5fffb0';   // rayas en el escudo
-  for (let i = -6; i < 6; i++) { g.beginPath(); g.moveTo(sx + i * R * 0.24, sy - R); g.lineTo(sx + i * R * 0.24 + R * 0.12, sy - R); g.lineTo(sx + i * R * 0.24 + R * 0.12 - R * 0.5, sy + R); g.lineTo(sx + i * R * 0.24 - R * 0.5, sy + R); g.fill(); }
-  g.restore();
-  // bestia (lobo/pantera) en silueta con ojos neón
-  g.save(); g.translate(sx, sy - R * 0.08); const b = R * 0.62;
-  g.fillStyle = '#060b30'; g.beginPath();
-  g.moveTo(-b * 0.78, -b * 0.95); g.lineTo(-b * 0.38, -b * 0.42); g.quadraticCurveTo(0, -b * 0.58, b * 0.38, -b * 0.42); g.lineTo(b * 0.78, -b * 0.95);
-  g.quadraticCurveTo(b * 0.95, -b * 0.2, b * 0.72, b * 0.25); g.quadraticCurveTo(b * 0.42, b * 0.78, 0, b * 0.98); g.quadraticCurveTo(-b * 0.42, b * 0.78, -b * 0.72, b * 0.25); g.quadraticCurveTo(-b * 0.95, -b * 0.2, -b * 0.78, -b * 0.95); g.fill();
-  g.globalCompositeOperation = 'lighter';
-  for (const s of [-1, 1]) { g.save(); g.translate(s * b * 0.33, b * 0.02); g.rotate(s * 0.35);
-    rg = g.createRadialGradient(0, 0, 0, 0, 0, b * 0.32); rg.addColorStop(0, 'rgba(90,255,180,.9)'); rg.addColorStop(1, 'rgba(90,255,180,0)'); g.fillStyle = rg; g.fillRect(-b * 0.4, -b * 0.3, b * 0.8, b * 0.6);
-    g.fillStyle = '#c8ffe6'; g.beginPath(); g.ellipse(0, 0, b * 0.17, b * 0.07, 0, 0, Math.PI * 2); g.fill(); g.restore(); }
-  g.globalCompositeOperation = 'source-over'; g.fillStyle = '#1d2a78'; g.beginPath(); g.moveTo(-b * 0.12, b * 0.42); g.lineTo(b * 0.12, b * 0.42); g.lineTo(0, b * 0.56); g.closePath(); g.fill();
-  g.restore();
-  g.restore();
-  // estrellitas doradas alrededor del escudo
-  for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.42 + (i < 2 ? -0.5 : i > 2 ? 0.5 : 0) * 0 , x = sx + Math.cos(a) * R * 1.3, y = sy + Math.sin(a) * R * 1.22, r = U * (i === 2 ? 2.4 : 1.6);
-    g.save(); g.translate(x, y); g.fillStyle = '#ffd23f'; g.strokeStyle = '#0a1040'; g.lineWidth = U * 0.5; g.beginPath();
-    for (let k = 0; k < 10; k++) { const aa = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? r * 0.45 : r; g.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr); } g.closePath(); g.stroke(); g.fill(); g.restore(); }
-  // suelo del escenario: césped en franjas con perspectiva + brillo bajo el pedestal
-  const fy = ch * 0.70;
-  g.save(); g.beginPath(); g.moveTo(cw * 0.18, fy); g.lineTo(cw * 0.82, fy); g.lineTo(cw * 1.1, ch); g.lineTo(-cw * 0.1, ch); g.closePath(); g.clip();
-  gr = g.createLinearGradient(0, fy, 0, ch); gr.addColorStop(0, '#1d7a5a'); gr.addColorStop(1, '#0f4a48'); g.fillStyle = gr; g.fillRect(0, fy, cw, ch - fy);
-  for (let i = -8; i < 8; i += 2) { g.fillStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.moveTo(cx + i * cw * 0.04, fy); g.lineTo(cx + (i + 1) * cw * 0.04, fy); g.lineTo(cx + (i + 1) * cw * 0.12, ch); g.lineTo(cx + i * cw * 0.12, ch); g.fill(); }
-  g.strokeStyle = 'rgba(120,255,200,.55)'; g.lineWidth = U * 0.5; g.beginPath(); g.moveTo(cw * 0.18, fy); g.lineTo(cw * 0.82, fy); g.stroke();
-  g.restore();
-  gr = g.createLinearGradient(0, fy - U * 3, 0, fy + U * 1); gr.addColorStop(0, 'rgba(10,16,64,0)'); gr.addColorStop(1, 'rgba(10,16,64,.35)'); g.fillStyle = gr; g.fillRect(0, fy - U * 3, cw, U * 4);
-  rg = g.createRadialGradient(cx, ch * 0.66, 0, cx, ch * 0.66, ch * 0.34); rg.addColorStop(0, 'rgba(255,240,170,.55)'); rg.addColorStop(0.5, 'rgba(255,220,120,.16)'); rg.addColorStop(1, 'rgba(255,220,120,0)');
-  g.save(); g.translate(cx, ch * 0.66); g.scale(1, 0.42); g.translate(-cx, -ch * 0.66); g.fillStyle = rg; g.fillRect(0, 0, cw, ch * 2); g.restore();
-  // viñeta
-  rg = g.createRadialGradient(cx, ch * 0.5, ch * 0.45, cx, ch * 0.5, Math.max(cw, ch) * 0.75); rg.addColorStop(0, 'rgba(5,8,40,0)'); rg.addColorStop(1, 'rgba(5,8,40,.55)'); g.fillStyle = rg; g.fillRect(0, 0, cw, ch);
-  lbFondoTx.needsUpdate = true; menuScene.background = lbFondoTx;
+menuScene.background = new THREE.Color('#2459c9');
+{ // update 35: fondo del lobby con degradado (azul intenso arriba, violeta abajo)
+  const cv = document.createElement('canvas'); cv.width = 2; cv.height = 256; const g = cv.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, 256);
+  gr.addColorStop(0, '#173aa8'); gr.addColorStop(0.42, '#2f6ff0'); gr.addColorStop(0.7, '#3b63e6'); gr.addColorStop(1, '#5a33c4');
+  g.fillStyle = gr; g.fillRect(0, 0, 2, 256);
+  const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; menuScene.background = tx;
 }
-document.fonts?.load?.('20px "Lilita One"').then(() => { lbFondoPintar.k = ''; if (app.clientWidth) lbFondoPintar(app.clientWidth, app.clientHeight); }).catch(() => {});
+// update 46 (t98u "Vuelve al fondo de antes"): fondo del lobby de la v44 (degradado azul-violeta + rayos + pedestal);
+// se quitan el estadio pintado, el aro neón y el foco de la v45.
 const menuCam = new THREE.PerspectiveCamera(30, 9 / 16, 0.1, 100);
 menuScene.add(new THREE.HemisphereLight(0xffffff, 0x5d6f9c, 1.3));
 const mSun = new THREE.DirectionalLight(0xffffff, 2.0); mSun.position.set(-2.5, 4, 5); menuScene.add(mSun);
@@ -4561,31 +4520,17 @@ const burst = new THREE.Group();
   for (let i = 0; i < N; i += 2) {
     const a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2;
     const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(Math.cos(a0) * R, Math.sin(a0) * R); sh.lineTo(Math.cos(a1) * R, Math.sin(a1) * R); sh.closePath();
-    burst.add(new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: '#bff6ff', transparent: true, opacity: 0.05, depthWrite: false })));   // update 45: más suaves sobre el fondo pintado
+    burst.add(new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.075, depthWrite: false })));
   }
   burst.position.set(0, 1.4, -8); menuScene.add(burst);
 }
 const ped = new THREE.Group();
-let pedNeon = null, pedCono = null;
-{ // update 45: pedestal iluminado: tapa dorada con bisel, base oscura, aro neón verde, foco cónico y brillo en el suelo
-  const gradTx = (stops, w = 4, h = 128) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, h);
-    for (const [o, c] of stops) gr.addColorStop(o, c); g.fillStyle = gr; g.fillRect(0, 0, w, h); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; };
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.04, 0.16, 56), new THREE.MeshStandardMaterial({ color: '#ffd23f', roughness: 0.55, metalness: 0.15, emissive: '#4a3000', emissiveIntensity: 0.35 }));
-  top.position.y = -0.08; ped.add(top);
-  const disco = new THREE.Mesh(new THREE.CircleGeometry(0.82, 56), new THREE.MeshStandardMaterial({ color: '#ffe680', roughness: 0.7, metalness: 0, emissive: '#6a4a00', emissiveIntensity: 0.4 }));
-  disco.rotation.x = -Math.PI / 2; disco.position.y = 0.002; ped.add(disco);
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.2, 0.26, 56), new THREE.MeshStandardMaterial({ color: '#1b2460', roughness: 0.8, metalness: 0.1 }));
-  rim.position.y = -0.27; ped.add(rim);
-  pedNeon = new THREE.Mesh(new THREE.TorusGeometry(1.17, 0.035, 8, 72), new THREE.MeshBasicMaterial({ color: '#4dffb0', transparent: true, opacity: 0.95 }));
-  pedNeon.rotation.x = Math.PI / 2; pedNeon.position.y = -0.2; ped.add(pedNeon);
-  const suelo = new THREE.Mesh(new THREE.CircleGeometry(2.1, 48), new THREE.MeshBasicMaterial({ map: (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d'), rg = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-    rg.addColorStop(0, 'rgba(120,255,200,.55)'); rg.addColorStop(0.55, 'rgba(90,200,255,.18)'); rg.addColorStop(1, 'rgba(90,200,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })(),
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-  suelo.rotation.x = -Math.PI / 2; suelo.position.y = -0.39; suelo.renderOrder = -1; ped.add(suelo);
-  pedCono = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 1.05, 4.2, 40, 1, true), new THREE.MeshBasicMaterial({ map: gradTx([[0, 'rgba(255,255,255,0)'], [0.55, 'rgba(255,250,210,.03)'], [1, 'rgba(255,240,170,.13)']]),
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
-  pedCono.position.y = 2.1; pedCono.renderOrder = 5; ped.add(pedCono);
-  const sh = blob(0.8, 0.28); sh.position.y = 0.008; ped.add(sh);
+{
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.2, 56), new THREE.MeshStandardMaterial({ color: '#ffd23f', roughness: 1, metalness: 0 }));
+  top.position.y = -0.1; ped.add(top);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.2, 56), new THREE.MeshStandardMaterial({ color: '#1b2440', roughness: 1, metalness: 0 }));
+  rim.position.y = -0.2; ped.add(rim);
+  const sh = blob(0.8, 0.28); sh.position.y = 0.005; ped.add(sh);
   menuScene.add(ped);
 }
 const menuChars = [];
@@ -4644,8 +4589,19 @@ function renderPortraits() {
   } catch (e) { console.info('retratos: se usan las imágenes', e); }
 }
 // update 42: probador de la tienda: render del muñeco del menú (con su skin) a una imagen, como los retratos pero de cuerpo entero
+// update 46: PORTEROS (Turtobola) en el probador/arte de la tienda: modelo propio en pose de reposo (no están en la rueda del menú)
+function probModel(c) {
+  if (GK_PROB[c]) return GK_PROB[c];
+  if (!GLB[c] || CHARS.some((x) => x.key === c)) return null;
+  const model = applyToon(matte(SkeletonUtils.clone(GLB[c].scene)), c); model.traverse((o) => { if (o.isSkinnedMesh) o.frustumCulled = false; });
+  const root = new THREE.Group(); root.add(model); root.visible = false; menuScene.add(root);
+  const mixer = new THREE.AnimationMixer(model), clip = GLB[c].animations.find((a) => a.name === 'GK_Idle') || GLB[c].animations.find((a) => a.name === 'Idle');
+  if (clip) { mixer.clipAction(clip).play(); mixer.update(0.4); }
+  applySkin(model, c, skinOf(c));
+  return (GK_PROB[c] = { root, model, mixer });
+}
 function renderProbador(i, W = 260, H = 320) {
-  const m = menuChars[i]; if (!m) return null;
+  const m = typeof i === 'string' ? probModel(i) : menuChars[i]; if (!m) return null;
   try {
     const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 }); rt.texture.colorSpace = THREE.SRGBColorSpace;
     const ps = new THREE.Scene(); ps.add(new THREE.HemisphereLight(0xffffff, 0x3a4566, 2.4));
@@ -4859,7 +4815,9 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
-  { t: 'TIENDA NUEVA', d: 'Por secciones: OFERTA DEL DÍA (-20 %, cambia a medianoche), SKINS con su ficha y probador, MEJORA de PERSONAJES, BOTAS gratis y cómo ganar MONEDAS. Y un lobby renovado.', c: '#ff5ac8' },   // update 45
+  { t: 'NUEVO LICKY GECKO', d: 'Licky Gecko estrena modelo y 3 skins en la TIENDA: SOMBRA ARCOÍRIS (negro con ojos que cambian de color), CEBRA MONOCROMO y GECKO GALAXIA. Y skins nuevas para BAT VAMPIRE, CONAZO y TURTOBOLA (tu portero la lleva puesta).', c: '#2bd96b' },   // update 46
+  { t: 'CHUT ALTO MÁS FLOJO', d: 'El chut alto llega menos lejos (sobre todo con poco TIRO) y, con poco TIRO, la trompa de apuntar se estira mucho más rápido. La TIENDA ya se desliza con el dedo y vuelve el fondo de siempre.', c: '#4fd1ff' },   // update 46
+  { t: 'TIENDA NUEVA', d: 'Por secciones: OFERTA DEL DÍA (-20 %, cambia a medianoche), SKINS con su ficha y probador, MEJORA de PERSONAJES, BOTAS gratis y cómo ganar MONEDAS.', c: '#ff5ac8' },   // update 45
   { t: 'CAMPOS NUEVOS', d: 'Juega en el VOLCÁN, en el HIELO o en el BOSQUE DE SETAS (o en el estadio de siempre). Elige el CAMPO arriba en el menú, o ALEATORIO.', c: '#ff8a1e' },   // update 39
   { t: 'TURBO Y REGATES', d: 'TURBO ya no regatea: mantén para esprintar. Los regates, con el botón REGATES (dibuja el patrón), siempre a mano.', c: '#19c9b0' },   // update 38
   { t: 'CARTAS CON NIVEL', d: 'Todas empiezan en BRONCE. Gana MONEDAS jugando y MEJORA tus cartas: PLATA, ORO, DIAMANTE y LEYENDA. Cada personaje crece a su manera.', c: '#ffd23f' },
@@ -5498,7 +5456,6 @@ function layoutMenu() {
   const W = app.clientWidth, H = app.clientHeight;
   if (!W || !H) return;
   menuCam.aspect = W / H;
-  lbFondoPintar(W, H);
   if (HORIZONTAL) {
     // el personaje se ve en la mitad izquierda; encuadre un poco más cercano
     // update 35: lobby -> personaje grande en el centro, entre la barra de perfil y la rueda de badges
@@ -5519,7 +5476,6 @@ function layoutMenu() {
 function renderMenu(dt) {
   const m = menuChars[sel]; if (!m) return;
   menuT += dt; burst.rotation.z += dt * 0.07; lbRuedaStep(dt);
-  if (pedNeon) pedNeon.material.opacity = 0.75 + 0.25 * Math.sin(menuT * 2.4); if (pedCono) pedCono.material.opacity = 0.85 + 0.15 * Math.sin(menuT * 1.3);
   popT = Math.min(1, popT + dt * 3.2);
   const k = popT, back = 1 + 2.2 * (k - 1) ** 3 + 1.2 * (k - 1) ** 2;   // easeOutBack
   m.root.scale.setScalar(0.35 + 0.65 * back);
@@ -5990,9 +5946,9 @@ Object.assign(window.__game, {
   setCamMode: (m) => setCamMode(m, true),
   setJoyDir,
   openPause: () => openPause(), resumeGame: () => resumeGame(), quitMatch: () => quitMatch(),
-  lbFondo: () => lbFondoPintar.k || '', pedLuz: () => !!(pedNeon && pedCono), uiTap,
+  lbFondo: () => '', pedLuz: () => false, uiTap,
   ofertaFijar: (v) => { OFERTA_FIJA = v; if (tiendaEl.classList.contains('visible')) renderTiendaTodo(); tiendaAvisos(); }, ofertasDia, skinPrecio, OFERTA_DTO, tiendaIr, tiendaAvisos, tiendaDetAbrir, diaLocal,
-  SKINS, skinsSt: () => SKINS_ST, skinsReload: () => { SKINS_ST = skinsLoad(); return refreshSkinsVisual(); }, skinComprar, skinEquipar, skinOf, refreshSkinsVisual, applySkin, tiendaSkinVer, renderProbador, prog: () => PROG, retratos: () => PORTRAITS,
+  SKINS, probModel, glowN: () => GLOW_MATS.size, skinsSt: () => SKINS_ST, skinsReload: () => { SKINS_ST = skinsLoad(); return refreshSkinsVisual(); }, skinComprar, skinEquipar, skinOf, refreshSkinsVisual, applySkin, tiendaSkinVer, renderProbador, prog: () => PROG, retratos: () => PORTRAITS,
   // pruebas: simula con la física real (stepBall, con postes/larguero/red) un chut alto con carga c desde D m de la línea de gol
   simAlto: (c, D, dt = 1 / 120) => {
     const sv = { pos: ball.pos.clone(), vel: ball.vel.clone(), owner: ball.owner, le: ball.lineEvent, bs: ball.backspin };
@@ -6738,7 +6694,7 @@ Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS,
   rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, gkEnCampo, LOB_NERF, LOB_K_MAX, GK44, lobErrK, lobErrRoll, LOB_ERR, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
   progReload: () => { PROG = progLoad(); lbRender(); return PROG; }, alinReload: () => { ALIN = alinLoad(); return ALIN; },
   setLv: (k, lv) => { PROG.lv[k] = lv; progSave(); lbRender(); }, setMon: (m) => { PROG.mon = m; progSave(); lbRender(); } });   // update 37
-Object.assign(window.__game, { HL, lobStatKTir: (t) => lobStatK({ sf: { t: { tir: t } } }) });
+Object.assign(window.__game, { HL, lobStatKTir: (t) => lobStatK({ sf: { t: { tir: t } } }), altoSens, altoSensU });
 Object.defineProperties(window.__game, { META: { get: () => META, configurable: true }, PROG: { get: () => PROG, configurable: true }, ALIN: { get: () => ALIN, configurable: true }, matchSig: { get: () => matchSig, configurable: true } });
 Object.assign(window.__game, { effectPlan, EF_THETA, EF_A, EF_B, efShape, gkCurveCross: (lineY, s) => { const r = gkCurveCross(lineY, s); return r && { tt: r.tt, x: r.x, z: r.z }; } });   // update 34
 Object.defineProperty(window.__game, 'efTrail', { get: () => efTrail, configurable: true });   // update 44 (getter vivo: Object.assign lo congelaba)

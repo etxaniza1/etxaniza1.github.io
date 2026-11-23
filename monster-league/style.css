@@ -1576,22 +1576,8 @@ body.horizontal #mCartas.muchas.muchisimas.nueveCol.diezCol{--cw:min(calc((47vw 
 #tienda .tiTab{font-size:clamp(8px,2.7vh,12.5px)}
 
 /* ===================== update 45: LOBBY premium estilo Brawl Stars (t97u) =====================
-   Mismo sitio y función para todo; cambia el aspecto: fondo pintado (main.js lbFondoPintar), chispas animadas,
+   Mismo sitio y función para todo; cambia el aspecto: (u46: fondo pintado y chispas QUITADOS, vuelve el fondo v44)
    botones laterales en losa con icono ilustrado, cintas NUEVO/GRATIS solo cuando es verdad, barra superior en píldoras. */
-#menu.lobby .lbVineta{background:linear-gradient(180deg,rgba(5,8,40,.45) 0,rgba(5,8,40,0) 20%,rgba(5,8,40,0) 76%,rgba(5,8,40,.5) 100%)}
-.lbChispas{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0}
-#menu:not(.lobby) .lbChispas{display:none}
-.lbChispas i{position:absolute;bottom:-12px;width:6px;height:6px;border-radius:50%;background:#bfffe4;box-shadow:0 0 8px 2px rgba(110,255,190,.75);opacity:0;animation:lbChispa 9s linear infinite}
-.lbChispas i:nth-child(3n){background:#cfe9ff;box-shadow:0 0 8px 2px rgba(90,190,255,.8)}
-.lbChispas i:nth-child(4n){background:#fff3b0;box-shadow:0 0 8px 2px rgba(255,210,63,.8);width:4px;height:4px}
-.lbChispas i:nth-child(1){left:6%;animation-delay:-1s}.lbChispas i:nth-child(2){left:14%;animation-delay:-5s;animation-duration:11s}.lbChispas i:nth-child(3){left:21%;animation-delay:-2.5s}
-.lbChispas i:nth-child(4){left:27%;animation-delay:-7s;animation-duration:12s}.lbChispas i:nth-child(5){left:33%;animation-delay:-3.5s}.lbChispas i:nth-child(6){left:39%;animation-delay:-8.5s;animation-duration:10s}
-.lbChispas i:nth-child(7){left:44%;animation-delay:-.5s;animation-duration:13s}.lbChispas i:nth-child(8){left:50%;animation-delay:-6s}.lbChispas i:nth-child(9){left:56%;animation-delay:-4s;animation-duration:11s}
-.lbChispas i:nth-child(10){left:61%;animation-delay:-9s}.lbChispas i:nth-child(11){left:66%;animation-delay:-2s;animation-duration:12s}.lbChispas i:nth-child(12){left:72%;animation-delay:-7.5s}
-.lbChispas i:nth-child(13){left:77%;animation-delay:-3s;animation-duration:10s}.lbChispas i:nth-child(14){left:83%;animation-delay:-5.5s}.lbChispas i:nth-child(15){left:88%;animation-delay:-1.5s;animation-duration:12s}
-.lbChispas i:nth-child(16){left:93%;animation-delay:-8s}.lbChispas i:nth-child(17){left:36%;animation-delay:-10s;animation-duration:14s}.lbChispas i:nth-child(18){left:64%;animation-delay:-11s;animation-duration:14s}
-@keyframes lbChispa{0%{transform:translate(0,0) scale(.6);opacity:0}10%{opacity:.9}50%{transform:translate(14px,-52vh) scale(1)}85%{opacity:.6}100%{transform:translate(-8px,-104vh) scale(.5);opacity:0}}
-@media (prefers-reduced-motion:reduce){.lbChispas{display:none}}
 /* píldoras de la barra superior: cristal oscuro con borde de tinta y brillo */
 .lbPerfil,.lbCopas,.lbCampo,.lbMonedas{background:linear-gradient(180deg,#34449e 0%,#1d2766 52%,#151c50 100%)}
 .lbPerfil::after,.lbCopas::after,.lbCampo::after{content:"";position:absolute;inset:2px;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(135deg,rgba(255,255,255,.05) 0 8px,rgba(255,255,255,0) 8px 16px)}
@@ -1663,3 +1649,11 @@ body.editando #acciones .btnAccion{outline:2px dashed rgba(255,255,255,.7);outli
 #tienda .skVer{align-self:stretch;width:auto}
 #tienda .skVer .tiArteZona{align-self:stretch}
 #tienda .bota .tiCardNom{background:linear-gradient(180deg,rgba(10,16,60,0),rgba(10,16,60,.62) 30%);padding-top:6px}
+
+/* ===================== update 46 (t98u): la TIENDA se desliza con el dedo (móvil primero) ===================== */
+#tienda{touch-action:pan-x pan-y}
+#tienda .tiTabs{touch-action:pan-y;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+#tienda .tiScroll{touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
+#tienda .tiCard,#tienda .skVer,#tienda .tiPrecio,#tienda .tiTab{touch-action:pan-x pan-y}
+#tienda .tiDet{touch-action:pan-y}
+#tienda .tiDetInfo{overflow-y:auto;max-height:100%;touch-action:pan-y}
