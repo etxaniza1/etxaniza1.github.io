@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=46';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=47';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,10 +34,10 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=46';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=47';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
-const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
+const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu', 'kaledy', 'dante'];
 const ALL_CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A', toon: true },   // update 36: modelo nuevo (Tripo) -> toon con outline
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
@@ -62,6 +62,8 @@ const ALL_CHARS = [
   { key: 'tiburon', name: 'TIBURÓN', color: '#6E9CC4', toon: true },        // update 36: tiburón (Tripo)
   { key: 'mushom', name: 'MUSHOM', color: '#8B3FD9', toon: true },          // update 37: seta misteriosa (Tripo)
   { key: 'cacutu', name: 'CACUTU', color: '#3F7D3A', toon: true },          // update 37 (t83u): cactus con bombín (Tripo)
+  { key: 'kaledy', name: 'KALEDY', color: '#D4202A', toon: true },          // update 47 (t101u/t105u): KALEDY (Tripo, GLB de Aritz; equipación negra)
+  { key: 'dante', name: 'DANTE', color: '#6CACE4', toon: true },            // update 47 (t104u/t105u): DANTE (Tripo, GLB de Aritz; equipación negra; badge inventado)
 ].map((c) => ({ scale: 1, file: `assets/${c.key}_anim.glb?${ASSET_V}`, card: `assets/cards/${c.key}.png?${ASSET_V}`,
   badge: BADGES.includes(c.key) ? `assets/badges/${c.key}.webp?${ASSET_V}` : null, ...c }));
 // update 37: Butón y Turtobola son SOLO PORTEROS: fuera de la selección de campo (rueda, rejilla, liga, torneo, rivales IA)
@@ -108,6 +110,8 @@ const STATS = {   // update 31: rehechas. Más variedad: nadie es bueno en todo.
   tiburon: { vel: 72, tir: 86, pre: 64, reg: 58, ent: 91, fis: 92, ref: 64, cur: 8, pos: 'LD', lema: 'Huele la sangre: va a por el balón y no lo suelta' },
   mushom: { vel: 70, tir: 74, pre: 88, reg: 84, ent: 66, fis: 62, ref: 90, cur: 38, pos: 'MD', lema: 'Seta misteriosa: aparece entre esporas y te deja mareado' },   // update 37
   cacutu: { vel: 60, tir: 72, pre: 78, reg: 64, ent: 88, fis: 91, ref: 70, cur: 18, pos: 'PIV', lema: 'Pivote espinoso: planta la maceta en el centro y nadie se le acerca sin pincharse' },   // update 37 (t83u)
+  kaledy: { vel: 90, tir: 99, pre: 84, reg: 88, ent: 50, fis: 82, ref: 64, cur: 44, pos: 'DC', lema: 'El cañonero: dispara desde cualquier sitio y remata de cabeza como nadie (no baja a defender)' },   // update 47 (t101u)
+  dante: { vel: 91, tir: 90, pre: 96, reg: 99, ent: 44, fis: 42, ref: 80, cur: 50, pos: 'MP', lema: 'El mago: el mejor regate de la liga, el balón pegado al pie y una rosca de seda; pierde los choques' },   // update 47 (t104u)
 };
 const STAT_KEYS = ['vel', 'tir', 'pre', 'reg', 'ent', 'fis', 'ref'];
 const STAT_NAMES = { vel: 'VELOCIDAD', tir: 'TIRO', pre: 'PRECISIÓN', reg: 'REGATE', ent: 'ENTRADA', fis: 'FÍSICO', ref: 'REFLEJOS', cur: 'EFECTO' };
@@ -197,6 +201,24 @@ function progLoad() {
 }
 let PROG = progLoad();
 function progSave() { try { localStorage.setItem(PROG_KEY, JSON.stringify(PROG)); } catch (e) {} }
+// update 47 (t102u «pon 20000 monedas gratis en las cuentas ya seguido»): regalo ÚNICO al cargar la v47 (no se repite al recargar)
+const REGALO_KEY = 'ml_regalo_u47', REGALO_MON = 20000;
+function regaloU47() {
+  try { if (localStorage.getItem(REGALO_KEY)) return 0; localStorage.setItem(REGALO_KEY, String(Date.now())); } catch (e) { return 0; }   // sin localStorage no se regala (se repetiría)
+  PROG.mon += REGALO_MON; progSave(); return REGALO_MON;
+}
+const REGALO_HOY = regaloU47();
+function regaloBanner() {
+  if (!REGALO_HOY || regaloBanner.hecho) return;
+  if (S.mode !== 'menu') { setTimeout(regaloBanner, 1000); return; }   // si ya ha entrado a jugar, el banner espera a volver al menú (no tapa el marcador)
+  regaloBanner.hecho = true;
+  const b = document.createElement('div'); b.id = 'regaloBanner'; b.setAttribute('role', 'status');
+  b.innerHTML = `${MONEDA_SVG}<div><b>+20.000 MONEDAS</b><small>DE REGALO</small></div>`;
+  b.addEventListener('pointerdown', () => b.classList.remove('ver'));
+  document.body.appendChild(b); void b.offsetWidth; b.classList.add('ver');
+  setTimeout(() => b.classList.remove('ver'), 3400); setTimeout(() => b.remove(), 4000);
+  const n = document.getElementById('lbMonedas'); if (n) { n.classList.remove('late'); void n.offsetWidth; n.classList.add('late'); }
+}
 // solo pruebas de regresión antiguas (?lvref=1): todos juegan con su carta de identidad ('ref' = STATS), como antes de la update 37
 const LV_REF_MODE = /[?&]lvref=1/.test(location.search);
 const progLv = (k) => LV_REF_MODE ? 'ref' : (PROG.lv[k] || 0);
@@ -1999,6 +2021,7 @@ function releaseShot(a, dir, power, assist, loft, hspeed, soft) {
   const lob = hspeed !== undefined, bfx = a === user ? bootShot(dir, lob) : null;
   if (bfx) { sp *= bfx.speed; if (loft !== undefined) loft *= bfx.speed; if (bfx.jitter) dir.rotateAround(new THREE.Vector2(), bfx.jitter); }
   Object.assign(ball.fx, { curve: bfx ? bfx.curve : 0, lift: bfx ? bfx.lift : 0, dip: bfx ? bfx.dip : 0 }); applyEffect(null);
+  const tra = !!a.trallazoShot; a.trallazoShot = 0; if (tra) { sp *= 1.2; ball.fx.dip = Math.max(ball.fx.dip || 0, 0.9); LOG('esp_trallazo', a, { sp: +sp.toFixed(1) }); }   // update 47: TRALLAZO de Kaledy
   let efLift = 0, efPl = null;
   if (!a.keeper) {   // update 31: CHUT LEJANO (tiro) + EFECTO. update 34: curva en C (effectPlan): sale abierto y se cierra hasta donde apuntas
     const g = goalCenter(a.team), Lg = Math.hypot(g.x - a.pos.x, g.y - a.pos.y);
@@ -2026,7 +2049,7 @@ function releaseShot(a, dir, power, assist, loft, hspeed, soft) {
   if (hspeed !== undefined) a.lobErr = null;
   // giro: chut raso = rueda hacia delante; chut alto = efecto de retroceso (más en la vaselina suave)
   ball.backspin = hspeed !== undefined ? THREE.MathUtils.clamp(1.1 - hspeed / 28, 0.1, 1) * (bfx ? bfx.backspin : 1) : 0;
-  if (bfx && bfx.dip) ball.backspin = 0;
+  if ((bfx && bfx.dip) || tra) ball.backspin = 0;
   ball.w.set(0, 1, 0).cross(_wv.set(ball.vel.x, 0, -ball.vel.y)).multiplyScalar((ball.backspin > 0 ? -0.6 * ball.backspin : bfx && bfx.dip ? 0.05 : 0.7) / BR);
   if (ball.fx.curve) ball.w.y += ball.fx.curve * 60;   // giro vertical visible en la rosca
   if (ball.fx.ef) ball.w.y += ball.fx.ef * sp * 2.2;     // update 34: giro visible de la curva en C
@@ -2652,6 +2675,8 @@ const ESPECIALES = {
   tiburon: { name: 'REMOLINO', desc: 'Abre un remolino a los pies del rival: lo arrastra hacia el centro, lo frena y le hace perder el balón.', col: '#4fc3ff' },   // update 36
   mushom: { name: 'ESPORAS', desc: 'Estornudo de esporas: el rival cercano se marea 3 s (se tambalea en zigzag, va más lento y no puede hacer entradas) y, si lleva el balón, lo suelta.', need: 'cerca', rango: 8, col: '#c77dff' },   // update 37
   cacutu: { name: 'PINCHOS', desc: 'Se eriza 4 s y dispara un anillo de pinchos: pincha a los rivales de alrededor (aturdidos y sueltan el balón) y, mientras dure, quien le haga una entrada o se le pegue se pincha y rebota.', col: '#9be05a' },   // update 37 (t83u)
+  kaledy: { name: 'TRALLAZO', desc: 'Con el balón: se planta y suelta un TRALLAZO de hoja seca a la escuadra: sale un 20 % más fuerte, cae de golpe y el portero rival reacciona tarde.', need: 'balon', col: '#ff3b3b' },   // update 47 (t101u)
+  dante: { name: 'REGATE MÁGICO', desc: 'Con el balón: 3 s de regate mágico: corre un 30 % más, las entradas no le tocan (no pierde el balón) y deja mareados a los rivales que tenga cerca.', need: 'balon', col: '#6CACE4' },   // update 47 (t104u)
   tubi: { name: 'VENTOSA', desc: 'Dispara el desatascador: se pega al rival 1,5 s y, si lleva el balón, se lo trae. Luego nadie se lo quita en 3 s.', need: 'cerca', rango: 9, col: '#ff4f5e' },   // update 30
 };
 const ESP = { fx: [], obst: [], zonas: [], decoys: [], lengua: null, tex: {}, usos: [] };
@@ -2659,7 +2684,7 @@ const espOn = () => AJ.especiales !== false;
 const espFoe = (a) => S.practice ? null : is2v2() ? espFoe2(a) : (a === user ? rival : a === rival ? user : null);   // update 30: 2 VS 2 -> el que lleva el balón o el más cercano
 const espGkFoe = (a) => a.team === 0 ? gkB : gkA;
 const espGkOwn = (a) => a.team === 0 ? gkA : gkB;
-function espReset(a) { Object.assign(a, { stickT: 0, freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0, regenT: 0, toadT: 0, empT: 0, mareoT: 0, spikeT: 0 }); if (a._toadS && a._toadS !== 1) { a._toadS = 1; if (a.model) a.model.scale.setScalar(ESCALA * (a.charScale || 1)); } }
+function espReset(a) { Object.assign(a, { stickT: 0, freezeT: 0, slowT: 0, invertT: 0, slipT: 0, ghostT: 0, flyT: 0, scaredT: 0, blindT: 0, chargeT: 0, downT: 0, slipCd: 0, regenT: 0, magiaT: 0, toadT: 0, empT: 0, mareoT: 0, spikeT: 0 }); if (a._toadS && a._toadS !== 1) { a._toadS = 1; if (a.model) a.model.scale.setScalar(ESCALA * (a.charScale || 1)); } }
 // ---- texturas generadas (una vez) ----
 function espTex(k) {
   if (ESP.tex[k]) return ESP.tex[k];
@@ -2750,6 +2775,8 @@ const espSfx = {
   frogetto: () => { [0, 0.08, 0.16, 0.24].forEach((d, i) => espTone(900 + i * 260, 0.12, { type: 'sine', vol: 0.06, delay: d })); espTone(140, 0.22, { type: 'square', vol: 0.08, f2: 90, delay: 0.32, vib: 20, vibF: 30 }); },   // conjuro + ¡croac!
   zora: () => { espNoise(0.25, { f: 5000, f2: 800, q: 0.7, vol: 0.16 }); espTone(2400, 0.18, { type: 'sawtooth', vol: 0.05, f2: 300 }); espNoise(0.5, { f: 200, q: 0.8, vol: 0.12, type: 'lowpass', delay: 0.06 }); },
   tiburon: () => { espNoise(1.0, { f: 500, f2: 1600, q: 2.5, vol: 0.12 }); espTone(90, 0.8, { type: 'sine', vol: 0.12, f2: 60, vib: 6, vibF: 5 }); },
+  dante: () => { espTone(880, 0.09, { type: 'triangle', vol: 0.08 }); espTone(1175, 0.09, { type: 'triangle', vol: 0.08, delay: 0.08 }); espTone(1568, 0.18, { type: 'triangle', vol: 0.08, delay: 0.16, vib: 6 }); espNoise(0.25, { f: 3000, f2: 6000, q: 0.7, vol: 0.05, delay: 0.05 }); },   // update 47: destello mágico
+  kaledy: () => { espNoise(0.16, { f: 900, f2: 320, q: 1.2, vol: 0.12 }); espTone(470, 0.55, { type: 'sawtooth', vol: 0.05, f2: 900, vib: 9, vibF: 7, delay: 0.05 }); },   // update 47: trallazo
   cacutu: () => { espTone(1400, 0.06, { type: 'square', vol: 0.05, f2: 2600 }); setTimeout(() => espNoise(0.25, { f: 5200, f2: 2600, q: 2.5, vol: 0.12 }), 40); espTone(300, 0.25, { type: 'triangle', vol: 0.06, f2: 180 }); },   // update 37 (t83u): ¡TSHING! de pinchos
   pincho: () => espTone(1900, 0.05, { type: 'square', vol: 0.04, f2: 900 }),
   mushom: () => { espNoise(0.12, { f: 2400, f2: 5200, q: 1.2, vol: 0.12 }); setTimeout(() => espNoise(0.5, { f: 6000, f2: 1200, q: 0.8, vol: 0.16 }), 130); espTone(520, 0.35, { type: 'sine', vol: 0.05, f2: 260 }); },   // update 37: ¡a-a-ACHÍS! de esporas
@@ -2938,6 +2965,24 @@ const ESP_FN = {
     return true;
   },
   pantera(a) { a.ghostT = 2.0; espGhostVis(a, true); return true; },
+  dante(a) {   // update 47 (t104u): REGATE MÁGICO -> 3 s de regate mágico (×1,3, entradas no le tocan) y marea 1,2 s a los rivales de campo a menos de 3,5 m
+    if (ball.owner !== a) return false;
+    a.magiaT = 3.0; let n = 0;
+    for (const f of foesOf(a)) if (f.pos.distanceTo(a.pos) < 3.5) { f.mareoT = Math.max(f.mareoT || 0, 1.2); f.dashT = 0; f.kickPending = null; f.sprinting = false; n++; espIcon(f, '?', '#6CACE4', 1.0, 1.1); }
+    espIcon(a, '¡REGATE MÁGICO!', '#6CACE4', 1.3, 1.4); espShock(a.pos.x, a.pos.y, 0x6cace4, 3.5, 0.5, 0.1, 0.3); setTimeout(() => espShock(a.pos.x, a.pos.y, 0xffffff, 2.6, 0.4, 0.12, 0.22), 120);
+    LOG('regate_magico', a, { n }); return true;
+  },
+  kaledy(a) {   // update 47 (t101u): TRALLAZO -> trallazo de hoja seca al palo contrario del portero (×1,2 de velocidad, cae de golpe) y el portero rival reacciona tarde
+    if (ball.owner !== a) return false;
+    const gk = espGkFoe(a), gy = goalCenter(a.team).y;
+    const sd = gk && Math.abs(gk.pos.x) > 0.3 ? -Math.sign(gk.pos.x) : (Math.random() < 0.5 ? -1 : 1);
+    a.trallazoShot = 1;
+    shoot(a, new THREE.Vector2(sd * (GW - 1.0) - a.pos.x, gy - a.pos.y), 1, a === user);
+    if (ball.owner === a && !a.kickPending) { a.trallazoShot = 0; return false; }   // no ha podido chutar (congelado, resbalando…)
+    if (gk) gk.fetidaT = Math.max(gk.fetidaT || 0, 1.4);
+    espIcon(a, '¡TRALLAZO!', '#ff3b3b', 1.3, 1.5); espShock(a.pos.x, a.pos.y, 0xff3b3b, 3.2, 0.5, 0.1, 0.3);
+    return true;
+  },
   ajolote(a) {   // update 34: REGENERACIÓN -> limpia estados malos, turbo lleno y 4 s de turbo infinito + piel viscosa (las entradas resbalan)
     const malos = ['stun', 'freezeT', 'slowT', 'invertT', 'slipT', 'scaredT', 'blindT', 'downT'].filter((k) => a[k] > 0);
     for (const k of ['stun', 'freezeT', 'slowT', 'invertT', 'slipT', 'scaredT', 'blindT', 'downT']) a[k] = 0;
@@ -3076,6 +3121,7 @@ function espSpeedMul(a) {
   if (a.toadT > 0) m *= 0.62;   // update 36: sapito
   if (a.slowT > 0) m *= 0.45;
   if (a.ghostT > 0) m *= 1.55;
+  if (a.magiaT > 0) m *= 1.3;   // update 47: REGATE MÁGICO (Dante)
   if (a.flyT > 0) m *= 1.15;
   return m;
 }
@@ -3153,6 +3199,8 @@ function espAI(a, opp, dt) {
     case 'mushom': want = opp && d < 7.5 && (oppBall || (myBall && d < 3.5)); break;   // update 37
     case 'cacutu': want = opp && ((oppBall && d < 3.0) || (myBall && d < 3.2) || (opp.dashT > 0 && d < 4.5) || (!ball.owner && bD < 3 && d < 3)); break;   // update 37 (t83u)
     case 'tubi': want = (oppBall && d > 1.5 && d < 8.5) || (myBall && d < 3 && dG < 24); break;
+    case 'kaledy': want = myBall && dG > 7 && dG < 26; break;   // update 47
+    case 'dante': want = myBall && d < 4.5 && dG < 34; break;   // update 47: con el rival encima
   }
   if (want && Math.random() < 0.7) espUse(a, true);
 }
@@ -3205,12 +3253,13 @@ function espUpdate(dt, playing) {
   for (const a of fld) {
     if (!a) continue;
     if (playing && espOn() && a.esp < 1 && !(a.empT > 0)) { a.esp = Math.min(1, a.esp + dt / ESP_T); if (a.esp >= 1 && a === user) espSfx.listo(); }
-    for (const k of ['stickT', 'slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd', 'regenT', 'toadT', 'empT', 'mareoT', 'spikeT']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
+    for (const k of ['stickT', 'slowT', 'invertT', 'ghostT', 'flyT', 'scaredT', 'blindT', 'downT', 'slipCd', 'regenT', 'toadT', 'empT', 'mareoT', 'spikeT', 'magiaT']) if (a[k] > 0) a[k] = Math.max(0, a[k] - dt);
     if (a.spikeT > 0) espSpikeTick(a, dt, playing);   // update 37 (t83u): PINCHOS de Cacutu
     if (a.empT > 0) { a.energy = 0; a.sprinting = false; if ((a._empT = (a._empT || 0) - dt) <= 0) { a._empT = 0.12; espPuffs(a.pos.x + (Math.random() - 0.5), a.pos.y + (Math.random() - 0.5), 0.6 + Math.random() * 1.4, Math.random() < 0.5 ? 0xb59bff : 0xffffff, 1, 0.3, 0.8, 0.25, 0.1); } }   // update 36: PULSO EMP
     { const tgt = a.toadT > 0 ? 0.55 : 1; if (a.model && (a._toadS || 1) !== tgt) { a._toadS = THREE.MathUtils.clamp((a._toadS || 1) + Math.sign(tgt - (a._toadS || 1)) * dt * 4, 0.55, 1); a.model.scale.setScalar(ESCALA * (a.charScale || 1) * a._toadS); } }   // update 36: HECHIZO SAPO
     if (a.regenT > 0 && (a._bubT = (a._bubT || 0) - dt) <= 0) { a._bubT = 0.09; const s = espSprite(espTex('burbuja'), Math.random() < 0.3 ? 0xffb3e0 : 0xbff4ff, 0.25 + Math.random() * 0.3, 0.9); const ox = (Math.random() - 0.5) * 1.2, oy = (Math.random() - 0.5) * 1.2; s.position.copy(g2tS(a.pos.x + ox, a.pos.y + oy, 0.3 + Math.random() * 1.4)); espFx(s, 0.8, (k, o, dt) => { o.position.y += 2.2 * dt; o.material.opacity = 0.9 * (1 - k); }); }   // update 34: burbujas mientras se regenera
     if (a._ghostOn && a.ghostT <= 0) espGhostVis(a, false);
+    if (a.magiaT > 0 && (a._magT = (a._magT || 0) - dt) <= 0) { a._magT = 0.06; espPuffs(a.pos.x, a.pos.y, 0.4, Math.random() < 0.5 ? 0x6cace4 : 0xffffff, 1, 0.45, 0.9, 0.4, 0.2, true); }   // update 47: estela celeste
     if (a.ghostT > 0 && (a._trailT = (a._trailT || 0) - dt) <= 0) { a._trailT = 0.05; espPuffs(a.pos.x, a.pos.y, 1.1, 0x2a2f6a, 1, 0.5, 1.6, 0.45, 0.1); }
     // rino: choque durante la embestida
     if (a.chargeT > 0) {
@@ -4153,9 +4202,10 @@ function update(dt) {
           } else if (o.spikeT > 0) {   // update 37 (t83u): PINCHOS -> el que entra se pincha y rebota
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; espPinch(o, a, true);
             showBanner('¡PINCHO!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('pinchos_entrada', o, { vs: NAME(a) });
-          } else if (o.ghostT > 0 || o.flyT > 0 || o.regenT > 0) {   // update 29: SPRINT SOMBRA / VUELO NOCTURNO: la entrada no le toca; update 34: REGENERACIÓN (piel viscosa)
+          } else if (o.ghostT > 0 || o.flyT > 0 || o.regenT > 0 || o.magiaT > 0) {   // update 47: REGATE MÁGICO -> no le toca
+              // update 29: SPRINT SOMBRA / VUELO NOCTURNO: la entrada no le toca; update 34: REGENERACIÓN (piel viscosa)
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
-            sfx.miss(); showBanner(o.flyT > 0 ? '¡POR ENCIMA!' : o.regenT > 0 ? '¡RESBALA!' : '¡SOMBRA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('especial_esquiva', o, { vs: NAME(a) });
+            sfx.miss(); showBanner(o.flyT > 0 ? '¡POR ENCIMA!' : o.regenT > 0 ? '¡RESBALA!' : o.magiaT > 0 ? '¡REGATE!' : '¡SOMBRA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('especial_esquiva', o, { vs: NAME(a) });
           } else if (o.dribbleT <= 0 && !patImmune(o, a) && Math.random() < keep) {
             a.dashT = 0; a.dashEnded = false; a.dashHit = true; a.stun = DASH_MISS_STUN;
             showBanner('¡AGUANTA!', o.team === 0 ? 'bAzul' : 'bRojo', 700); LOG('aguanta_entrada', o, { vs: NAME(a), p: +keep.toFixed(2) });
@@ -4815,6 +4865,10 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
+  { t: 'NUEVO: DANTE', d: 'Llega DANTE, mediapunta con el mejor REGATE de la liga, mucho EFECTO y precisión. Su ESPECIAL «REGATE MÁGICO»: con el balón, 3 s de regate mágico: más rápido, las entradas no le tocan y los rivales cercanos se quedan mareados. Ya juega en LIGA y TORNEO.', c: '#6cace4' },   // update 47 (t104u)
+  { t: 'NUEVO: KALEDY', d: 'Llega KALEDY, delantero centro con el mejor TIRO de la liga. Su ESPECIAL «TRALLAZO»: con el balón suelta un trallazo de hoja seca a la escuadra y el portero reacciona tarde. Ya juega en LIGA y TORNEO.', c: '#d4202a' },   // update 47
+  { t: '¡20.000 MONEDAS DE REGALO!', d: 'Te hemos regalado 20.000 monedas para la TIENDA: skins, personajes y mejoras de cartas. ¡Gástalas!', c: '#ffb700' },   // update 47
+  { t: 'GECKO SIN GELATINA', d: 'Licky Gecko ya no se deforma al moverse: cuerpo y cabeza firmes en todas las animaciones; solo se mueven la cola, los brazos y las piernas.', c: '#2bd96b' },   // update 47
   { t: 'NUEVO LICKY GECKO', d: 'Licky Gecko estrena modelo y 3 skins en la TIENDA: SOMBRA ARCOÍRIS (negro con ojos que cambian de color), CEBRA MONOCROMO y GECKO GALAXIA. Y skins nuevas para BAT VAMPIRE, CONAZO y TURTOBOLA (tu portero la lleva puesta).', c: '#2bd96b' },   // update 46
   { t: 'CHUT ALTO MÁS FLOJO', d: 'El chut alto llega menos lejos (sobre todo con poco TIRO) y, con poco TIRO, la trompa de apuntar se estira mucho más rápido. La TIENDA ya se desliza con el dedo y vuelve el fondo de siempre.', c: '#4fd1ff' },   // update 46
   { t: 'TIENDA NUEVA', d: 'Por secciones: OFERTA DEL DÍA (-20 %, cambia a medianoche), SKINS con su ficha y probador, MEJORA de PERSONAJES, BOTAS gratis y cómo ganar MONEDAS.', c: '#ff5ac8' },   // update 45
@@ -6694,7 +6748,7 @@ Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS,
   rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, gkEnCampo, LOB_NERF, LOB_K_MAX, GK44, lobErrK, lobErrRoll, LOB_ERR, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
   progReload: () => { PROG = progLoad(); lbRender(); return PROG; }, alinReload: () => { ALIN = alinLoad(); return ALIN; },
   setLv: (k, lv) => { PROG.lv[k] = lv; progSave(); lbRender(); }, setMon: (m) => { PROG.mon = m; progSave(); lbRender(); } });   // update 37
-Object.assign(window.__game, { HL, lobStatKTir: (t) => lobStatK({ sf: { t: { tir: t } } }), altoSens, altoSensU });
+Object.assign(window.__game, { regalo: () => ({ hoy: REGALO_HOY, key: REGALO_KEY, mon: REGALO_MON }), HL, lobStatKTir: (t) => lobStatK({ sf: { t: { tir: t } } }), altoSens, altoSensU });
 Object.defineProperties(window.__game, { META: { get: () => META, configurable: true }, PROG: { get: () => PROG, configurable: true }, ALIN: { get: () => ALIN, configurable: true }, matchSig: { get: () => matchSig, configurable: true } });
 Object.assign(window.__game, { effectPlan, EF_THETA, EF_A, EF_B, efShape, gkCurveCross: (lineY, s) => { const r = gkCurveCross(lineY, s); return r && { tt: r.tt, x: r.x, z: r.z }; } });   // update 34
 Object.defineProperty(window.__game, 'efTrail', { get: () => efTrail, configurable: true });   // update 44 (getter vivo: Object.assign lo congelaba)
@@ -6727,6 +6781,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     cargando.classList.add('oculto');
     openMenu();
     window.__game.menuReady = true;
+    setTimeout(regaloBanner, 1100);   // update 47: después del fundido de la pantalla de carga
     requestAnimationFrame(frame);
     if (BOOT) { BOOT.set(0.96); requestAnimationFrame(() => requestAnimationFrame(() => BOOT.done())); }   // fundido cuando el menú ya está pintado
     campoReady = load('assets/campo.glb?' + ASSET_V).then((campo) => { setupField(campo); window.__game.ready = true; });
