@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=41';
+  var V = 'v=42';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -55,8 +55,8 @@ html,body{margin:0;background:#07080d}
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
-<link id="mainCss" rel="stylesheet" href="style.css?v=41" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
-<noscript><link rel="stylesheet" href="style.css?v=41"></noscript>
+<link id="mainCss" rel="stylesheet" href="style.css?v=42" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
+<noscript><link rel="stylesheet" href="style.css?v=42"></noscript>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -88,7 +88,7 @@ html,body{margin:0;background:#07080d}
   <div id="hud">
     <div id="marcador">
       <div class="eq azul"><span class="mBad"></span><span class="nom">CONAZO</span><span id="golesA" class="gol">0</span><i class="espMini"><b></b></i></div>
-      <div id="reloj">2:00</div><div id="pausaIco" aria-label="Pausa"><i></i><i></i></div>
+      <div id="reloj">2:00</div>
       <div class="eq rojo"><span id="golesB" class="gol">0</span><span class="nom">CALCETROL</span><span class="mBad"></span><i class="espMini"><b></b></i></div>
     </div>
     <div id="banner"></div>
@@ -223,11 +223,11 @@ html,body{margin:0;background:#07080d}
         <div class="lbMejBot"><button class="lbCerrar ajBtn ajVolver">VOLVER</button><button id="lbMejBtn" class="ajBtn lbMejBtn">MEJORAR</button></div>
       </div>
     </div></div>
-    <div id="lbAlin" class="lbPanel" aria-label="Alineación"><div class="lbPanelCaja lbAlinCaja">
-      <div class="lbPanelTit">ALINEACIÓN</div>
-      <div class="alTabs"><button class="alTab" data-al="1v1">1 VS 1</button><button class="alTab" data-al="2v2">2 VS 2</button></div>
-      <div class="alCuerpo"><div id="lbAlinCampo" class="alCampo"></div><div id="lbAlinElige" class="alElige"></div></div>
-      <button class="lbCerrar ajBtn lbOk">LISTO</button>
+    <div id="lbAlin" class="lbPanel alPanel" aria-label="Alineación"><div class="lbPanelCaja lbAlinCaja">
+      <div class="alCab"><div class="lbPanelTit">ALINEACIÓN</div>
+      <div class="alTabs"><button class="alTab" data-al="1v1">1 VS 1</button><button class="alTab" data-al="2v2">2 VS 2</button></div></div>
+      <div id="lbAlinScroll" class="alScroll"><div class="alCuerpo"><div id="lbAlinCampo" class="alCampo"></div><div id="lbAlinElige" class="alElige"></div></div></div>
+      <div class="alPie"><button id="lbAlinVolver" class="ajBtn ajVolver">VOLVER</button><button id="lbAlinGuardar" class="ajBtn alGuardar">GUARDAR</button></div>
     </div></div>
     <div id="lbCampoPanel" class="lbPanel" aria-label="Elegir campo"><div class="lbPanelCaja"><div class="lbPanelTit">CAMPO</div><div id="lbCampoLista" class="lbCampoLista"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
     <div id="lbNovPanel" class="lbPanel" aria-label="Novedades"><div class="lbPanelCaja"><div class="lbPanelTit">NOVEDADES</div><div id="lbNovCuerpo"></div><button class="lbCerrar ajBtn ajVolver">VOLVER</button></div></div>
@@ -235,20 +235,22 @@ html,body{margin:0;background:#07080d}
   </div>
   <div id="pausa">
     <div class="pausaCaja">
-      <div class="pausaTit">PAUSA</div>
-      <button id="btnReanudar">REANUDAR</button>
+      <div class="pausaTit">PARTIDO</div>
+      <button id="btnReanudar">SEGUIR JUGANDO</button>
       <button id="btnReiniciarBalon">REINICIAR BALÓN</button>
       <button id="btnPausaAjustes">AJUSTES</button>
       <button id="btnSalir">SALIR DE LA PARTIDA</button>
+      <div class="pausaPista">Para volver aquí: mantén pulsado el marcador</div>
     </div>
   </div>
   <div id="tienda" aria-label="Tienda">
     <div class="tiCaja">
-      <div class="tiTit">TIENDA · BOTAS <span>TODO GRATIS</span></div>
+      <div class="tiTit">TIENDA <span id="tiendaMon" class="tiMon"></span></div>
+      <div class="tiSub">SKINS <span>NUEVOS COLORES · TOCA PARA PROBAR</span></div>
+      <div class="tiSkinsZona"><div id="tiendaProbador" class="tiProbador" aria-label="Probador"></div><div id="tiendaSkins"></div></div>
+      <div class="tiSub">BOTAS <span>TODO GRATIS</span></div>
       <div id="tiendaLista"></div>
-      <div class="tiSub">ESPECIALES DE LOS PERSONAJES <span>SE CARGAN JUGANDO</span></div>
-      <div id="tiendaEsp"></div>
-      <button id="tiendaCerrar" class="ajBtn ajVolver">VOLVER</button>
+      <div class="tiPie"><button id="tiendaCerrar" class="ajBtn ajVolver">VOLVER</button></div>
     </div>
   </div>
   <div id="coleccion" aria-label="Colección de cartas">
@@ -338,6 +340,6 @@ html,body{margin:0;background:#07080d}
     <div class="giraSub">Beast Strikers se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=41"></script>
+<script type="module" src="main.js?v=42"></script>
 </body>
 </html>
