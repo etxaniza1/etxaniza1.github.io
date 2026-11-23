@@ -1246,3 +1246,80 @@ body.horizontal #mCartas.muchas.muchisimas.nueveCol.diezCol{--cw:min(calc((47vw 
 .lbCampoN{font-size:clamp(10px,calc(var(--u)*3.1),16px);-webkit-text-stroke:1px var(--ink);text-shadow:0 2px 0 var(--ink);white-space:nowrap;letter-spacing:.3px}
 .lbCampoOp.sel .lbCampoVista{border-color:#ffd23f;box-shadow:0 0 0 3px var(--ink),0 4px 0 3px var(--ink),0 0 14px #ffd23f}
 .lbCampoOp.sel .lbCampoN{color:#ffd23f}
+
+/* ===== update 42: sin botón de pausa. El marcador solo abre el menú del partido MANTENIÉNDOLO pulsado (0,8 s) ===== */
+#pausaIco{display:none !important}
+#marcador{cursor:default;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#marcador.manteniendo{animation:marcHold .8s linear forwards}
+@keyframes marcHold{from{filter:brightness(1)}to{filter:brightness(1.35)}}
+.pausaPista{font:600 clamp(10px,2.8vmin,13px) system-ui,sans-serif;color:#cfe0ff;opacity:.8;text-align:center;margin-top:2px}
+
+/* ===== update 42: ALINEACIÓN mobile-first =====
+   cabecera (título + 1 VS 1 / 2 VS 2) · UNA zona con scroll vertical táctil (campo + listas) · pie fijo VOLVER / GUARDAR.
+   Horizontal: el campo queda fijo (sticky) a la izquierda y las listas bajan a la derecha. Vertical: campo arriba y listas debajo. */
+#menu #lbAlin.alPanel{padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px);box-sizing:border-box}
+#menu .lbAlinCaja{box-sizing:border-box;width:calc(100vw - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px) - 12px);max-width:1040px;height:calc(100svh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 10px);max-height:660px;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:clamp(4px,1.4vmin,10px);padding:clamp(6px,1.6vmin,14px) clamp(8px,2vmin,18px);overflow:hidden}
+#menu .alCab{flex:none;display:flex;align-items:center;justify-content:center;gap:clamp(8px,2.4vmin,18px);flex-wrap:wrap}
+#menu .alCab .lbPanelTit{font-size:clamp(18px,5.6vmin,32px);line-height:1}
+#menu .alTabs{gap:8px}
+#menu .alTab{min-height:44px;min-width:92px;font-size:clamp(14px,3.8vmin,18px);padding:4px 14px 6px;touch-action:manipulation}
+#menu .alScroll{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-y;overscroll-behavior:contain;container-type:size;border-radius:12px;scrollbar-width:thin}
+#menu .alCuerpo{flex:none;display:flex;flex-direction:row;align-items:flex-start;gap:clamp(8px,2.2vmin,18px);min-height:100%;width:100%;height:auto}
+#menu .alCampo{position:sticky;top:0;flex:none;height:calc(100cqh - 2px);max-height:none;aspect-ratio:.9;width:auto;max-width:48%;align-self:flex-start}
+#menu .alElige{flex:1;min-width:0;overflow:visible;padding:2px 2px 10px;gap:clamp(8px,2vmin,14px)}
+#menu .alTit{font-size:clamp(14px,4vmin,22px)}
+#menu .alTit small{font-size:clamp(10px,2.6vmin,12px)}
+#menu .alOps{grid-template-columns:repeat(auto-fill,minmax(clamp(72px,15vmin,96px),1fr));gap:clamp(6px,1.6vmin,10px)}
+#menu .alOps.gks{grid-template-columns:repeat(2,minmax(0,clamp(104px,26vmin,150px)))}
+#menu .alOp{min-height:44px;touch-action:pan-y}
+#menu .alOp span{font-size:clamp(10px,2.6vmin,13px);padding:3px 3px 4px}
+#menu .alSlot{width:31%}
+#menu .alSlot small{font-size:clamp(10px,2.6vmin,14px)}
+#menu .alPie{flex:none;display:flex;justify-content:center;align-items:center;gap:clamp(10px,3vmin,22px);padding-top:2px}
+#menu.lobby .alPie .ajBtn{min-height:44px;min-width:clamp(120px,30vmin,200px);margin:0;font-size:clamp(15px,4.2vmin,20px);padding:6px 18px 8px}
+#menu .alGuardar{background:#3ccf5a}
+#menuToast{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 18%);transform:translate(-50%,10px);z-index:60;pointer-events:none;opacity:0;font:400 clamp(14px,4vmin,20px) "Lilita One",system-ui,sans-serif;color:#14193a;background:#5dff8a;border:3px solid #14193a;border-radius:14px;padding:6px 16px 8px;box-shadow:0 4px 0 #14193a;transition:opacity .2s,transform .2s}
+#menuToast.ver{opacity:1;transform:translate(-50%,0)}
+@media (orientation:portrait){
+  #menu .lbAlinCaja{height:calc(100svh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 12px);max-height:none;width:calc(100vw - 12px)}
+  #menu #lbAlin.alPanel{background:#11172b}
+  #menu .alCuerpo{flex-direction:column;align-items:stretch;min-height:0}
+  #menu .alCampo{position:relative;top:auto;height:auto;width:min(100%,340px);max-width:none;aspect-ratio:.78;align-self:center}
+  #menu .alSlot{width:30%}
+  #menu .alElige{padding-bottom:16px}
+  #menu .alOps{grid-template-columns:repeat(auto-fill,minmax(76px,1fr))}
+  #menu .alOps.gks{grid-template-columns:repeat(2,minmax(0,140px));justify-content:center}
+}
+
+/* ===== update 42: TIENDA = SKINS + BOTAS (fuera ESPECIALES). VOLVER fijo abajo; lista con scroll táctil ===== */
+#tienda .tiCaja{padding-bottom:0;padding-left:max(clamp(10px,2.6vmin,18px),env(safe-area-inset-left,0px));padding-right:max(clamp(10px,2.6vmin,18px),env(safe-area-inset-right,0px))}
+.tiMon{display:inline-flex;align-items:center;gap:4px;font-size:.62em !important;background:#14193a !important;color:#ffd23f !important;border-radius:10px;padding:3px 9px 4px !important}
+.tiMon .icoMoneda{width:1.1em;height:1.1em}
+.tiPie{position:sticky;bottom:0;display:flex;justify-content:center;padding:8px 0 max(8px,env(safe-area-inset-bottom,0px));margin-top:auto;background:linear-gradient(180deg,rgba(31,42,77,0),#1f2a4d 35%);z-index:2}
+.tiPie .ajBtn{min-height:44px;min-width:150px;margin:0}
+#tiendaSkins{display:flex;flex-direction:column;gap:clamp(6px,1.6vmin,10px)}
+.skPj{background:#2b3866;border:2px solid #14193a;border-radius:12px;padding:clamp(5px,1.2vmin,8px) clamp(6px,1.6vmin,10px)}
+.skPjNom{display:flex;align-items:center;gap:7px;font-size:clamp(13px,3.6vmin,17px);margin-bottom:5px}
+.skPjNom img{width:26px;height:26px;border-radius:7px;border:2px solid #14193a;object-fit:cover;background:#14193a}
+.skOps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(5px,1.4vmin,8px)}
+.skOp{display:flex;flex-direction:column;gap:4px;background:#1f2a4d;border:2px solid #14193a;border-radius:10px;padding:4px}
+.skOp.pv{border-color:#ffd23f;box-shadow:0 0 0 2px #ffd23f inset}
+.skOp.eq{border-color:#5dff8a}
+.skVer{display:flex;flex-direction:column;align-items:center;gap:3px;min-height:44px;background:none;border:0;padding:2px;color:#fff;cursor:pointer;font:400 clamp(10px,2.6vmin,13px) "Lilita One",system-ui,sans-serif;touch-action:pan-y}
+.skVer b{font-weight:400;text-align:center;line-height:1.05}
+.skPal{display:flex;gap:2px}
+.skPal i{display:block;width:clamp(14px,3.6vmin,20px);height:clamp(14px,3.6vmin,20px);border-radius:50%;border:2px solid #14193a}
+.skBtn{min-height:44px;display:flex;align-items:center;justify-content:center;gap:3px;font:400 clamp(11px,2.8vmin,14px) "Lilita One",system-ui,sans-serif;color:#14193a;background:#ffd23f;border:2px solid #14193a;border-radius:9px;box-shadow:0 3px 0 #14193a;cursor:pointer;touch-action:pan-y;padding:2px 4px}
+.skBtn .icoMoneda{width:1.05em;height:1.05em}
+.skBtn.own{background:#3ccf5a}
+.skBtn.eq{background:#9fb3d9;cursor:default}
+.skBtn.falta{background:#5b6690;color:#cfd6ee;box-shadow:none;cursor:not-allowed}
+.skBtn:active:not(:disabled){transform:translateY(2px);box-shadow:0 1px 0 #14193a}
+.botaBtn{min-height:44px}
+.tiSkinsZona{display:flex;gap:clamp(6px,1.6vmin,10px);align-items:flex-start}
+.tiProbador{position:sticky;top:0;flex:0 0 clamp(108px,28vmin,170px);aspect-ratio:260/340;border:2px solid #14193a;border-radius:12px;background:radial-gradient(circle at 50% 40%,#3d5bb8,#1a2550 75%);overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:flex-end}
+.tiProbador img{width:100%;flex:1;min-height:0;object-fit:contain;display:block}
+.tpNom{width:100%;text-align:center;font-size:clamp(11px,2.8vmin,14px);background:#14193a;padding:2px 2px 4px;line-height:1.05}
+.tpNom small{display:block;font-size:.8em;color:#ffd23f}
+#tiendaSkins{flex:1;min-width:0}
+@media (orientation:portrait){.tiSkinsZona{flex-direction:column;align-items:center}.tiProbador{position:relative}}

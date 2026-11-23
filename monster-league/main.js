@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=41';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=42';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=41';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=42';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -1091,6 +1091,10 @@ const SCROLL_SEL = '#lbNovCuerpo, .ajCaja, .tiCaja, .coLado, .coCuadro, .coLiga,
 function inScroller(t) {
   const el = t && t.closest ? t.closest(SCROLL_SEL) : null;
   for (let e = el; e && e !== document.body; e = e.parentElement) if (e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1) { const cs = getComputedStyle(e); if (/(auto|scroll)/.test(cs.overflowY + cs.overflowX)) return true; }
+  // update 42: CUALQUIER lista con scroll vertical de verdad (alineación, cartas, campos, mejoras, paneles del lobby...): antes solo las de
+  // SCROLL_SEL -> en la ALINEACIÓN el dedo no bajaba. Fuera del partido (el HUD de juego no tiene listas con scroll).
+  for (let e = t && t.nodeType === 1 ? t : t && t.parentElement; e && e !== document.body; e = e.parentElement)
+    if (e.scrollHeight > e.clientHeight + 1) { const cs = getComputedStyle(e); if (/(auto|scroll)/.test(cs.overflowY)) return true; }
   return false;
 }
 document.addEventListener('touchmove', (e) => { if (e.touches.length === 1 && inScroller(e.target)) return; swallow(e); }, { passive: false });
@@ -1493,7 +1497,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { input.turboDown = true; e.preventDefault(); }
   if (e.code === 'KeyQ' && !e.repeat) { input.qT0 = performance.now(); e.preventDefault(); }
   if ((e.code === 'KeyR' || e.code === 'KeyF') && !e.repeat && S.mode === 'play' && !S.paused) { espUse(user); e.preventDefault(); }   // update 29: ESPECIAL
-  if (e.code === 'Escape' && !e.repeat) { if (S.paused) resumeGame(); else openPause(); }
+  if (e.code === 'Escape' && !e.repeat) { if (S.paused) resumeGame(); else if (!matchMedia('(pointer: coarse)').matches) openPause(); }   // update 42: Esc solo con teclado de escritorio (deliberado); en móvil nunca
   if (e.code === 'KeyE' && !e.repeat) {
     if (S.mode === 'play') { if (ball.owner === user) tryDribble(user); else tryDash(user); }
     e.preventDefault();
@@ -2499,7 +2503,7 @@ const ESPECIALES = {
   turtobola: { name: 'CAPARAZÓN', desc: 'PORTERO: ante un tiro a puerta se blinda en su caparazón 1,6 s: llega más lejos y se lanza más rápido. Lo usa solo (IA del portero).', need: 'balon', col: '#3fd18b', gk: true },   // update 37: solo portero
   conazo: { name: 'ZONA CORTADA', desc: 'Planta una barrera de conos delante del rival: le corta el paso 3 s.', need: 'cerca', rango: 14, col: '#ff8a2a' },
   calcetrol: { name: 'PESTE A PIES', desc: 'Nube de olor a calcetín: el rival que la cruza va a cámara lenta.', col: '#b6d84a' },
-  buton: { name: 'BOTÓN DE PAUSA', desc: 'PORTERO: cuando un rival entra con el balón en zona de tiro, pulsa pausa y lo congela 1 s. Lo usa solo (IA del portero).', col: '#ffd23f', gk: true },   // update 37: solo portero
+  buton: { name: 'REFLEJOS', desc: 'PORTERO: cuando el rival chuta a su portería, reacciona al instante y llega un 30 % más lejos durante 1,2 s. Lo usa solo (IA del portero).', col: '#ffd23f', gk: true },   // update 37: solo portero · update 42: antes 'BOTÓN DE PAUSA' (congelaba al jugador con un icono II = 'pausa' inesperada)
   lobo: { name: 'AULLIDO', desc: 'Aúlla: el rival cercano se asusta, suelta el balón y recula.', need: 'cerca', rango: 9, col: '#8fa6ff' },
   zorro: { name: 'FINTA ASTUTA', desc: 'Regate automático que deja al rival clavado en el sitio.', need: 'balon', col: '#ff7a3d' },
   gecko: { name: 'LENGUA PEGAJOSA', desc: 'Atrapa con la lengua un balón suelto a distancia (hasta 11 m).', need: 'suelto', col: '#ff6fa8' },
@@ -3023,9 +3027,9 @@ function espAI(a, opp, dt) {
   if (want && Math.random() < 0.7) espUse(a, true);
 }
 // ---- update 37: ESPECIAL DE PORTERO (Butón / Turtobola: siempre los usa la IA del portero, también el tuyo) ----
-// BUTÓN · BOTÓN DE PAUSA: un rival entra con el balón en zona de tiro -> lo congela 1 s.
+// BUTÓN · REFLEJOS (update 42; antes BOTÓN DE PAUSA, que congelaba al que entraba a tirar): tiro rival -> reacción inmediata y alcance ×1,3 1,2 s.
 // TURTOBOLA · CAPARAZÓN: tiro rival hacia su portería -> se blinda 1,6 s (alcance ×1,3, estirada ×1,3, reacción inmediata).
-const GK_SHELL_T = 1.6, GK_SHELL_K = 1.3;
+const GK_SHELL_T = 1.6, GK_SHELL_K = 1.3, GK_REFLEJO_T = 1.2;
 function gkEspUpdate(dt, playing) {
   for (const k of [gkA, gkB]) {
     if (!k || !isGK(k.charKey)) continue;
@@ -3034,10 +3038,7 @@ function gkEspUpdate(dt, playing) {
     if (k.esp < 1) { k.esp = Math.min(1, k.esp + dt / ESP_T); continue; }
     k._espAiT = (k._espAiT || 0) - dt; if (k._espAiT > 0) continue; k._espAiT = 0.15;
     const s = k.team === 0 ? -1 : 1, goalY = s * HL;
-    if (k.charKey === 'buton') {
-      const h = ball.owner;
-      if (h && h.team !== k.team && !h.keeper && Math.abs(goalY - h.pos.y) < 20 && Math.abs(h.pos.x) < GW + 9 && !(h.freezeT > 0)) gkEspFire(k, h);
-    } else {
+    {   // update 42: Butón y Turtobola se activan con un tiro rival a su portería (Butón ya no congela a nadie)
       const lt = ball.lastTouch;
       if (!ball.owner && lt && lt.team !== k.team && ball.vel.y * s > 6 && Math.abs(goalY - ball.pos.y) < 24 && Math.abs(ball.pos.x) < GW + 8) gkEspFire(k, null);
     }
@@ -3045,8 +3046,11 @@ function gkEspUpdate(dt, playing) {
 }
 function gkEspFire(k, foe) {
   const e = ESPECIALES[k.charKey]; k.esp = 0; k.espUsedT = S.t;
-  if (k.charKey === 'buton') ESP_FN.buton(k, foe);
-  else {
+  if (k.charKey === 'buton') {   // update 42: REFLEJOS: reacción inmediata y más alcance 1,2 s, con un destello amarillo (sin congelar, sin icono II)
+    k.shellT = GK_REFLEJO_T; k.react = 0;
+    for (let i = 0; i < 2; i++) setTimeout(() => espShock(k.pos.x, k.pos.y, '#ffd23f', 3.2, 0.35, 0.05, 0.1), i * 160);
+    espPuffs(k.pos.x, k.pos.y, 0.6, 0xfff1a0, 8, 2.2, 1.1, 0.6, 0.3);
+  } else {
     k.shellT = GK_SHELL_T; k.react = 0;
     const dome = new THREE.Mesh(new THREE.SphereGeometry(1.25 * ESCALA, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x3fd18b, transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide }));
     const rim = new THREE.Mesh(new THREE.TorusGeometry(1.25 * ESCALA, 0.07, 8, 40), new THREE.MeshBasicMaterial({ color: 0x14193a })); rim.rotation.x = Math.PI / 2; dome.add(rim);
@@ -3322,6 +3326,7 @@ function startGame() {
   document.body.classList.toggle('m2v2', is2v2());   // update 30
   applyTeamDiscs();   // update 31
   applyBoots(user.model, bootEquip());
+  if (SKINS[user.charKey]) applySkin(user.model, user.charKey, skinOf(user.charKey));   // update 42: tu skin (solo tu jugador: un rival con el mismo personaje va con el original)
   pantalla.classList.remove('visible'); menuEl.classList.remove('visible'); hudSet(true);
   precompileFx();   // update 35: shaders de indicadores / efectos compilados ANTES de la primera acción (antes: tirón al primer chut alto, apuntado...)
   sfx.whistle(); kickoff(true);
@@ -3384,6 +3389,70 @@ function refreshBootsVisual() {
   renderPortraits(); if (S.mode === 'menu') showBigCard();
   if (user) applyBoots(user.model, bootEquip());
 }
+
+// ===================== update 42: SKINS (reskins de color) =====================
+// Texturas recoloreadas POR ZONAS (skins_src/gen_skins.py: máscaras suaves por tono/saturación/brillo; blancos y negros intactos)
+// sobre el MISMO modelo: solo cambia el map del material toon. Se compran con monedas en la TIENDA y se equipan por personaje.
+const SKINS = {
+  tiburon: [{ k: 'lava', name: 'MAKO DE LAVA', precio: 300, pal: ['#c4452b', '#f5e2b8', '#ffd21f'] }, { k: 'abisal', name: 'SOMBRA ABISAL', precio: 450, pal: ['#3a3157', '#c9cbe0', '#ff3cf2'] }],
+  mushom: [{ k: 'amanita', name: 'AMANITA', precio: 300, pal: ['#c8222b', '#f7e9c8', '#ff7a1f'] }, { k: 'helada', name: 'ESPORA HELADA', precio: 450, pal: ['#1d6f8a', '#c4f3fa', '#3ff2e0'] }],
+  zora: [{ k: 'tormenta', name: 'TORMENTA AZUL', precio: 300, pal: ['#3b4048', '#2d9bff', '#bfe6ff'] }, { k: 'fuego', name: 'LOBA DE FUEGO', precio: 450, pal: ['#4a3a33', '#ff7a1f', '#ffd0a0'] }],
+};
+const SKIN_KEY = 'ml_skins_v1';
+function skinsLoad() {
+  let b = null; try { b = JSON.parse(localStorage.getItem(SKIN_KEY) || 'null'); } catch (_) {}
+  b = b && typeof b === 'object' ? b : {};
+  const ok = (id) => { const [c, k] = String(id).split(':'); return !!(SKINS[c] && SKINS[c].some((x) => x.k === k)); };
+  b.owned = Array.isArray(b.owned) ? b.owned.filter(ok) : [];
+  const eq = {}; for (const [c, k] of Object.entries(b.equip || {})) if (ok(c + ':' + k) && b.owned.includes(c + ':' + k)) eq[c] = k; b.equip = eq;
+  return b;
+}
+let SKINS_ST = skinsLoad();
+function skinsSave() { try { localStorage.setItem(SKIN_KEY, JSON.stringify(SKINS_ST)); } catch (_) {} }
+const skinOf = (c) => SKINS_ST.equip[c] || null;
+const SKIN_TEX = {};
+function skinTex(c, k) {
+  const id = c + '_' + k; if (SKIN_TEX[id]) return SKIN_TEX[id];
+  return (SKIN_TEX[id] = new Promise((res) => {
+    new THREE.TextureLoader().load(`assets/skins/${id}.jpg?${ASSET_V}`, (t) => res(t), undefined, () => { console.warn('skin sin textura', id); res(null); });
+  }));
+}
+// pone (o quita, k = null) la skin en un modelo de ese personaje; devuelve una promesa (la textura se carga una vez y se comparte)
+function applySkin(model, c, k) {
+  if (!model || !SKINS[c]) return Promise.resolve(false);
+  const mats = []; model.traverse((o) => { if (o.isMesh && !o.userData.outline) for (const m of (Array.isArray(o.material) ? o.material : [o.material])) if (m && m.map !== undefined) mats.push(m); });
+  for (const m of mats) if (!m.userData.mapOrig) m.userData.mapOrig = m.map;
+  model.userData.skin = k || null;
+  if (!k) { for (const m of mats) if (m.userData.mapOrig) m.map = m.userData.mapOrig; return Promise.resolve(true); }
+  return skinTex(c, k).then((t) => {
+    if (!t || model.userData.skin !== k) return false;
+    for (const m of mats) { const o = m.userData.mapOrig; if (!o) continue;
+      if (!t.userData.cfg) { t.flipY = o.flipY; t.colorSpace = o.colorSpace; t.wrapS = o.wrapS; t.wrapT = o.wrapT; t.anisotropy = o.anisotropy; t.minFilter = o.minFilter; t.magFilter = o.magFilter; t.needsUpdate = true; t.userData.cfg = true; }
+      m.map = t; }
+    return true;
+  });
+}
+// menú (muñecos + retratos de las cartas = selector, colección, VS de la intro); el preview de la tienda usa prev = { c, k }
+function refreshSkinsVisual(prev) {
+  const ps = CHARS.map((c, i) => { const m = menuChars[i]; if (!m || !SKINS[c.key]) return null; const k = prev && prev.c === c.key ? prev.k : skinOf(c.key); return m.model.userData.skin === (k || null) ? null : applySkin(m.model, c.key, k); }).filter(Boolean);
+  if (user && SKINS[user.charKey] && !prev) ps.push(applySkin(user.model, user.charKey, skinOf(user.charKey)));
+  return Promise.all(ps).then((r) => {
+    if (prev) return r.length;
+    const firma = CHARS.map((c, i) => (menuChars[i] && menuChars[i].model.userData.skin) || '').join();   // retratos hechos con estas skins
+    if (firma !== refreshSkinsVisual.firma) { refreshSkinsVisual.firma = firma; renderPortraits(); if (S.mode === 'menu') { showBigCard(); if (typeof lbRender === 'function') lbRender(); } }
+    return r.length; });
+}
+refreshSkinsVisual.firma = CHARS.map(() => '').join();   // los retratos de inicio son con las texturas originales
+function skinComprar(c, k) {
+  const sk = (SKINS[c] || []).find((x) => x.k === k); if (!sk) return { ok: false, motivo: 'no existe' };
+  const id = c + ':' + k;
+  if (!SKINS_ST.owned.includes(id)) {
+    if (PROG.mon < sk.precio) return { ok: false, motivo: 'monedas', faltan: sk.precio - PROG.mon };
+    PROG.mon -= sk.precio; progSave(); SKINS_ST.owned.push(id); LOG('skin_compra', null, { c, k, precio: sk.precio, mon: PROG.mon });
+  }
+  SKINS_ST.equip[c] = k; skinsSave(); return { ok: true, mon: PROG.mon };
+}
+function skinEquipar(c, k) { if (k && !SKINS_ST.owned.includes(c + ':' + k)) return false; if (k) SKINS_ST.equip[c] = k; else delete SKINS_ST.equip[c]; skinsSave(); return true; }
 const tiendaEl = document.getElementById('tienda'), tiendaLista = document.getElementById('tiendaLista');
 function renderTienda() {
   tiendaLista.innerHTML = '';
@@ -3401,13 +3470,49 @@ function renderTienda() {
     tiendaLista.appendChild(d);
   }
 }
-function renderTiendaEsp() {   // update 29: especiales de los personajes (el tuyo primero)
-  const el = document.getElementById('tiendaEsp'); if (!el) return;
-  const ks = [CHARS[sel].key, ...CHARS.map((c) => c.key).filter((k) => k !== CHARS[sel].key), ...GK_ONLY];   // update 37: + especiales de portero
-  el.innerHTML = ks.map((k, i) => { const c = ALL_CHARS.find((x) => x.key === k), e = ESPECIALES[k]; return `<div class="tiEsp${i === 0 ? ' tuyo' : ''}" style="--ec:${e.col};--c:${c.color}"><img src="${c.badge || c.card}" alt=""><div><div class="tiEspNom"><b>${e.name}</b><small>${c.name}${i === 0 ? ' · TU PERSONAJE' : ''}</small></div><div class="tiEspDesc">${e.desc}</div></div></div>`; }).join('');
+// update 42: la sección ESPECIALES sale de la tienda (los especiales siguen en el juego). Entra SKINS.
+let skinPrev = null;   // { c, k } que se está probando en el muñeco del menú
+function renderTiendaSkins() {
+  const el = document.getElementById('tiendaSkins'); if (!el) return;
+  const mon = document.getElementById('tiendaMon'); if (mon) mon.innerHTML = `${MONEDA_SVG}<b>${PROG.mon}</b>`;
+  el.innerHTML = Object.entries(SKINS).map(([c, lista]) => {
+    const ch = ALL_CHARS.find((x) => x.key === c); if (!ch) return '';
+    const eq = skinOf(c), ops = [{ k: null, name: 'ORIGINAL', precio: 0, pal: [ch.color, '#ffffff', '#14193a'] }, ...lista];
+    return `<div class="skPj" data-c="${c}"><div class="skPjNom"><img src="${cBadgeImg(c)}" alt="">${ch.name}</div><div class="skOps">` + ops.map((o) => {
+      const own = !o.k || SKINS_ST.owned.includes(c + ':' + o.k), es = (eq || null) === (o.k || null), pv = skinPrev && skinPrev.c === c && (skinPrev.k || null) === (o.k || null);
+      const falta = !own && PROG.mon < o.precio;
+      const btn = es ? 'EQUIPADA' : own ? 'EQUIPAR' : `${MONEDA_SVG}${o.precio}`;
+      return `<div class="skOp${es ? ' eq' : ''}${pv ? ' pv' : ''}" data-c="${c}" data-k="${o.k || ''}"><button class="skVer" aria-label="Probar ${o.name}"><span class="skPal">${o.pal.map((x) => `<i style="background:${x}"></i>`).join('')}</span><b>${o.name}</b></button>` +
+        `<button class="skBtn${es ? ' eq' : own ? ' own' : ''}${falta ? ' falta' : ''}"${es || falta ? ' disabled' : ''}>${btn}</button></div>`;
+    }).join('') + '</div></div>';
+  }).join('');
 }
-function openTienda() { if (S.mode !== 'menu') return; renderTienda(); renderTiendaEsp(); tiendaEl.classList.add('visible'); }
-function closeTienda() { tiendaEl.classList.remove('visible'); }
+function tiendaSkinVer(c, k) {   // prueba la skin en el PROBADOR de la tienda (sin cambiar tu personaje elegido)
+  skinPrev = { c, k: k || null }; renderTiendaSkins();
+  const pv = skinPrev;
+  return refreshSkinsVisual(skinPrev).then(() => { if (skinPrev !== pv) return; probadorPinta(c, k); });
+}
+function probadorPinta(c, k) {
+  const el = document.getElementById('tiendaProbador'); if (!el) return;
+  const i = CHARS.findIndex((x) => x.key === c), url = i >= 0 ? renderProbador(i) : null;
+  const sk = (SKINS[c] || []).find((x) => x.k === k), ch = ALL_CHARS.find((x) => x.key === c);
+  el.innerHTML = url ? `<img src="${url}" alt=""><div class="tpNom">${ch ? ch.name : ''}<small>${sk ? sk.name : 'ORIGINAL'}</small></div>` : '';
+  el.dataset.c = c; el.dataset.k = k || '';
+}
+document.getElementById('tiendaSkins')?.addEventListener('click', (e) => {
+  const op = e.target.closest('.skOp'); if (!op) return; const c = op.dataset.c, k = op.dataset.k || null;
+  if (e.target.closest('.skBtn')) {
+    const own = !k || SKINS_ST.owned.includes(c + ':' + k);
+    if (own) skinEquipar(c, k); else { const r = skinComprar(c, k); if (!r.ok) { sfx.miss && actx && sfx.miss(); return; } sfx.steal && actx && sfx.steal(); }
+    skinPrev = null; tiendaSkinVer(c, k); skinPrev = null; refreshSkinsVisual().then(() => renderTiendaSkins()); renderTiendaSkins(); lbMonedasRender && lbMonedasRender();
+    LOG('tienda_skin', null, { c, k, equip: skinOf(c) });
+    return;
+  }
+  tiendaSkinVer(c, k);
+});
+function openTienda() { if (S.mode !== 'menu') return; skinPrev = null; renderTienda(); renderTiendaSkins(); tiendaEl.classList.add('visible');
+  const c0 = SKINS[CHARS[sel].key] ? CHARS[sel].key : 'tiburon'; tiendaSkinVer(c0, skinOf(c0)); }
+function closeTienda() { tiendaEl.classList.remove('visible'); if (skinPrev) { skinPrev = null; refreshSkinsVisual(); } }   // update 42: fuera la prueba de skin
 document.getElementById('btnMenuTienda').addEventListener('click', openTienda);
 document.getElementById('tiendaCerrar').addEventListener('click', closeTienda);
 
@@ -3986,7 +4091,7 @@ function frame(now) {
   if (S.mode === 'menu' || ballMesh) render(dt);
 }
 
-// ===================== PAUSA (tocar el marcador) =====================
+// ===================== MENÚ DEL PARTIDO (update 42: mantener pulsado el marcador; antes: tocarlo = pausa) =====================
 const pausaEl = document.getElementById('pausa'), marcadorEl = document.getElementById('marcador');
 function resetInputs() {
   input.keys = {}; input.turboDown = false; releaseShoot(true);
@@ -4015,7 +4120,17 @@ function quitMatch() {
   openMenu();
   if (sc) openComp(sc.type);   // update 24: de vuelta al cuadro / tabla (el partido queda pendiente)
 }
-marcadorEl.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); openPause(); });
+// update 42: ya NO hay botón de pausa ni pausa al tocar el marcador (un toque sin querer arriba a la izquierda abría "PAUSA" en mitad
+// del partido). Salida discreta y deliberada: MANTENER PULSADO el marcador 0,8 s abre el menú del partido (seguir / salir / ajustes).
+// Si la pestaña se oculta, requestAnimationFrame se detiene y el partido se congela en silencio (dt máx. 0,05 s al volver): sin cartel.
+const MARC_HOLD = 800; let marcHold = null;
+const marcSoltar = () => { if (marcHold) { clearTimeout(marcHold.t); marcHold = null; } marcadorEl.classList.remove('manteniendo'); };
+marcadorEl.addEventListener('pointerdown', (e) => {
+  e.stopPropagation(); marcSoltar(); if (!['play', 'kickoff', 'goal', 'out'].includes(S.mode) || S.paused) return;
+  marcadorEl.classList.add('manteniendo');
+  marcHold = { id: e.pointerId, t: setTimeout(() => { marcHold = null; marcadorEl.classList.remove('manteniendo'); openPause(); }, MARC_HOLD) };
+});
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) marcadorEl.addEventListener(ev, marcSoltar);
 document.getElementById('btnReanudar').addEventListener('click', resumeGame);
 document.getElementById('btnSalir').addEventListener('click', quitMatch);
 document.getElementById('btnReiniciarBalon').addEventListener('click', () => { if (!S.practice) return; practiceBall(false); resumeGame(); LOG('practica_reiniciar', user, {}); });
@@ -4078,6 +4193,7 @@ function buildMenuChars() {
     menuChars.push({ root, model, mixer, actions });
   }
   for (const m of menuChars) applyBoots(m.model, bootEquip());
+  refreshSkinsVisual();   // update 42: skins equipadas (retratos de nuevo cuando cargan las texturas)
 }
 // ===================== CARTAS (update 17) =====================
 // Retratos: render offscreen de los modelos 3D reales del menú (con las botas equipadas) a una imagen por personaje.
@@ -4111,6 +4227,29 @@ function renderPortraits() {
     });
     renderer.setRenderTarget(prevRT); renderer.setClearColor(pc, pa); rt.dispose();
   } catch (e) { console.info('retratos: se usan las imágenes', e); }
+}
+// update 42: probador de la tienda: render del muñeco del menú (con su skin) a una imagen, como los retratos pero de cuerpo entero
+function renderProbador(i, W = 260, H = 320) {
+  const m = menuChars[i]; if (!m) return null;
+  try {
+    const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 }); rt.texture.colorSpace = THREE.SRGBColorSpace;
+    const ps = new THREE.Scene(); ps.add(new THREE.HemisphereLight(0xffffff, 0x3a4566, 2.4));
+    const dl = new THREE.DirectionalLight(0xffffff, 2.0); dl.position.set(2.5, 4, 5); ps.add(dl);
+    const cam = new THREE.PerspectiveCamera(26, W / H, 0.05, 100);
+    const prevRT = renderer.getRenderTarget(), pc = new THREE.Color(); renderer.getClearColor(pc); const pa = renderer.getClearAlpha();
+    const parent = m.root.parent, vis = m.root.visible, sc = m.root.scale.x, ry = m.root.rotation.y;
+    ps.add(m.root); m.root.visible = true; m.root.scale.setScalar(1); m.root.rotation.y = -0.45; m.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(m.model, true), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+    const h = size.y * 1.08, dist = h / 2 / Math.tan(THREE.MathUtils.degToRad(13)) + size.z / 2;
+    cam.position.set(ctr.x, ctr.y + h * 0.05, ctr.z + dist); cam.lookAt(ctr.x, ctr.y, ctr.z);
+    renderer.setClearColor(0x000000, 0); setOutlinePx(W, H, 1.8); renderer.setRenderTarget(rt); renderer.clear(); renderer.render(ps, cam);
+    const buf = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
+    parent.add(m.root); m.root.visible = vis; m.root.scale.setScalar(sc); m.root.rotation.y = ry;
+    renderer.setRenderTarget(prevRT); renderer.setClearColor(pc, pa); rt.dispose(); syncOutline();
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H; const cx = cv.getContext('2d'), img = cx.createImageData(W, H);
+    for (let y = 0; y < H; y++) img.data.set(buf.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+    cx.putImageData(img, 0, 0); return cv.toDataURL('image/png');
+  } catch (e) { console.info('probador', e); return null; }
 }
 const GUANTE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 21.5v-6.2L4.5 12a1.5 1.5 0 0 1 2.3-1.9L8.2 11.6V5.2a1.35 1.35 0 0 1 2.7 0v4.6V3.8a1.35 1.35 0 0 1 2.7 0v6V4.6a1.35 1.35 0 0 1 2.7 0v5.8V6.8a1.35 1.35 0 0 1 2.7 0v8.4c0 3.6-2.4 6.3-5.6 6.3z"/><path class="ln" d="M8 17.6h9.4"/></svg>';
 function cardHTML(key, lv) {   // update 37: carta del NIVEL actual (categoría BRONCE…LEYENDA con su marco) y cartas de PORTERO
@@ -4321,13 +4460,13 @@ function lbAbrir(id) {
   lbCerrar(true);
   const p = $id(id); if (!p) return;
   if (id === 'lbCopasPanel') lbCopasHTML(); else if (id === 'lbPerfPanel') lbPerfHTML(); else if (id === 'lbPers') showBigCard(); else if (id === 'lbMejora') mejoraHTML(true); else if (id === 'lbAlin') alinHTML();   // update 37
-  p.classList.add('visible'); menuEl.classList.add('conPanel');
+  p.classList.add('visible'); menuEl.classList.add('conPanel'); updateOrient();   // update 42
   sfx.dribble && actx && sfx.dribble();
 }
 function lbCerrar(silent) {
   const inp = $id('lbNombreIn'); if (inp && menuEl.querySelector('#lbPerfPanel.visible')) { PERF.nombre = nombreLimpio(inp.value); perfSave(); }
   for (const p of menuEl.querySelectorAll('.lbPanel.visible')) p.classList.remove('visible');
-  menuEl.classList.remove('conPanel'); if (!silent) lbRender();
+  menuEl.classList.remove('conPanel'); if (!silent) lbRender(); updateOrient();
 }
 function setModo(k) {
   if (!MODOS.some((m) => m.k === k)) return;
@@ -4412,12 +4551,18 @@ function mejorarAhora() {
   return r;
 }
 function mejPaso(d) { const l = mejLista(); mejK = l[(l.indexOf(mejK) + d + l.length) % l.length]; mejoraHTML(true); }
+// update 42: aviso corto en el menú (p. ej. ALINEACIÓN GUARDADA)
+function toastMenu(txt) {
+  let t = $id('menuToast'); if (!t) { t = document.createElement('div'); t.id = 'menuToast'; t.setAttribute('role', 'status'); menuEl.appendChild(t); }
+  t.textContent = txt; t.classList.remove('ver'); void t.offsetWidth; t.classList.add('ver'); clearTimeout(toastMenu.t); toastMenu.t = setTimeout(() => t.classList.remove('ver'), 1600);
+}
 // ---- ALINEACIÓN ----
-let alinTab = '1v1';
+let alinTab = '1v1', ALIN_D = null;   // update 42: borrador de la alineación: se guarda con GUARDAR, VOLVER lo descarta
+const alinCur = () => ALIN_D || ALIN;
 function alinSlot(k, rol, cls) { return `<div class="alSlot ${cls}" data-rol="${rol}"><small>${rol}</small><div class="alCarta">${cardHTML(k)}</div></div>`; }
 function alinHTML() {
-  const me = CHARS[sel].key, dos = alinTab === '2v2';
-  if (dos && (!ALIN.duo || ALIN.duo === me)) { ALIN.duo = CHARS.find((c) => c.key !== me).key; alinSave(); }
+  const me = CHARS[sel].key, dos = alinTab === '2v2', ALIN = alinCur();
+  if (dos && (!ALIN.duo || ALIN.duo === me)) { ALIN.duo = CHARS.find((c) => c.key !== me).key; if (!ALIN_D) alinSave(); }
   for (const b of menuEl.querySelectorAll('.alTab')) b.classList.toggle('sel', b.dataset.al === alinTab);
   $id('lbAlinCampo').className = 'alCampo ' + (dos ? 'dos' : 'uno');
   $id('lbAlinCampo').innerHTML = '<div class="alLineas"><i class="area"></i><i class="medio"></i><i class="circ"></i></div>' +
@@ -4430,7 +4575,7 @@ function alinHTML() {
 function alinSet(o) {
   if (o.gk && GK_ONLY.includes(o.gk)) ALIN.gk = o.gk;
   if (o.duo && CHARS.some((c) => c.key === o.duo)) { ALIN.duo = o.duo; M2.mate = o.duo; }
-  alinSave(); if (menuEl.querySelector('#lbAlin.visible')) alinHTML();
+  alinSave(); if (ALIN_D) ALIN_D = { ...ALIN }; if (menuEl.querySelector('#lbAlin.visible')) alinHTML();
   LOG('alineacion', null, { gk: ALIN.gk, duo: ALIN.duo });
   return { ...ALIN };
 }
@@ -4465,7 +4610,9 @@ function campoBuildUI() {
 function lbBuild37() {
   campoBuildUI();   // update 39
   $id('lbMonedas').addEventListener('click', () => abrirMejora());
-  $id('lbBtnAlin').addEventListener('click', () => { alinTab = PERF.modo === '2v2' ? '2v2' : '1v1'; lbAbrir('lbAlin'); });
+  $id('lbBtnAlin').addEventListener('click', () => { alinTab = PERF.modo === '2v2' ? '2v2' : '1v1'; ALIN_D = { ...ALIN }; lbAbrir('lbAlin'); });
+  $id('lbAlinGuardar').addEventListener('click', () => { if (ALIN_D) alinSet(ALIN_D); ALIN_D = null; lbCerrar(); toastMenu('ALINEACIÓN GUARDADA'); });   // update 42
+  $id('lbAlinVolver').addEventListener('click', () => { ALIN_D = null; lbCerrar(); });
   $id('lbPersMejorar').addEventListener('click', () => abrirMejora(CHARS[sel].key));
   $id('lbMejBtn').addEventListener('click', () => mejorarAhora());
   $id('lbMejPrev').addEventListener('click', () => mejPaso(-1));
@@ -4473,9 +4620,11 @@ function lbBuild37() {
   for (const b of menuEl.querySelectorAll('.alTab')) b.addEventListener('click', () => { alinTab = b.dataset.al; alinHTML(); });
   $id('lbAlinElige').addEventListener('click', (e) => {
     const o = e.target.closest('.alOp'); if (!o) return;
-    alinSet(o.dataset.gk ? { gk: o.dataset.gk } : { duo: o.dataset.duo }); sfx.dribble && actx && sfx.dribble();
+    const D = ALIN_D || (ALIN_D = { ...ALIN });   // update 42: al borrador (GUARDAR lo graba)
+    if (o.dataset.gk && GK_ONLY.includes(o.dataset.gk)) D.gk = o.dataset.gk; else if (o.dataset.duo && CHARS.some((c) => c.key === o.dataset.duo)) D.duo = o.dataset.duo;
+    alinHTML(); sfx.dribble && actx && sfx.dribble();
   });
-  $id('lbAlinCampo').addEventListener('click', (e) => { const s = e.target.closest('.alSlot'); if (!s) return; const k = s.dataset.rol === 'PORTERO' ? ALIN.gk : s.dataset.rol === 'DÚO' ? ALIN.duo : CHARS[sel].key; abrirMejora(k); });
+  $id('lbAlinCampo').addEventListener('click', (e) => { const s = e.target.closest('.alSlot'); if (!s) return; const A = alinCur(), k = s.dataset.rol === 'PORTERO' ? A.gk : s.dataset.rol === 'DÚO' ? A.duo : CHARS[sel].key; abrirMejora(k); });
 }
 function lobbyPlay() {
   if (S.mode !== 'menu') return;
@@ -4909,7 +5058,9 @@ function isPortraitScreen() {
   return window.innerHeight > window.innerWidth + 24;
 }
 function updateOrient() {
-  const show = HORIZONTAL && isPortraitScreen();
+  // update 42: la ALINEACIÓN también se ve en vertical (es una lista: se maqueta para móvil); el resto sigue pidiendo girar
+  const alV = !!document.querySelector('#menu.visible #lbAlin.visible');
+  const show = HORIZONTAL && isPortraitScreen() && !alV;
   const el = document.getElementById('giraMovil');
   if (el) {
     el.classList.toggle('visible', show);
@@ -5349,6 +5500,7 @@ Object.assign(window.__game, {
   setCamMode: (m) => setCamMode(m, true),
   setJoyDir,
   openPause: () => openPause(), resumeGame: () => resumeGame(), quitMatch: () => quitMatch(),
+  SKINS, skinsSt: () => SKINS_ST, skinsReload: () => { SKINS_ST = skinsLoad(); return refreshSkinsVisual(); }, skinComprar, skinEquipar, skinOf, refreshSkinsVisual, applySkin, tiendaSkinVer, renderProbador, prog: () => PROG, retratos: () => PORTRAITS,
   // pruebas: simula con la física real (stepBall, con postes/larguero/red) un chut alto con carga c desde D m de la línea de gol
   simAlto: (c, D, dt = 1 / 120) => {
     const sv = { pos: ball.pos.clone(), vel: ball.vel.clone(), owner: ball.owner, le: ball.lineEvent, bs: ball.backspin };
@@ -5383,6 +5535,7 @@ Object.assign(window.__game, {
 Object.defineProperty(window.__game, 'menuSel', { get: () => sel });
 Object.defineProperty(window.__game, 'gkA', { get: () => gkA });
 Object.defineProperty(window.__game, 'gkB', { get: () => gkB });
+Object.defineProperty(window.__game, 'menuChars', { get: () => menuChars });   // update 42 (pruebas de skins)
 // ===================== UPDATE 30: 2 VS 2, PASES, SALTO / CABEZAZO Y PORTEROS =====================
 // 2 VS 2: tú + un compañero bot contra 2 bots, cada equipo con su portero. Botón PASE (toque = raso, mantener = elevado / centro).
 // Cabezazos: los balones aéreos (por encima del pecho) se pueden rematar saltando antes de que caigan (botón CHUTAR -> CABEZA,
