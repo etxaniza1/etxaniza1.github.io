@@ -1427,3 +1427,239 @@ body.horizontal #mCartas.muchas.muchisimas.nueveCol.diezCol{--cw:min(calc((47vw 
 /* update 44: pista del marcador (toque corto en partido) */
 #marcPista{position:fixed;z-index:40;pointer-events:none;background:#14193a;color:#fff;font:400 12px "Lilita One",system-ui,sans-serif;letter-spacing:.4px;padding:5px 10px 6px;border-radius:10px;border:2px solid #ffd23f;box-shadow:0 3px 0 rgba(0,0,0,.35);opacity:0;transform:translateY(-4px);transition:opacity .15s,transform .15s;white-space:nowrap}
 #marcPista.visible{opacity:1;transform:none}
+
+/* ===================== update 45: TIENDA estilo Brawl Stars (t97u) =====================
+   Pantalla completa: barra superior (VOLVER + TIENDA + monedas), pestañas a la izquierda y una tira horizontal
+   de tarjetas grandes (degradado + arte + cinta + tipo + precio abajo). */
+#tienda{display:none;flex-direction:column;justify-content:flex-start;align-items:stretch;padding:0;background:#10194a;color:#fff;touch-action:pan-x;
+  padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+#tienda.visible{display:flex;animation:tiEntra .28s cubic-bezier(.2,1.3,.4,1)}
+@keyframes tiEntra{0%{opacity:0;transform:scale(1.04)}100%{opacity:1;transform:none}}
+.tiFondo{position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background:radial-gradient(ellipse 70% 90% at 62% 40%,rgba(80,200,255,.55),rgba(80,200,255,0) 70%),
+  repeating-linear-gradient(135deg,rgba(255,255,255,.045) 0 22px,rgba(255,255,255,0) 22px 44px),
+  linear-gradient(180deg,#1d5fd6 0%,#1a3fa8 55%,#152a78 100%)}
+.tiFondo::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 12% 20%,rgba(255,255,255,.12) 0 2px,transparent 3px) 0 0/46px 46px,radial-gradient(circle at 60% 70%,rgba(140,255,200,.12) 0 2px,transparent 3px) 0 0/62px 62px;animation:tiPuntos 30s linear infinite}
+@keyframes tiPuntos{to{background-position:46px -46px,-62px 62px}}
+.tiTop{flex:none;display:flex;align-items:center;gap:clamp(6px,1.6vw,14px);height:clamp(44px,13vh,58px);padding:4px clamp(6px,1.6vw,14px) 0;background:linear-gradient(180deg,rgba(8,12,40,.85),rgba(8,12,40,.55));border-bottom:3px solid #14193a;box-shadow:0 3px 0 rgba(0,0,0,.25)}
+#tienda .tiAtras{flex:none;display:flex;align-items:center;gap:2px;height:44px;min-width:44px;padding:0 12px 0 6px;border:3px solid #14193a;border-radius:12px;background:linear-gradient(180deg,#6f86ff,#3f55c9);color:#fff;font:400 clamp(13px,4vh,17px) "Lilita One",system-ui,sans-serif;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a;cursor:pointer;touch-action:manipulation;position:relative;isolation:isolate;
+  box-shadow:inset 0 -4px 0 rgba(0,0,0,.22),inset 0 2px 0 rgba(255,255,255,.32),0 4px 0 #14193a,0 7px 12px rgba(5,8,30,.32)}
+#tienda .tiAtras::before{content:"";position:absolute;left:3px;right:3px;top:2px;height:46%;border-radius:9px 9px 40% 40%/9px 9px 12px 12px;background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.06));z-index:-1}
+#tienda .tiAtras:active{transform:translateY(3px);box-shadow:inset 0 -2px 0 rgba(0,0,0,.22),0 1px 0 #14193a}
+#tienda .tiAtras svg{width:22px;height:22px;fill:none;stroke:#fff;stroke-width:4;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 2px 0 #14193a)}
+#tienda .tiTit{font-size:clamp(20px,6.4vh,32px);letter-spacing:1px;-webkit-text-stroke:1.6px #14193a;text-shadow:0 3px 0 #14193a;transform:skewX(-6deg);text-align:left}
+.tiPills{margin-left:auto;display:flex;gap:8px}
+#tienda .tiMon{display:inline-flex;align-items:center;gap:6px;font-size:clamp(14px,4.4vh,20px) !important;color:#fff !important;background:linear-gradient(180deg,#1b2459,#0c1238) !important;border:2.5px solid #14193a;border-radius:999px;padding:2px 14px 3px 3px !important;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a;box-shadow:inset 0 2px 0 rgba(255,255,255,.15),0 3px 0 #14193a}
+#tienda .tiMon .icoMoneda{width:1.5em;height:1.5em;margin:-4px 0 -4px -4px;filter:drop-shadow(0 2px 0 #14193a)}
+#tienda .tiMon b{font-weight:400}
+.tiCuerpo{flex:1;min-height:0;display:flex;gap:0;padding-bottom:env(safe-area-inset-bottom,0px)}
+.tiTabs{flex:none;width:clamp(96px,17vw,150px);display:flex;flex-direction:column;gap:clamp(4px,1.4vh,8px);padding:clamp(6px,2vh,12px) 6px clamp(6px,2vh,12px) clamp(6px,1.2vw,12px);overflow-y:auto;scrollbar-width:none;background:linear-gradient(90deg,rgba(8,12,40,.55),rgba(8,12,40,0))}
+.tiTabs::-webkit-scrollbar{display:none}
+.tiTab{position:relative;flex:none;display:flex;align-items:center;gap:5px;min-height:clamp(40px,12vh,54px);padding:3px 6px 4px 4px;border:2.5px solid #14193a;border-radius:10px;background:linear-gradient(180deg,#46507e,#2c3462);color:#fff;font:400 clamp(9px,2.9vh,13px)/1.05 "Lilita One",system-ui,sans-serif;text-align:left;-webkit-text-stroke:.7px #14193a;text-shadow:0 1.5px 0 #14193a;cursor:pointer;touch-action:manipulation;transform:skewX(-6deg);box-shadow:inset 0 2px 0 rgba(255,255,255,.18),0 3px 0 #14193a;transition:transform .12s,background .12s}
+.tiTab>*{transform:skewX(6deg)}
+.tiTab b{font-weight:400;min-width:0}
+.tiTab.act{background:linear-gradient(180deg,#ffe46a,#ffb21e);color:#fff;transform:skewX(-6deg) translateX(5px) scale(1.04);box-shadow:inset 0 2px 0 rgba(255,255,255,.5),0 3px 0 #14193a,0 0 14px rgba(255,210,63,.45)}
+.tiTab:active{transform:skewX(-6deg) translateY(2px)}
+.tiTabIco{flex:none;width:clamp(22px,7vh,32px);height:clamp(22px,7vh,32px);display:block}
+.tiTabIco svg{width:100%;height:100%;display:block;filter:drop-shadow(0 2px 0 rgba(20,25,58,.8))}
+.tiCinta{position:absolute;top:-7px;right:-6px;font:400 9px/1 "Lilita One",system-ui,sans-serif;font-style:normal;color:#fff;background:#e8324a;border:2px solid #14193a;border-radius:4px;padding:2px 4px 3px;-webkit-text-stroke:0;text-shadow:0 1px 0 #14193a;transform:skewX(6deg) rotate(6deg)}
+.tiCinta.verde{background:#2fbf4a}
+.tiScroll{flex:1;min-width:0;display:flex;gap:clamp(14px,3vw,26px);overflow-x:auto;overflow-y:hidden;padding:clamp(4px,1.4vh,10px) clamp(10px,2vw,18px) clamp(10px,3vh,16px) 6px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior:contain;scrollbar-width:none}
+.tiScroll::-webkit-scrollbar{display:none}
+.tiSec{flex:none;display:flex;flex-direction:column;gap:4px;min-height:0;scroll-snap-align:start}
+.tiSecTit{flex:none;font-size:clamp(12px,3.8vh,18px);letter-spacing:.6px;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a;white-space:nowrap;padding-left:2px}
+.tiSecTit small{font-size:.62em;color:#bfe0ff;letter-spacing:.4px;margin-left:4px;-webkit-text-stroke:.5px #14193a}
+.tiFila{flex:1;min-height:0;display:flex;gap:clamp(8px,1.8vw,14px);align-items:stretch}
+#tiendaSkins,#tiendaLista{flex-direction:row}
+/* ---- tarjeta ---- */
+.tiCard{--g1:#3fa9ff;--g2:#1b2560;--g3:#fff;position:relative;flex:none;height:100%;aspect-ratio:.62;max-height:330px;display:flex;flex-direction:column;border:3px solid #14193a;border-radius:14px;overflow:visible;color:#fff;
+  background:radial-gradient(ellipse 90% 60% at 50% 38%,color-mix(in srgb,var(--g1) 75%,#fff) 0%,var(--g1) 45%,color-mix(in srgb,var(--g1) 45%,#0b1030) 100%);
+  box-shadow:inset 0 3px 0 rgba(255,255,255,.35),inset 0 -5px 0 rgba(0,0,0,.25),0 5px 0 #14193a,0 9px 14px rgba(5,8,30,.4);scroll-snap-align:start;animation:tiCardIn .35s cubic-bezier(.2,1.4,.45,1) backwards}
+.tiCard::after{content:"";position:absolute;inset:0;border-radius:11px;pointer-events:none;background:repeating-linear-gradient(135deg,rgba(255,255,255,.07) 0 10px,rgba(255,255,255,0) 10px 20px);mix-blend-mode:screen}
+.tiFila>.tiCard:nth-child(2),.skOps>.tiCard:nth-child(2){animation-delay:.05s}.tiFila>.tiCard:nth-child(3),.skOps>.tiCard:nth-child(3){animation-delay:.1s}.tiFila>.tiCard:nth-child(4){animation-delay:.15s}
+@keyframes tiCardIn{0%{opacity:0;transform:translateY(18px) scale(.9)}100%{opacity:1;transform:none}}
+.tiCard.grande{aspect-ratio:1.18;max-height:330px}
+.tiCardRib{position:relative;z-index:2;margin:6px 8px 0;align-self:stretch;text-align:center;font-size:clamp(10px,3.2vh,15px);letter-spacing:.5px;background:linear-gradient(180deg,#24306e,#141c4a);border:2px solid #14193a;border-radius:6px;padding:2px 4px 3px;-webkit-text-stroke:.8px #14193a;text-shadow:0 2px 0 #14193a;transform:skewX(-8deg)}
+.tiOferta .tiCardRib{background:linear-gradient(180deg,#ffe46a,#ffb21e)}
+.tiArteZona{position:relative;flex:1;min-height:0;display:flex;align-items:flex-end;justify-content:center;overflow:visible}
+.tiArte{position:relative;z-index:1;height:112%;max-height:112%;max-width:120%;object-fit:contain;margin-bottom:-6%;filter:drop-shadow(0 4px 0 rgba(10,14,40,.45));pointer-events:none;transition:transform .2s}
+.tiCard:hover .tiArte{transform:scale(1.04)}
+.tiArte.retrato{height:92%;margin-bottom:0;border-radius:10px}
+.tiCard.grande .tiArte{height:118%}
+.tiBadge{position:absolute;left:8px;bottom:6px;z-index:2;width:clamp(30px,10vh,46px);aspect-ratio:1;border-radius:10px;border:2.5px solid #14193a;background:#14193a;object-fit:cover;box-shadow:0 3px 0 #14193a}
+.tiCardNom{position:relative;z-index:2;display:flex;flex-direction:column;padding:0 8px 4px;line-height:1.02;text-align:left}
+.tiCardNom b,.tiCardNom .botaNom{font-weight:400;font-size:clamp(11px,3.6vh,17px);-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a;letter-spacing:.3px}
+.tiCardNom small{font-size:clamp(8px,2.5vh,11px);color:color-mix(in srgb,var(--g3,#fff) 50%,#fff);-webkit-text-stroke:.5px #14193a;text-shadow:0 1px 0 #14193a;letter-spacing:.4px}
+.tiCard .skPal{position:absolute;right:7px;top:6px;z-index:3;display:flex;gap:2px}
+.tiCard .skPal i{width:12px;height:12px;border-width:1.5px}
+.tiChip{position:absolute;top:-11px;left:8px;z-index:4;display:inline-flex;align-items:center;gap:3px;font:400 clamp(9px,2.6vh,12px)/1 "Lilita One",system-ui,sans-serif;color:#fff;background:#14193a;border-radius:6px;padding:3px 7px 4px 4px;box-shadow:0 2px 0 rgba(0,0,0,.4)}
+.tiChip svg{width:13px;height:13px;fill:none;stroke:#ffd23f;stroke-width:2.6;stroke-linecap:round}
+.tiDto{position:absolute;right:-8px;top:34%;z-index:4;font:400 clamp(13px,4.2vh,19px)/1 "Lilita One",system-ui,sans-serif;color:#fff;background:linear-gradient(180deg,#c04bff,#8a1fe0);border:2.5px solid #14193a;border-radius:6px;padding:4px 7px 5px;-webkit-text-stroke:.8px #14193a;text-shadow:0 2px 0 #14193a;transform:rotate(-8deg);box-shadow:0 3px 0 #14193a;animation:tiLatido 1.6s ease-in-out infinite}
+@keyframes tiLatido{0%,100%{transform:rotate(-8deg) scale(1)}50%{transform:rotate(-8deg) scale(1.1)}}
+.tiGratis,.tiEqTag{position:absolute;right:-6px;top:-9px;z-index:4;font:400 clamp(10px,3vh,13px)/1 "Lilita One",system-ui,sans-serif;color:#fff;background:#2fbf4a;border:2.5px solid #14193a;border-radius:5px;padding:3px 6px 4px;-webkit-text-stroke:.6px #14193a;text-shadow:0 1.5px 0 #14193a;transform:rotate(6deg);box-shadow:0 2px 0 #14193a}
+.tiEqTag{background:#3f8cff;transform:rotate(-4deg);left:6px;right:auto}
+.tiAntes{position:absolute;z-index:3;left:50%;bottom:calc(clamp(40px,12vh,48px) + 2px);transform:translateX(-50%);font:400 clamp(10px,3vh,13px) "Lilita One",system-ui,sans-serif;color:#ffd0d0;-webkit-text-stroke:.6px #14193a;text-decoration:line-through 2px #ff3b3b}
+.tiPrecio{position:relative;z-index:3;flex:none;margin:0 -3px -3px;min-height:clamp(40px,12vh,48px);height:clamp(40px,12vh,48px);display:flex;align-items:center;justify-content:center;gap:4px;border:3px solid #14193a;border-radius:0 0 14px 14px;
+  background:linear-gradient(180deg,#5ad1ff,#2a8fe6);color:#fff;font:400 clamp(15px,4.8vh,22px) "Lilita One",system-ui,sans-serif;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a;cursor:pointer;touch-action:pan-x;padding:0 4px}
+#tienda .skBtn.tiPrecio,#tienda .botaBtn.tiPrecio{min-height:44px;color:#fff;background:linear-gradient(180deg,#5ad1ff,#2a8fe6);border:3px solid #14193a;border-radius:0 0 14px 14px;box-shadow:inset 0 -4px 0 rgba(0,0,0,.22),inset 0 2px 0 rgba(255,255,255,.32) !important}
+#tienda .tiPrecio .icoMoneda{width:1.15em;height:1.15em;filter:drop-shadow(0 1.5px 0 #14193a)}
+#tienda .tiPrecio.own,#tienda .tiPrecio.verde,#tienda .botaBtn.tiPrecio:not(.own):not(.eq){background:linear-gradient(180deg,#7df06a,#2fbf4a)}
+#tienda .botaBtn.tiPrecio.own{background:linear-gradient(180deg,#5ad1ff,#2a8fe6)}
+#tienda .tiPrecio.eq{background:linear-gradient(180deg,#a9b6d6,#7685ad);cursor:default}
+#tienda .tiPrecio.falta{background:linear-gradient(180deg,#6b76a0,#4c5683);color:#d6dcf0}
+#tienda .tiPrecio.azul{background:linear-gradient(180deg,#ffe46a,#ffb21e)}
+#tienda .tiPrecio:active:not(:disabled){transform:translateY(2px);filter:brightness(1.08)}
+#tienda .botaBtn.tiPrecio{font-size:clamp(12px,3.8vh,17px);white-space:nowrap;padding:0 4px}
+/* skins agrupadas por personaje */
+#tiendaSkins{gap:clamp(12px,2.4vw,20px)}
+#tienda .skPj{flex:none;display:flex;flex-direction:column;gap:6px;min-height:0;background:none;border:0;padding:0}
+#tienda .skPjNom{flex:none;display:flex;align-items:center;gap:6px;font-size:clamp(11px,3.4vh,15px);margin:0;-webkit-text-stroke:.8px #14193a;text-shadow:0 2px 0 #14193a}
+#tienda .skPjNom img{width:22px;height:22px;border-radius:6px}
+#tienda .skOps{flex:1;min-height:0;display:flex;gap:clamp(8px,1.6vw,12px);grid-template-columns:none}
+#tienda .skOp{padding:0;gap:0;border:3px solid #14193a;border-radius:14px}
+#tienda .skOp.eq{box-shadow:0 0 0 3px #5dff8a,inset 0 3px 0 rgba(255,255,255,.35),0 5px 0 #14193a}
+#tienda .skOp.pv{box-shadow:0 0 0 3px #ffd23f,inset 0 3px 0 rgba(255,255,255,.35),0 5px 0 #14193a}
+#tienda .skVer{flex:1;min-height:0;display:flex;flex-direction:column;align-items:stretch;padding:0;gap:0;font:inherit;color:#fff;background:none;border:0;touch-action:pan-x}
+#tienda .skVer .tiArteZona{padding-top:14px}
+.tiCard.comprada{animation:tiComprada .7s ease-out}
+@keyframes tiComprada{0%{transform:scale(1)}25%{transform:scale(1.08) rotate(-1deg);filter:brightness(1.5)}60%{transform:scale(.98)}100%{transform:none;filter:none}}
+/* personajes (mejora de carta) */
+.tiPers.r-bronce{--g1:#c9824f}.tiPers.r-plata{--g1:#9fb3c8}.tiPers.r-oro{--g1:#f2b81f}.tiPers.r-diamante{--g1:#36c8ff}.tiPers.r-leyenda{--g1:#b05cff}
+.tiPers .tiArteZona{padding:16px 10px 4px;align-items:center}
+.tiNivel{position:absolute;left:8px;top:8px;z-index:3;font-size:clamp(10px,3vh,13px);background:#14193a;border-radius:6px;padding:2px 6px 3px}
+.tiMedia{position:absolute;right:6px;top:6px;z-index:3;display:flex;flex-direction:column;align-items:center;font-size:clamp(16px,5vh,24px);line-height:.9;-webkit-text-stroke:1px #14193a;text-shadow:0 2px 0 #14193a}
+.tiMedia small{font-size:.38em;letter-spacing:.5px}
+/* botas */
+#tienda .bota{flex-direction:column;align-items:stretch;gap:0;padding:0;border:3px solid #14193a;border-radius:14px;aspect-ratio:.7}
+#tienda .bota.equipada{box-shadow:0 0 0 3px #5dff8a,inset 0 3px 0 rgba(255,255,255,.35),0 5px 0 #14193a}
+#tienda .bota .tiArteZona{align-items:center;padding-top:10px}
+.botaIco.grande{width:72%;height:auto;aspect-ratio:1.7;transform:rotate(-8deg);filter:drop-shadow(0 4px 0 rgba(10,14,40,.5))}
+.botaIco.grande i,.botaIco.grande b,.botaIco.grande u,.botaIco.grande::after{border-width:3px}
+#tienda .bota .botaTxt{flex:none}
+#tienda .bota .botaDesc{font:600 clamp(8px,2.4vh,11px)/1.15 system-ui,sans-serif;opacity:.95;text-shadow:0 1px 0 #14193a;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;min-height:3.45em}
+.tiBotaDest{cursor:pointer}
+/* monedas: cómo se ganan */
+.tiRec{--g1:#2a8fe6;aspect-ratio:.66}.tiRec.oro{--g1:#f2a51f}
+.tiRec .tiArteZona{align-items:center;flex-direction:column;justify-content:center}
+.tiMonGrande{display:flex;align-items:center;justify-content:center}
+.tiMonGrande .icoMoneda{width:clamp(40px,14vh,64px);height:clamp(40px,14vh,64px);filter:drop-shadow(0 4px 0 rgba(10,14,40,.5))}
+.tiMonGrande .icoMoneda+.icoMoneda{margin-left:-24%}
+.tiRecV{font-size:clamp(20px,7vh,34px);color:#ffe46a;-webkit-text-stroke:1.4px #14193a;text-shadow:0 3px 0 #14193a}
+/* ficha (probador + comprar) */
+.tiDet{position:absolute;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(6,10,36,.72);touch-action:none}
+.tiDet.visible{display:flex;animation:tiFade .18s ease-out}
+@keyframes tiFade{from{opacity:0}to{opacity:1}}
+.tiDetCaja{--g1:#3fa9ff;--g2:#1b2560;position:relative;display:flex;align-items:stretch;gap:clamp(8px,2vw,16px);width:min(86vw,620px);height:min(82vh,330px);padding:10px 14px 12px 10px;border:3px solid #14193a;border-radius:18px;
+  background:radial-gradient(ellipse 60% 80% at 28% 45%,color-mix(in srgb,var(--g1) 70%,#fff),var(--g1) 45%,color-mix(in srgb,var(--g1) 40%,#0b1030));box-shadow:inset 0 3px 0 rgba(255,255,255,.35),0 6px 0 #14193a,0 14px 30px rgba(0,0,0,.5);animation:tiPop .3s cubic-bezier(.2,1.5,.45,1)}
+@keyframes tiPop{0%{transform:scale(.7);opacity:0}100%{transform:none;opacity:1}}
+#tienda .tiProbador{position:relative;flex:0 0 42%;aspect-ratio:auto;border:0;background:none;top:auto}
+#tienda .tiProbador img{height:100%;width:100%;object-fit:contain;filter:drop-shadow(0 6px 0 rgba(10,14,40,.45))}
+#tienda .tpNom{display:none}
+.tiDetInfo{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px}
+.tiDetTipo{font-size:clamp(10px,3vh,13px);letter-spacing:1px;background:#14193a;border-radius:5px;padding:2px 7px 3px}
+.tiDetNom{font-weight:400;font-size:clamp(20px,7vh,34px);line-height:1;-webkit-text-stroke:1.5px #14193a;text-shadow:0 3px 0 #14193a}
+.tiDetPj{display:flex;align-items:center;gap:6px;font-size:clamp(12px,3.6vh,16px);-webkit-text-stroke:.8px #14193a;text-shadow:0 2px 0 #14193a}
+.tiDetPj img{width:28px;height:28px;border-radius:7px;border:2px solid #14193a;object-fit:cover}
+.tiDetInfo .skPal i{width:18px;height:18px}
+.tiDetOferta{font-size:clamp(11px,3.2vh,14px);color:#fff;background:#8a1fe0;border:2px solid #14193a;border-radius:6px;padding:2px 7px 3px}
+#tienda .tiDetBtn{margin:6px 0 0;align-self:stretch;border-radius:12px;box-shadow:inset 0 -4px 0 rgba(0,0,0,.22),inset 0 2px 0 rgba(255,255,255,.32),0 4px 0 #14193a}
+#tienda .tiDetBtn:not(.own):not(.eq):not(.falta){background:linear-gradient(180deg,#7df06a,#2fbf4a)}
+.tiDetX{position:absolute;top:-14px;right:-14px;width:44px;height:44px;border-radius:50%;border:3px solid #14193a;background:linear-gradient(180deg,#ff7a7a,#e8324a);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 3px 0 #14193a}
+.tiDetX svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:4;stroke-linecap:round}
+@media (orientation:portrait){.tiTabs{width:96px}.tiCard{max-height:300px}}
+@media (prefers-reduced-motion:reduce){#tienda.visible,.tiCard,.tiDto,.tiFondo::after{animation:none}}
+.tiScroll{position:relative}
+.tiAntes{left:auto;right:8px;transform:none}
+.tiOferta .tiAntes{bottom:calc(clamp(40px,12vh,48px) + 4px)}
+.tiEqTag{top:6px;left:6px}
+#tienda .tiPrecio{align-self:stretch;width:auto}
+#tienda .tiTab{font-size:clamp(8px,2.7vh,12.5px)}
+
+/* ===================== update 45: LOBBY premium estilo Brawl Stars (t97u) =====================
+   Mismo sitio y función para todo; cambia el aspecto: fondo pintado (main.js lbFondoPintar), chispas animadas,
+   botones laterales en losa con icono ilustrado, cintas NUEVO/GRATIS solo cuando es verdad, barra superior en píldoras. */
+#menu.lobby .lbVineta{background:linear-gradient(180deg,rgba(5,8,40,.45) 0,rgba(5,8,40,0) 20%,rgba(5,8,40,0) 76%,rgba(5,8,40,.5) 100%)}
+.lbChispas{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+#menu:not(.lobby) .lbChispas{display:none}
+.lbChispas i{position:absolute;bottom:-12px;width:6px;height:6px;border-radius:50%;background:#bfffe4;box-shadow:0 0 8px 2px rgba(110,255,190,.75);opacity:0;animation:lbChispa 9s linear infinite}
+.lbChispas i:nth-child(3n){background:#cfe9ff;box-shadow:0 0 8px 2px rgba(90,190,255,.8)}
+.lbChispas i:nth-child(4n){background:#fff3b0;box-shadow:0 0 8px 2px rgba(255,210,63,.8);width:4px;height:4px}
+.lbChispas i:nth-child(1){left:6%;animation-delay:-1s}.lbChispas i:nth-child(2){left:14%;animation-delay:-5s;animation-duration:11s}.lbChispas i:nth-child(3){left:21%;animation-delay:-2.5s}
+.lbChispas i:nth-child(4){left:27%;animation-delay:-7s;animation-duration:12s}.lbChispas i:nth-child(5){left:33%;animation-delay:-3.5s}.lbChispas i:nth-child(6){left:39%;animation-delay:-8.5s;animation-duration:10s}
+.lbChispas i:nth-child(7){left:44%;animation-delay:-.5s;animation-duration:13s}.lbChispas i:nth-child(8){left:50%;animation-delay:-6s}.lbChispas i:nth-child(9){left:56%;animation-delay:-4s;animation-duration:11s}
+.lbChispas i:nth-child(10){left:61%;animation-delay:-9s}.lbChispas i:nth-child(11){left:66%;animation-delay:-2s;animation-duration:12s}.lbChispas i:nth-child(12){left:72%;animation-delay:-7.5s}
+.lbChispas i:nth-child(13){left:77%;animation-delay:-3s;animation-duration:10s}.lbChispas i:nth-child(14){left:83%;animation-delay:-5.5s}.lbChispas i:nth-child(15){left:88%;animation-delay:-1.5s;animation-duration:12s}
+.lbChispas i:nth-child(16){left:93%;animation-delay:-8s}.lbChispas i:nth-child(17){left:36%;animation-delay:-10s;animation-duration:14s}.lbChispas i:nth-child(18){left:64%;animation-delay:-11s;animation-duration:14s}
+@keyframes lbChispa{0%{transform:translate(0,0) scale(.6);opacity:0}10%{opacity:.9}50%{transform:translate(14px,-52vh) scale(1)}85%{opacity:.6}100%{transform:translate(-8px,-104vh) scale(.5);opacity:0}}
+@media (prefers-reduced-motion:reduce){.lbChispas{display:none}}
+/* píldoras de la barra superior: cristal oscuro con borde de tinta y brillo */
+.lbPerfil,.lbCopas,.lbCampo,.lbMonedas{background:linear-gradient(180deg,#34449e 0%,#1d2766 52%,#151c50 100%)}
+.lbPerfil::after,.lbCopas::after,.lbCampo::after{content:"";position:absolute;inset:2px;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(135deg,rgba(255,255,255,.05) 0 8px,rgba(255,255,255,0) 8px 16px)}
+.lbMonedas .icoMoneda{filter:drop-shadow(0 2px 0 var(--ink))}
+/* botones laterales: losa de color con rayas, bisel y franja de etiqueta; icono ilustrado grande */
+#menu.lobby .lbBtn{background:
+  radial-gradient(ellipse 80% 60% at 50% 30%,rgba(255,255,255,.35),rgba(255,255,255,0) 70%),
+  repeating-linear-gradient(135deg,rgba(255,255,255,.10) 0 7px,rgba(255,255,255,0) 7px 14px),
+  linear-gradient(180deg,color-mix(in srgb,var(--c) 85%,#fff) 0%,var(--c) 45%,color-mix(in srgb,var(--c) 70%,#14193a) 100%)}
+#menu.lobby .lbBtn svg.ilu{fill:none;stroke:none;width:clamp(26px,calc(var(--u)*8.6),46px);height:clamp(26px,calc(var(--u)*8.6),46px);filter:drop-shadow(0 2.5px 0 var(--ink));transition:transform .15s}
+#menu.lobby .lbBtn:hover svg.ilu{transform:scale(1.08) rotate(-4deg)}
+#menu.lobby .lbBtn span{background:linear-gradient(180deg,rgba(10,16,60,.72),rgba(10,16,60,.88));border-top:2px solid var(--ink)}
+.lbBtn.cAlin{--c:#2fd07a}
+/* cintas (solo cuando es verdad: oferta del día sin ver / botas gratis sin recoger) */
+.lbCinta{position:absolute;top:-8px;right:-12px;z-index:3;font:400 clamp(9px,calc(var(--u)*2.7),13px)/1 "Lilita One",system-ui,sans-serif;font-style:normal;color:#fff;background:linear-gradient(180deg,#ff5a6e,#d81e3c);border:2px solid var(--ink);border-radius:4px;padding:2px 5px 3px;-webkit-text-stroke:.6px var(--ink);text-shadow:0 1.5px 0 var(--ink);transform:rotate(8deg);box-shadow:0 2px 0 var(--ink);animation:lbCintaB 2.2s ease-in-out infinite;pointer-events:none}
+.lbCinta.verde{background:linear-gradient(180deg,#7df06a,#2fbf4a)}
+@keyframes lbCintaB{0%,100%{transform:rotate(8deg) scale(1)}50%{transform:rotate(8deg) scale(1.1)}}
+.lbPunto{box-shadow:0 0 0 2px rgba(255,255,255,.25)}
+/* pop al tocar */
+.lbPop{animation:lbPopA .32s cubic-bezier(.2,1.6,.4,1)}
+@keyframes lbPopA{0%{scale:1}35%{scale:.9}70%{scale:1.06}100%{scale:1}}
+/* JUGAR: amarillo grueso con rayas y brillo; tarjeta de modo como placa oscura con acento */
+#menu.lobby #btnMenuJugar{background:
+  repeating-linear-gradient(135deg,rgba(255,255,255,.16) 0 10px,rgba(255,255,255,0) 10px 20px),
+  linear-gradient(180deg,#fff27a 0,#ffd23f 42%,#ffb21e 78%,#f29a10 100%)}
+#menu.lobby #btnMenuJugar:not(:disabled){animation:lbJugarL 2.6s ease-in-out infinite}
+@keyframes lbJugarL{0%,100%{filter:none}50%{filter:brightness(1.07) drop-shadow(0 0 10px rgba(255,210,63,.55))}}
+.lbModo{background:linear-gradient(180deg,#34449e 0%,#1d2766 52%,#151c50 100%);position:relative}
+.lbModo::after{content:"";position:absolute;left:-3px;top:-3px;bottom:-3px;width:7px;border-radius:14px 0 0 14px;background:var(--c);border:3px solid var(--ink);border-right:0;pointer-events:none}
+.lbModoTxt small{color:#7fdcff}
+/* nombre del personaje: placa con brillo */
+#menu.lobby #mNombre{background-image:linear-gradient(180deg,rgba(255,255,255,.3),rgba(255,255,255,0) 55%)}
+#menu.lobby .lbBtn svg.ilu{width:clamp(22px,calc(var(--u)*7.2),40px);height:clamp(22px,calc(var(--u)*7.2),40px)}
+#menu.lobby #btnMenuTienda span{color:#fff}
+
+/* ===================== update 45: HUD del partido con acabado Brawl Stars (estático: sin animaciones nuevas por frame) ===================== */
+.btnAccion{outline:3px solid rgba(20,25,58,.88);outline-offset:-3px}
+.btnAccion:not(#btnEspecial){background-image:radial-gradient(ellipse 72% 46% at 50% 20%,rgba(255,255,255,.5),rgba(255,255,255,.08) 62%,rgba(255,255,255,0) 72%),radial-gradient(circle at 50% 120%,rgba(0,0,0,.22),rgba(0,0,0,0) 60%)}
+#btnEspecial{background-image:radial-gradient(ellipse 72% 46% at 50% 20%,rgba(255,255,255,.32),rgba(255,255,255,0) 70%),radial-gradient(circle at 50% 35%,#5b3aa8,#2a1658 75%)}
+.btnTxt{font-family:"Lilita One",system-ui,sans-serif;font-weight:400;letter-spacing:.5px;-webkit-text-stroke:.7px rgba(20,25,58,.85);text-shadow:0 2px 0 rgba(20,25,58,.75)}
+body.editando #acciones .btnAccion{outline:2px dashed rgba(255,255,255,.7);outline-offset:4px}
+#marcador.m32{box-shadow:0 0 0 3px #14193a,0 5px 0 2px #14193a,0 9px 16px rgba(0,0,0,.35)}
+#marcador.m32 .eq{position:relative}
+#marcador.m32 .eq::before{content:"";position:absolute;left:3px;right:3px;top:2px;height:42%;border-radius:10px 10px 50% 50%/10px 10px 8px 8px;background:linear-gradient(180deg,rgba(255,255,255,.38),rgba(255,255,255,0));pointer-events:none}
+#marcador.m32 .gol,#marcador.m32 #reloj{font-family:"Lilita One",system-ui,sans-serif;font-weight:400}
+#marcador.m32 .gol{-webkit-text-stroke:1.6px #14193a;text-shadow:0 3px 0 #14193a}
+#marcador.m32 #reloj{border-left:3px solid #14193a;border-right:3px solid #14193a;box-shadow:inset 0 2px 0 rgba(255,255,255,.18),inset 0 -3px 0 rgba(0,0,0,.35);-webkit-text-stroke:1px #000}
+#marcador.m32 .mBad img{border-color:#14193a;border-width:2.5px}
+
+/* ===================== update 45: transiciones de pantallas y paneles ===================== */
+#ajustes.visible,#coleccion.visible,#comp.visible,#m2v2.visible{animation:tiFade .2s ease-out}
+#pausa.visible>*{animation:tiPop .26s cubic-bezier(.2,1.5,.45,1)}
+@media (prefers-reduced-motion:reduce){#ajustes.visible,#coleccion.visible,#comp.visible,#m2v2.visible,#pausa.visible>*{animation:none}}
+/* el arte no dimensiona la tarjeta (antes las imágenes perezosas cambiaban los anchos y el salto de pestaña fallaba) */
+.tiCard{min-width:0}
+.tiArteZona{min-width:0}
+.tiArte{position:absolute;left:50%;bottom:-6%;margin:0;height:112%;max-height:none;max-width:none;width:auto;transform:translateX(-50%)}
+.tiCard:hover .tiArte{transform:translateX(-50%) scale(1.04)}
+.tiCard.grande .tiArte{height:118%}
+.tiArte.retrato{bottom:4%;height:88%;max-width:92%;object-fit:cover}
+/* anchos explícitos (aspect-ratio con alto 100 % no era fiable en la fila flexible) */
+#tienda{--cw:clamp(118px,44vh,196px)}
+.tiCard{width:var(--cw);aspect-ratio:auto;height:auto;align-self:stretch}
+.tiCard.grande{width:calc(var(--cw) * 1.9)}
+#tienda .bota{width:calc(var(--cw) * 1.08);aspect-ratio:auto}
+.tiRec{width:calc(var(--cw) * .92);aspect-ratio:auto}
+.tiArte{max-width:104%;object-fit:contain}
+.tiArte.retrato{max-width:90%;object-fit:cover}
+#tienda .skVer{align-self:stretch;width:auto}
+#tienda .skVer .tiArteZona{align-self:stretch}
+#tienda .bota .tiCardNom{background:linear-gradient(180deg,rgba(10,16,60,0),rgba(10,16,60,.62) 30%);padding-top:6px}

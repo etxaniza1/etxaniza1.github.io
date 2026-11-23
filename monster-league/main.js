@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=44';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=45';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=44';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=45';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu'];
@@ -886,6 +886,10 @@ const sfx = {
   miss: () => beep(110, 0.16, 'square', 0.05, -40),
   header: () => { beep(240, 0.09, 'triangle', 0.2, -110); beep(520, 0.05, 'sine', 0.05, 0); },   // update 30
 };
+// update 45: toque de interfaz (solo si el audio ya está activo: no crea el contexto)
+function uiTap() { if (actx) beep(700, 0.05, 'triangle', 0.035, 220); }
+document.addEventListener('pointerdown', (e) => { const b = e.target.closest && e.target.closest('#menu .lbBtn, #menu .lbModo, #menu .lbPerfil, #menu .lbCopas, #menu .lbCampo, #menu .lbMonedas, #menu .mEngranaje, #menu .mFlecha, #menu .lbModoCard');
+  if (b) { uiTap(); b.classList.remove('lbPop'); void b.offsetWidth; b.classList.add('lbPop'); } }, { passive: true });
 
 // ===================== ENTIDADES =====================
 function blob(r, op = 0.32) {
@@ -3568,51 +3572,164 @@ function refreshSkinsVisual(prev) {
     return r.length; });
 }
 refreshSkinsVisual.firma = CHARS.map(() => '').join();   // los retratos de inicio son con las texturas originales
+// ===================== update 45: TIENDA estilo Brawl Stars =====================
+// Pantalla completa: pestañas a la izquierda y UNA tira horizontal de tarjetas grandes con todas las secciones
+// (OFERTAS DESTACADAS · SKINS · PERSONAJES · BOTAS · MONEDAS). Tocar una pestaña desliza hasta su sección.
+// Todo es real: la OFERTA DEL DÍA rota a medianoche (hora local) y su -20 % se cobra de verdad (skinPrecio);
+// las monedas no se compran (la sección MONEDAS explica cómo se ganan).
+const OFERTA_DTO = 0.2;
+let OFERTA_FIJA;   // pruebas: undefined = automática · false = ninguna · { c, k } = fijada
+const SKIN_LISTA = Object.entries(SKINS).flatMap(([c, l]) => l.map((x) => ({ c, ...x })));
+const diaLocal = (t = Date.now()) => { const d = new Date(t); return Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - new Date(2026, 0, 1).getTime()) / 864e5); };
+function ofertasDia() {   // [oferta con descuento, destacada a precio normal]
+  if (OFERTA_FIJA === false) return { dto: null, dest: null };
+  const n = SKIN_LISTA.length, d = diaLocal(), a = SKIN_LISTA[(d * 5 + 3) % n], b = SKIN_LISTA[(d * 5 + 10) % n];
+  const dto = OFERTA_FIJA ? SKIN_LISTA.find((x) => x.c === OFERTA_FIJA.c && x.k === OFERTA_FIJA.k) || null : a;
+  return { dto, dest: b && dto && b.c === dto.c && b.k === dto.k ? SKIN_LISTA[(d * 5 + 11) % n] : b };
+}
+function skinPrecio(c, k) {
+  const sk = (SKINS[c] || []).find((x) => x.k === k); if (!sk) return 0;
+  const o = ofertasDia().dto; return o && o.c === c && o.k === k ? Math.round(sk.precio * (1 - OFERTA_DTO) / 5) * 5 : sk.precio;
+}
+function msMedianoche() { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - d.getTime(); }
+function fmtFalta(ms) { const m = Math.max(0, Math.floor(ms / 60000)), h = Math.floor(m / 60); return h ? `${h}h ${String(m % 60).padStart(2, '0')}m` : `${m}m`; }
 function skinComprar(c, k) {
   const sk = (SKINS[c] || []).find((x) => x.k === k); if (!sk) return { ok: false, motivo: 'no existe' };
-  const id = c + ':' + k;
+  const id = c + ':' + k, precio = skinPrecio(c, k);
   if (!SKINS_ST.owned.includes(id)) {
-    if (PROG.mon < sk.precio) return { ok: false, motivo: 'monedas', faltan: sk.precio - PROG.mon };
-    PROG.mon -= sk.precio; progSave(); SKINS_ST.owned.push(id); LOG('skin_compra', null, { c, k, precio: sk.precio, mon: PROG.mon });
+    if (PROG.mon < precio) return { ok: false, motivo: 'monedas', faltan: precio - PROG.mon };
+    PROG.mon -= precio; progSave(); SKINS_ST.owned.push(id); LOG('skin_compra', null, { c, k, precio, mon: PROG.mon, oferta: precio !== sk.precio });
   }
-  SKINS_ST.equip[c] = k; skinsSave(); return { ok: true, mon: PROG.mon };
+  SKINS_ST.equip[c] = k; skinsSave(); return { ok: true, mon: PROG.mon, precio };
 }
 function skinEquipar(c, k) { if (k && !SKINS_ST.owned.includes(c + ':' + k)) return false; if (k) SKINS_ST.equip[c] = k; else delete SKINS_ST.equip[c]; skinsSave(); return true; }
 const tiendaEl = document.getElementById('tienda'), tiendaLista = document.getElementById('tiendaLista');
-function renderTienda() {
+const hex6 = (n, d) => n === null || n === undefined ? d : '#' + n.toString(16).padStart(6, '0');
+const skArte = (c, k) => `assets/skinsart/${c}_${k || 'orig'}.webp?${ASSET_V}`;
+const TI_SECS = [
+  { k: 'dest', n: 'OFERTAS<br>DESTACADAS', ico: '<svg viewBox="0 0 24 24"><path d="M12 2.5l2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.3l-5.8 3.1 1.1-6.5L2.6 9.3l6.5-.9z" fill="#ffd23f" stroke="#14193a" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 6.2l1.6 3.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>' },
+  { k: 'skins', n: 'SKINS', ico: '<svg viewBox="0 0 24 24"><path d="M8 3 3.5 6l1.8 4 2-1V21h9.4V9l2 1 1.8-4L16 3c-.6 1.6-2 2.6-4 2.6S8.6 4.6 8 3z" fill="#ff5ac8" stroke="#14193a" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 13h6" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>' },
+  { k: 'pers', n: 'PERSONAJES', ico: '<svg viewBox="0 0 24 24"><rect x="4" y="3" width="13" height="18" rx="2.5" fill="#3fd0ff" stroke="#14193a" stroke-width="1.6"/><path d="M15 10.5l3.5-3.5 2.5 2.5-3.5 3.5" fill="#5dff8a" stroke="#14193a" stroke-width="1.4"/><circle cx="10.5" cy="10" r="3" fill="#fff" stroke="#14193a" stroke-width="1.4"/><path d="M6.5 18c.5-2.4 2-3.4 4-3.4s3.5 1 4 3.4" fill="#fff" stroke="#14193a" stroke-width="1.4"/></svg>' },
+  { k: 'botas', n: 'BOTAS', ico: '<svg viewBox="0 0 24 24"><path d="M5 4h6v7.5l7.8 2.8c1.6.6 2.4 1.7 2.4 3.2V20H3.5z" fill="#ffb21e" stroke="#14193a" stroke-width="1.6" stroke-linejoin="round"/><path d="M3.5 17h17.7" stroke="#14193a" stroke-width="1.6"/><path d="M11 13.5l1.2-1.3M13.6 14.5l1.2-1.3" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>' },
+  { k: 'mon', n: 'MONEDAS', ico: '<svg viewBox="0 0 24 24"><circle cx="9" cy="14" r="6.5" fill="#e0a21b" stroke="#14193a" stroke-width="1.6"/><circle cx="15" cy="10" r="6.5" fill="#ffd23f" stroke="#14193a" stroke-width="1.6"/><path d="M15 6.8v6.4M12.6 8.6c.4-1 1.4-1.4 2.4-1.4s2.4.6 2.4 1.7c0 2.2-4.8 1.2-4.8 3.4 0 1 1 1.7 2.4 1.7s2.2-.5 2.6-1.4" fill="none" stroke="#a86a00" stroke-width="1.4" stroke-linecap="round"/></svg>' },
+];
+const TI_VISTO_KEY = 'ml_tienda_dia_v1';
+const tiOfertaNueva = () => { try { return localStorage.getItem(TI_VISTO_KEY) !== String(diaLocal()); } catch (_) { return false; } };
+const tiBotasGratis = () => Object.keys(BOOTS).some((k) => !BOOTS_ST.owned.includes(k));
+function tiendaAvisos() {   // cintas del botón TIENDA del lobby: solo si es verdad
+  const b = document.getElementById('btnMenuTienda'); if (!b) return;
+  let r = b.querySelector('.lbCinta'); const t = tiOfertaNueva() && ofertasDia().dto ? 'NUEVO' : tiBotasGratis() ? 'GRATIS' : '';
+  if (!t) { r && r.remove(); return; }
+  if (!r) { r = document.createElement('i'); r.className = 'lbCinta'; b.appendChild(r); }
+  r.textContent = t; r.classList.toggle('verde', t === 'GRATIS');
+}
+function renderTiendaTabs() {
+  const el = document.getElementById('tiendaTabs'); if (!el) return;
+  const cinta = { dest: tiOfertaNueva() && ofertasDia().dto ? 'NUEVO' : '', botas: tiBotasGratis() ? 'GRATIS' : '' };
+  const act = el.querySelector('.tiTab.act')?.dataset.sec || 'dest';
+  el.innerHTML = TI_SECS.map((s) => `<button class="tiTab${s.k === act ? ' act' : ''}" data-sec="${s.k}"><span class="tiTabIco">${s.ico}</span><b>${s.n}</b>${cinta[s.k] ? `<i class="tiCinta${s.k === 'botas' ? ' verde' : ''}">${cinta[s.k]}</i>` : ''}</button>`).join('');
+}
+function tiendaIr(sec, suave = true) {
+  const sc = document.getElementById('tiendaScroll'), s = sc && sc.querySelector(`.tiSec[data-sec="${sec}"]`); if (!s) return;
+  const x1 = Math.min(Math.max(0, s.offsetLeft - 6), sc.scrollWidth - sc.clientWidth), x0 = sc.scrollLeft, T = suave ? 420 : 0, t0 = performance.now();
+  tiendaIr.bloq = t0 + T + 150;   // durante el deslizamiento la pestaña no parpadea
+  cancelAnimationFrame(tiendaIr.raf); sc.style.scrollSnapType = 'none';   // animación propia (el smooth del navegador se paraba con el snap)
+  const paso = (now) => { const k = T ? Math.min(1, (now - t0) / T) : 1, e = 1 - Math.pow(1 - k, 3); sc.scrollLeft = x0 + (x1 - x0) * e;
+    if (k < 1) { tiendaIr.bloq = performance.now() + 150; tiendaIr.raf = requestAnimationFrame(paso); } else { tiendaIr.bloq = performance.now() + 250; tiendaTabAct(sec); } };   // el snap vuelve al siguiente toque (si volviera ya, re-encajaba hacia atrás al final de la tira)
+  if (T) tiendaIr.raf = requestAnimationFrame(paso); else paso(t0);
+  tiendaTabAct(sec);
+}
+function tiendaTabAct(sec) { for (const t of document.querySelectorAll('#tiendaTabs .tiTab')) t.classList.toggle('act', t.dataset.sec === sec); }
+document.getElementById('tiendaTabs')?.addEventListener('click', (e) => { const t = e.target.closest('.tiTab'); if (!t) return; uiTap(); tiendaIr(t.dataset.sec); });
+document.getElementById('tiendaScroll')?.addEventListener('scroll', (e) => {   // pestaña activa = sección que ocupa el borde izquierdo
+  if (performance.now() < (tiendaIr.bloq || 0)) return;
+  const sc = e.currentTarget, x = sc.scrollLeft + sc.clientWidth * 0.3; let cur = 'dest';
+  for (const s of sc.querySelectorAll('.tiSec')) if (s.offsetLeft <= x) cur = s.dataset.sec;
+  if (sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 4) cur = 'mon';
+  tiendaTabAct(cur);
+}, { passive: true });
+// rueda del ratón (PC) -> desplazamiento horizontal
+document.getElementById('tiendaScroll')?.addEventListener('pointerdown', (e) => { e.currentTarget.style.scrollSnapType = ''; }, { passive: true });
+document.getElementById('tiendaScroll')?.addEventListener('wheel', (e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.currentTarget.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
+function renderTiendaDest() {
+  const el = document.getElementById('tiendaDest'); if (!el) return;
+  const { dto, dest } = ofertasDia(), falta = fmtFalta(msMedianoche()), h = [];
+  const skCard = (o, big) => {
+    const ch = ALL_CHARS.find((x) => x.key === o.c), own = SKINS_ST.owned.includes(o.c + ':' + o.k), eq = skinOf(o.c) === o.k, p = skinPrecio(o.c, o.k), sale = p !== o.precio;
+    const btn = eq ? 'EQUIPADA' : own ? 'EQUIPAR' : `${MONEDA_SVG}${p}`;
+    return `<div class="tiCard tiOferta${big ? ' grande' : ''}" data-c="${o.c}" data-k="${o.k}" style="--g1:${o.pal[0]};--g2:${o.pal[1]};--g3:${o.pal[2]}">
+      <span class="tiChip"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4.5l3 1.8M9.5 2.5h5"/></svg>${falta}</span>
+      <div class="tiCardRib">${sale ? 'OFERTA DEL DÍA' : 'DESTACADA'}</div>
+      <div class="tiArteZona"><img class="tiArte" src="${skArte(o.c, o.k)}" alt="" draggable="false"><img class="tiBadge" src="${cBadgeImg(o.c)}" alt=""></div>
+      <div class="tiCardNom"><b>${o.name}</b><small>ASPECTO · ${ch ? ch.name : ''}</small></div>
+      ${sale && !own ? `<span class="tiDto">-${Math.round(OFERTA_DTO * 100)}%</span><s class="tiAntes">${o.precio}</s>` : ''}
+      <button class="tiPrecio tiOfBtn${eq ? ' eq' : own ? ' own' : ''}${!own && PROG.mon < p ? ' falta' : ''}"${eq || (!own && PROG.mon < p) ? ' disabled' : ''}>${btn}</button></div>`;
+  };
+  if (dto) h.push(skCard(dto, true));
+  if (dest) h.push(skCard(dest, false));
+  // mejora recomendada: tu personaje elegido (real: cuesta lo mismo que en MEJORAR)
+  const ck = CHARS[sel] ? CHARS[sel].key : CHARS[0].key; h.push(persCard(ck, 'TU PERSONAJE'));
+  if (tiBotasGratis()) { const k = Object.keys(BOOTS).find((x) => !BOOTS_ST.owned.includes(x)), b = BOOTS[k];
+    h.push(`<div class="tiCard tiBotaDest" data-k="${k}" style="--g1:${hex6(b.c1, '#2a3b8f')};--g2:${hex6(b.c2, '#14193a')}"><div class="tiCardRib">REGALO</div>
+      <div class="tiArteZona"><div class="botaIco grande" style="--c1:${hex6(b.c1, '#1a1d2b')};--c2:${hex6(b.c2, '#2e3036')}"><i></i><b></b><u></u></div></div>
+      <div class="tiCardNom"><b>BOTAS ${b.name}</b><small>EQUIPAMIENTO</small></div><span class="tiGratis">GRATIS</span>
+      <button class="tiPrecio verde tiIrBotas">VER BOTAS</button></div>`); }
+  el.innerHTML = h.join('');
+}
+function persCard(k, rib) {
+  const ch = ALL_CHARS.find((x) => x.key === k); if (!ch) return '';
+  const L = PROG.lv[k] || 0, max = L >= LV_MAX, cost = lvCost(L), t = statsAt(k, L), falta = !max && PROG.mon < cost;
+  return `<div class="tiCard tiPers r-${t.rareza}" data-c="${k}" style="--g1:${ch.color || '#3fa9ff'}">${rib ? `<div class="tiCardRib">${rib}</div>` : ''}
+    <div class="tiArteZona"><img class="tiArte retrato" src="${PORTRAITS[k] || ch.badge || ch.card}" alt="" draggable="false"><span class="tiNivel">NV ${L}</span><span class="tiMedia">${t.media}<small>${t.tier}</small></span></div>
+    <div class="tiCardNom"><b>${ch.name}</b><small>${isGK(k) ? 'PORTERO · ' : ''}MEJORA DE CARTA</small></div>
+    <button class="tiPrecio tiMejBtn${max ? ' eq' : ''}${falta ? ' falta' : ''}"${max || falta ? ' disabled' : ''}>${max ? 'NIVEL MÁX' : `${MONEDA_SVG}${cost}`}</button></div>`;
+}
+function renderTiendaPers() { const el = document.getElementById('tiendaPers'); if (el) el.innerHTML = mejLista().map((k) => persCard(k)).join(''); }
+function renderTiendaRecursos() {
+  const el = document.getElementById('tiendaRecursos'); if (!el) return;
+  const R = [['VICTORIA', '+' + MON_PARTIDO.v, 'POR PARTIDO'], ['EMPATE', '+' + MON_PARTIDO.e, 'POR PARTIDO'], ['DERROTA', '+' + MON_PARTIDO.d, 'TAMBIÉN SUMA'],
+    ['CADA GOL', '+' + MON_PARTIDO.gol, `HASTA ${MON_PARTIDO.golMax} POR PARTIDO`], ['TÍTULO DE LIGA', '+' + MON_TITULO.liga, 'AL GANAR LA LIGA'], ['TÍTULO DE TORNEO', '+' + MON_TITULO.torneo, 'AL GANAR EL TORNEO']];
+  el.innerHTML = R.map(([n, v, s], i) => `<div class="tiCard tiRec${i >= 4 ? ' oro' : ''}"><div class="tiArteZona"><div class="tiMonGrande">${MONEDA_SVG}${i >= 4 ? MONEDA_SVG + MONEDA_SVG : ''}</div><span class="tiRecV">${v}</span></div>
+    <div class="tiCardNom"><b>${n}</b><small>${s}</small></div><button class="tiPrecio azul tiAJugar">¡A JUGAR!</button></div>`).join('');
+}
+function renderTienda() {   // BOTAS: tarjetas con el mismo .bota + button de siempre
   tiendaLista.innerHTML = '';
   for (const [k, b] of Object.entries(BOOTS)) {
     const own = BOOTS_ST.owned.includes(k), eq = BOOTS_ST.equip === k;
-    const d = document.createElement('div'); d.className = 'bota' + (eq ? ' equipada' : ''); d.dataset.k = k;
-    const c1 = b.c1 === null ? '#1a1d2b' : '#' + b.c1.toString(16).padStart(6, '0'), c2 = b.c2 === null ? '#2e3036' : '#' + b.c2.toString(16).padStart(6, '0');
-    d.innerHTML = `<div class="botaIco" style="--c1:${c1};--c2:${c2}"><i></i><b></b><u></u></div><div class="botaTxt"><div class="botaNom">${b.name}</div><div class="botaDesc">${b.desc}</div></div>` +
-      `<button class="botaBtn ${eq ? 'eq' : own ? 'own' : ''}">${eq ? 'EQUIPADAS' : own ? 'EQUIPAR' : 'OBTENER · GRATIS'}</button>`;
+    const d = document.createElement('div'); d.className = 'bota tiCard' + (eq ? ' equipada' : ''); d.dataset.k = k;
+    const c1 = hex6(b.c1, '#1a1d2b'), c2 = hex6(b.c2, '#2e3036');
+    d.style.cssText = `--g1:${hex6(b.c1, '#3a4a8f')};--g2:${hex6(b.c2, '#1b2560')}`;
+    d.innerHTML = `${!own ? '<span class="tiGratis">GRATIS</span>' : eq ? '<span class="tiEqTag">EQUIPADAS</span>' : ''}<div class="tiArteZona"><div class="botaIco grande" style="--c1:${c1};--c2:${c2}"><i></i><b></b><u></u></div></div><div class="botaTxt tiCardNom"><div class="botaNom">${b.name}</div><div class="botaDesc">${b.desc}</div></div>` +
+      `<button class="botaBtn tiPrecio ${eq ? 'eq' : own ? 'own' : ''}">${eq ? 'EQUIPADAS' : own ? 'EQUIPAR' : 'OBTENER · GRATIS'}</button>`;
     d.querySelector('button').addEventListener('click', () => {
       if (!BOOTS_ST.owned.includes(k)) { BOOTS_ST.owned.push(k); sfx.steal && actx && sfx.steal(); }
       else BOOTS_ST.equip = k;
-      saveBoots(); refreshBootsVisual(); renderTienda(); LOG('tienda', null, { k, equip: BOOTS_ST.equip });
+      saveBoots(); refreshBootsVisual(); renderTienda(); renderTiendaDest(); renderTiendaTabs(); tiendaAvisos(); LOG('tienda', null, { k, equip: BOOTS_ST.equip });
     });
     tiendaLista.appendChild(d);
   }
 }
-// update 42: la sección ESPECIALES sale de la tienda (los especiales siguen en el juego). Entra SKINS.
-let skinPrev = null;   // { c, k } que se está probando en el muñeco del menú
+let skinPrev = null;   // { c, k } que se está probando
 function renderTiendaSkins() {
   const el = document.getElementById('tiendaSkins'); if (!el) return;
   const mon = document.getElementById('tiendaMon'); if (mon) mon.innerHTML = `${MONEDA_SVG}<b>${PROG.mon}</b>`;
   el.innerHTML = Object.entries(SKINS).map(([c, lista]) => {
     const ch = ALL_CHARS.find((x) => x.key === c); if (!ch) return '';
-    const eq = skinOf(c), ops = [{ k: null, name: 'ORIGINAL', precio: 0, pal: [ch.color, '#ffffff', '#14193a'] }, ...lista];
+    const eq = skinOf(c), ops = [{ k: null, name: 'ORIGINAL', precio: 0, pal: [ch.color, '#2a3b8f', '#ffffff'] }, ...lista];
     return `<div class="skPj" data-c="${c}"><div class="skPjNom"><img src="${cBadgeImg(c)}" alt="">${ch.name}</div><div class="skOps">` + ops.map((o) => {
       const own = !o.k || SKINS_ST.owned.includes(c + ':' + o.k), es = (eq || null) === (o.k || null), pv = skinPrev && skinPrev.c === c && (skinPrev.k || null) === (o.k || null);
-      const falta = !own && PROG.mon < o.precio;
-      const btn = es ? 'EQUIPADA' : own ? 'EQUIPAR' : `${MONEDA_SVG}${o.precio}`;
-      return `<div class="skOp${es ? ' eq' : ''}${pv ? ' pv' : ''}" data-c="${c}" data-k="${o.k || ''}"><button class="skVer" aria-label="Probar ${o.name}"><span class="skPal">${o.pal.map((x) => `<i style="background:${x}"></i>`).join('')}</span><b>${o.name}</b></button>` +
-        `<button class="skBtn${es ? ' eq' : own ? ' own' : ''}${falta ? ' falta' : ''}"${es || falta ? ' disabled' : ''}>${btn}</button></div>`;
+      const p = o.k ? skinPrecio(c, o.k) : 0, falta = !own && PROG.mon < p, sale = o.k && p !== o.precio;
+      const btn = es ? 'EQUIPADA' : own ? 'EQUIPAR' : `${MONEDA_SVG}${p}`;
+      return `<div class="skOp tiCard${es ? ' eq' : ''}${pv ? ' pv' : ''}" data-c="${c}" data-k="${o.k || ''}" style="--g1:${o.pal[0]};--g2:${o.pal[1]};--g3:${o.pal[2]}">` +
+        `${sale && !own ? `<span class="tiDto">-${Math.round(OFERTA_DTO * 100)}%</span>` : ''}${es ? '<span class="tiEqTag">EQUIPADA</span>' : ''}` +
+        `<button class="skVer" aria-label="Probar ${o.name}"><span class="tiArteZona"><img class="tiArte" src="${skArte(c, o.k)}" alt="" draggable="false" loading="lazy"></span>` +
+        `<span class="tiCardNom"><b>${o.name}</b><small>${o.k ? 'ASPECTO' : 'ASPECTO BASE'}</small></span><span class="skPal">${o.pal.map((x) => `<i style="background:${x}"></i>`).join('')}</span></button>` +
+        `${sale && !own ? `<s class="tiAntes">${o.precio}</s>` : ''}<button class="skBtn tiPrecio${es ? ' eq' : own ? ' own' : ''}${falta ? ' falta' : ''}"${es || falta ? ' disabled' : ''}>${btn}</button></div>`;
     }).join('') + '</div></div>';
   }).join('');
 }
-function tiendaSkinVer(c, k) {   // prueba la skin en el PROBADOR de la tienda (sin cambiar tu personaje elegido)
+function renderTiendaTodo() { renderTiendaSkins(); renderTiendaDest(); renderTiendaPers(); renderTienda(); renderTiendaRecursos(); renderTiendaTabs(); tiendaAvisos(); }
+function tiendaSkinVer(c, k) {   // prueba la skin en el PROBADOR (ficha) sin cambiar tu personaje elegido
   skinPrev = { c, k: k || null }; renderTiendaSkins();
   const pv = skinPrev;
   return refreshSkinsVisual(skinPrev).then(() => { if (skinPrev !== pv) return; probadorPinta(c, k); });
@@ -3623,23 +3740,57 @@ function probadorPinta(c, k) {
   const sk = (SKINS[c] || []).find((x) => x.k === k), ch = ALL_CHARS.find((x) => x.key === c);
   el.innerHTML = url ? `<img src="${url}" alt=""><div class="tpNom">${ch ? ch.name : ''}<small>${sk ? sk.name : 'ORIGINAL'}</small></div>` : '';
   el.dataset.c = c; el.dataset.k = k || '';
+  tiendaDetInfo();
 }
-document.getElementById('tiendaSkins')?.addEventListener('click', (e) => {
-  const op = e.target.closest('.skOp'); if (!op) return; const c = op.dataset.c, k = op.dataset.k || null;
-  if (e.target.closest('.skBtn')) {
-    const own = !k || SKINS_ST.owned.includes(c + ':' + k);
-    if (own) skinEquipar(c, k); else { const r = skinComprar(c, k); if (!r.ok) { sfx.miss && actx && sfx.miss(); return; } sfx.steal && actx && sfx.steal(); }
-    skinPrev = null; tiendaSkinVer(c, k); skinPrev = null; refreshSkinsVisual().then(() => renderTiendaSkins()); renderTiendaSkins(); lbMonedasRender && lbMonedasRender();
-    LOG('tienda_skin', null, { c, k, equip: skinOf(c) });
-    return;
-  }
-  tiendaSkinVer(c, k);
+function tiendaDetInfo() {   // ficha: nombre, tipo, paleta y botón de compra / equipar (mismo precio que la tarjeta)
+  const el = document.getElementById('tiendaDetInfo'), pr = document.getElementById('tiendaProbador'); if (!el || !pr) return;
+  const c = pr.dataset.c, k = pr.dataset.k || null, ch = ALL_CHARS.find((x) => x.key === c); if (!ch) return;
+  const sk = (SKINS[c] || []).find((x) => x.k === k), own = !k || SKINS_ST.owned.includes(c + ':' + k), es = (skinOf(c) || null) === k;
+  const p = k ? skinPrecio(c, k) : 0, falta = !own && PROG.mon < p, pal = sk ? sk.pal : [ch.color, '#2a3b8f', '#ffffff'];
+  document.querySelector('#tiendaDet .tiDetCaja')?.style.setProperty('--g1', pal[0]); document.querySelector('#tiendaDet .tiDetCaja')?.style.setProperty('--g2', pal[1]);
+  el.innerHTML = `<small class="tiDetTipo">${k ? 'ASPECTO' : 'ASPECTO BASE'}</small><b class="tiDetNom">${sk ? sk.name : 'ORIGINAL'}</b><span class="tiDetPj"><img src="${cBadgeImg(c)}" alt="">${ch.name}</span>` +
+    `<span class="skPal">${pal.map((x) => `<i style="background:${x}"></i>`).join('')}</span>${sk && p !== sk.precio && !own ? `<span class="tiDetOferta">OFERTA DEL DÍA -${Math.round(OFERTA_DTO * 100)}% · <s>${sk.precio}</s></span>` : ''}` +
+    `<button class="tiPrecio tiDetBtn${es ? ' eq' : own ? ' own' : ''}${falta ? ' falta' : ''}" data-c="${c}" data-k="${k || ''}"${es || falta ? ' disabled' : ''}>${es ? 'EQUIPADA' : own ? 'EQUIPAR' : `COMPRAR ${MONEDA_SVG}${p}`}</button>`;
+}
+function tiendaDetAbrir(on) { const d = document.getElementById('tiendaDet'); if (!d) return; d.classList.toggle('visible', !!on); d.setAttribute('aria-hidden', on ? 'false' : 'true'); }
+function tiendaSkinAccion(c, k) {   // comprar (si no es tuya) y equipar
+  const own = !k || SKINS_ST.owned.includes(c + ':' + k);
+  if (own) skinEquipar(c, k); else { const r = skinComprar(c, k); if (!r.ok) { sfx.miss && actx && sfx.miss(); return false; } sfx.steal && actx && sfx.steal(); tiendaCompraFx(c, k); }
+  skinPrev = null; tiendaSkinVer(c, k); skinPrev = null; refreshSkinsVisual().then(() => { renderTiendaSkins(); tiendaDetInfo(); });
+  renderTiendaSkins(); renderTiendaDest(); renderTiendaPers(); tiendaDetInfo(); lbMonedasRender && lbMonedasRender();
+  LOG('tienda_skin', null, { c, k, equip: skinOf(c) });
+  return true;
+}
+function tiendaCompraFx(c, k) {   // destello sobre la tarjeta comprada
+  for (const e of document.querySelectorAll(`#tienda .tiCard[data-c="${c}"][data-k="${k || ''}"], #tiendaDet .tiDetCaja`)) { e.classList.remove('comprada'); void e.offsetWidth; e.classList.add('comprada'); }
+}
+tiendaEl.addEventListener('click', (e) => {
+  const t = e.target;
+  if (t.closest('#tiendaDetX') || t.id === 'tiendaDet') { uiTap(); tiendaDetAbrir(false); return; }
+  const db = t.closest('.tiDetBtn'); if (db) { tiendaSkinAccion(db.dataset.c, db.dataset.k || null); return; }
+  const op = t.closest('.skOp');
+  if (op) { const c = op.dataset.c, k = op.dataset.k || null;
+    if (t.closest('.skBtn')) { tiendaSkinAccion(c, k); return; }
+    uiTap(); tiendaSkinVer(c, k); tiendaDetAbrir(true); return; }
+  const of = t.closest('.tiOferta');
+  if (of) { const c = of.dataset.c, k = of.dataset.k;
+    if (t.closest('.tiOfBtn')) { tiendaSkinAccion(c, k); return; }
+    uiTap(); tiendaSkinVer(c, k); tiendaDetAbrir(true); return; }
+  const pc = t.closest('.tiPers');
+  if (pc && t.closest('.tiMejBtn')) { const r = progMejorar(pc.dataset.c); if (!r) { sfx.miss && actx && sfx.miss(); return; }
+    sfx.dribble && actx && sfx.dribble(); renderTiendaTodo(); lbRender && lbRender(); lbMonedasRender && lbMonedasRender();
+    const n = document.querySelector(`#tienda .tiPers[data-c="${r.k}"]`); n && n.classList.add('comprada'); return; }
+  if (t.closest('.tiIrBotas') || t.closest('.tiBotaDest')) { uiTap(); tiendaIr('botas'); return; }
+  if (t.closest('.tiAJugar')) { uiTap(); closeTienda(); return; }
 });
-function openTienda() { if (S.mode !== 'menu') return; skinPrev = null; renderTienda(); renderTiendaSkins(); tiendaEl.classList.add('visible');
-  const c0 = SKINS[CHARS[sel].key] ? CHARS[sel].key : 'tiburon'; tiendaSkinVer(c0, skinOf(c0)); }
-function closeTienda() { tiendaEl.classList.remove('visible'); if (skinPrev) { skinPrev = null; refreshSkinsVisual(); } }   // update 42: fuera la prueba de skin
+function openTienda() { if (S.mode !== 'menu') return; skinPrev = null; tiendaDetAbrir(false); renderTiendaTodo(); tiendaEl.classList.add('visible'); tiendaIr('dest', false);
+  try { localStorage.setItem(TI_VISTO_KEY, String(diaLocal())); } catch (_) {}
+  const c0 = SKINS[CHARS[sel].key] ? CHARS[sel].key : 'tiburon'; tiendaSkinVer(c0, skinOf(c0));
+  clearInterval(openTienda.tm); openTienda.tm = setInterval(() => { if (!tiendaEl.classList.contains('visible')) return clearInterval(openTienda.tm); const f = fmtFalta(msMedianoche()); for (const c of document.querySelectorAll('#tienda .tiChip')) c.lastChild.textContent = f; }, 20000); }
+function closeTienda() { tiendaEl.classList.remove('visible'); tiendaDetAbrir(false); renderTiendaTabs(); tiendaAvisos(); if (skinPrev) { skinPrev = null; refreshSkinsVisual(); } }   // update 42: fuera la prueba de skin
 document.getElementById('btnMenuTienda').addEventListener('click', openTienda);
-document.getElementById('tiendaCerrar').addEventListener('click', closeTienda);
+document.getElementById('tiendaCerrar').addEventListener('click', () => { uiTap(); closeTienda(); });
+tiendaAvisos();
 
 // ===================== MODO PRÁCTICA (update 15) =====================
 // Solo tu personaje y el balón en el campo completo, porterías vacías, sin tiempo. Marcador = goles / chuts.
@@ -4309,14 +4460,98 @@ function hudSet(on) { for (const e of hudEls) if (e) e.style.visibility = on ? '
 // update 25: la zona de deslizamiento solo existe en partido (antes tapaba el menú y la pantalla final -> "se congela")
 function setEnPartido(on) { document.body.classList.toggle('enPartido', !!on); if (!on && typeof swipeEnd === 'function') swipeEnd(null, true); }
 const menuScene = new THREE.Scene();
-menuScene.background = new THREE.Color('#2459c9');
-{ // update 35: fondo del lobby con degradado (azul intenso arriba, violeta abajo)
-  const cv = document.createElement('canvas'); cv.width = 2; cv.height = 256; const g = cv.getContext('2d');
-  const gr = g.createLinearGradient(0, 0, 0, 256);
-  gr.addColorStop(0, '#173aa8'); gr.addColorStop(0.42, '#2f6ff0'); gr.addColorStop(0.7, '#3b63e6'); gr.addColorStop(1, '#5a33c4');
-  g.fillStyle = gr; g.fillRect(0, 0, 2, 256);
-  const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace; menuScene.background = tx;
+menuScene.background = new THREE.Color('#1b3fb0');
+// update 45: fondo del lobby PINTADO estilo Brawl Stars: estadio nocturno de los Beast Strikers.
+// Gradas a los lados con luces, focos verdes/azules, escudo dorado con la bestia detrás del personaje,
+// foco radial y suelo de escenario. Se repinta al tamaño real de la pantalla (sin estirarse).
+const lbFondoCv = document.createElement('canvas'), lbFondoTx = new THREE.CanvasTexture(lbFondoCv);
+lbFondoTx.colorSpace = THREE.SRGBColorSpace; lbFondoTx.minFilter = THREE.LinearFilter; lbFondoTx.generateMipmaps = false;
+function lbFondoPintar(W, H) {
+  const asp = W / H, cw = Math.min(1600, Math.max(900, Math.round(W * Math.min(2, window.devicePixelRatio || 1) * 0.75))), ch = Math.round(cw / asp);
+  if (lbFondoPintar.k === cw + 'x' + ch && lbFondoPintar.f === !!document.fonts?.check?.('20px "Lilita One"')) return;
+  lbFondoPintar.k = cw + 'x' + ch; lbFondoPintar.f = !!document.fonts?.check?.('20px "Lilita One"');
+  const cv = lbFondoCv; cv.width = cw; cv.height = ch; const g = cv.getContext('2d'), U = ch / 100;   // U = 1 % del alto
+  const cx = cw / 2, cy = ch * 0.42;
+  let gr = g.createLinearGradient(0, 0, 0, ch);
+  gr.addColorStop(0, '#0a1450'); gr.addColorStop(0.38, '#173aa8'); gr.addColorStop(0.68, '#2f56dc'); gr.addColorStop(1, '#3a1f9a');
+  g.fillStyle = gr; g.fillRect(0, 0, cw, ch);
+  // patrón de rombos muy suave
+  g.save(); g.globalAlpha = 0.06; g.strokeStyle = '#ffffff'; g.lineWidth = Math.max(1, U * 0.25);
+  for (let x = -ch; x < cw + ch; x += U * 9) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + ch, ch); g.stroke(); g.beginPath(); g.moveTo(x, ch); g.lineTo(x + ch, 0); g.stroke(); }
+  g.restore();
+  // gradas (izquierda y derecha) con filas de luces
+  const grada = (lado) => {
+    g.save(); if (lado > 0) { g.translate(cw, 0); g.scale(-1, 1); }
+    for (let f = 0; f < 3; f++) {
+      const y0 = ch * (0.30 + f * 0.11), x1 = cw * (0.36 - f * 0.05);
+      gr = g.createLinearGradient(0, y0, 0, y0 + ch * 0.12); gr.addColorStop(0, f % 2 ? '#101a5e' : '#0d1550'); gr.addColorStop(1, '#0a1040');
+      g.fillStyle = gr; g.beginPath(); g.moveTo(0, y0 - ch * 0.06); g.quadraticCurveTo(x1 * 0.6, y0 - ch * 0.02, x1, y0 + ch * 0.05); g.lineTo(x1, y0 + ch * 0.13); g.lineTo(0, y0 + ch * 0.13); g.closePath(); g.fill();
+      g.strokeStyle = f === 0 ? 'rgba(80,255,170,.55)' : 'rgba(90,190,255,.45)'; g.lineWidth = U * 0.45; g.beginPath(); g.moveTo(0, y0 - ch * 0.06); g.quadraticCurveTo(x1 * 0.6, y0 - ch * 0.02, x1, y0 + ch * 0.05); g.stroke();
+      for (let i = 0; i < 26; i++) {   // público: puntitos de luz
+        const t = i / 26, x = t * x1 * 0.96, y = y0 - ch * 0.06 + (ch * 0.11) * t * t * 0.9 + ch * 0.03 + ((i * 37) % 7) * U * 0.6;
+        g.fillStyle = ['rgba(255,210,63,.55)', 'rgba(110,220,255,.5)', 'rgba(120,255,170,.5)', 'rgba(255,255,255,.35)'][(i + f) % 4];
+        g.beginPath(); g.arc(x, y, U * (0.35 + ((i * 13) % 3) * 0.15), 0, Math.PI * 2); g.fill();
+      }
+    }
+    g.restore();
+  };
+  grada(-1); grada(1);
+  // focos del estadio arriba a los lados + haces de luz (verde izquierda, azul derecha)
+  g.save(); g.globalCompositeOperation = 'lighter';
+  const haz = (x0, col, xa, xb) => { const hg = g.createLinearGradient(x0, 0, (xa + xb) / 2, ch); hg.addColorStop(0, col.replace('A', '.38')); hg.addColorStop(0.7, col.replace('A', '.07')); hg.addColorStop(1, col.replace('A', '0'));
+    g.fillStyle = hg; g.beginPath(); g.moveTo(x0 - U * 2, 0); g.lineTo(x0 + U * 2, 0); g.lineTo(xb, ch); g.lineTo(xa, ch); g.closePath(); g.fill(); };
+  haz(cw * 0.12, 'rgba(70,255,160,A)', cw * 0.30, cw * 0.48); haz(cw * 0.22, 'rgba(90,200,255,A)', cw * 0.40, cw * 0.56);
+  haz(cw * 0.88, 'rgba(90,190,255,A)', cw * 0.52, cw * 0.70); haz(cw * 0.78, 'rgba(70,255,160,A)', cw * 0.44, cw * 0.60);
+  g.restore();
+  for (const fx of [0.12, 0.22, 0.78, 0.88]) {   // focos
+    g.fillStyle = '#0a1040'; g.fillRect(cw * fx - U * 4, -U * 1, U * 8, U * 4.6);
+    for (let i = 0; i < 3; i++) { const rg = g.createRadialGradient(cw * fx - U * 2.6 + i * U * 2.6, U * 1.4, 0, cw * fx - U * 2.6 + i * U * 2.6, U * 1.4, U * 2.4); rg.addColorStop(0, '#ffffff'); rg.addColorStop(0.4, 'rgba(200,255,240,.8)'); rg.addColorStop(1, 'rgba(200,255,240,0)'); g.fillStyle = rg; g.fillRect(cw * fx - U * 6, -U, U * 12, U * 6); }
+  }
+  // foco radial detrás del personaje
+  let rg = g.createRadialGradient(cx, cy, 0, cx, cy, ch * 0.62); rg.addColorStop(0, 'rgba(170,235,255,.55)'); rg.addColorStop(0.35, 'rgba(110,190,255,.22)'); rg.addColorStop(1, 'rgba(110,190,255,0)');
+  g.fillStyle = rg; g.fillRect(0, 0, cw, ch);
+  // escudo de los BEAST STRIKERS (dorado) con la bestia
+  const R = ch * 0.255, sx = cx, sy = cy + ch * 0.005;
+  const escudo = (s) => { g.beginPath(); g.moveTo(sx - R * 0.82 * s, sy - R * 0.78 * s); g.quadraticCurveTo(sx, sy - R * 1.02 * s, sx + R * 0.82 * s, sy - R * 0.78 * s);
+    g.quadraticCurveTo(sx + R * 0.9 * s, sy + R * 0.25 * s, sx, sy + R * 1.05 * s); g.quadraticCurveTo(sx - R * 0.9 * s, sy + R * 0.25 * s, sx - R * 0.82 * s, sy - R * 0.78 * s); g.closePath(); };
+  g.save(); g.globalAlpha = 0.85;
+  escudo(1.12); g.fillStyle = '#0a1040'; g.fill();
+  escudo(1.06); gr = g.createLinearGradient(0, sy - R, 0, sy + R); gr.addColorStop(0, '#fff2a0'); gr.addColorStop(0.45, '#ffd23f'); gr.addColorStop(1, '#c8861a'); g.fillStyle = gr; g.fill();
+  escudo(0.94); gr = g.createLinearGradient(0, sy - R, 0, sy + R); gr.addColorStop(0, '#1c2f8f'); gr.addColorStop(1, '#0d1550'); g.fillStyle = gr; g.fill();
+  g.save(); escudo(0.94); g.clip(); g.globalAlpha = 0.18; g.fillStyle = '#5fffb0';   // rayas en el escudo
+  for (let i = -6; i < 6; i++) { g.beginPath(); g.moveTo(sx + i * R * 0.24, sy - R); g.lineTo(sx + i * R * 0.24 + R * 0.12, sy - R); g.lineTo(sx + i * R * 0.24 + R * 0.12 - R * 0.5, sy + R); g.lineTo(sx + i * R * 0.24 - R * 0.5, sy + R); g.fill(); }
+  g.restore();
+  // bestia (lobo/pantera) en silueta con ojos neón
+  g.save(); g.translate(sx, sy - R * 0.08); const b = R * 0.62;
+  g.fillStyle = '#060b30'; g.beginPath();
+  g.moveTo(-b * 0.78, -b * 0.95); g.lineTo(-b * 0.38, -b * 0.42); g.quadraticCurveTo(0, -b * 0.58, b * 0.38, -b * 0.42); g.lineTo(b * 0.78, -b * 0.95);
+  g.quadraticCurveTo(b * 0.95, -b * 0.2, b * 0.72, b * 0.25); g.quadraticCurveTo(b * 0.42, b * 0.78, 0, b * 0.98); g.quadraticCurveTo(-b * 0.42, b * 0.78, -b * 0.72, b * 0.25); g.quadraticCurveTo(-b * 0.95, -b * 0.2, -b * 0.78, -b * 0.95); g.fill();
+  g.globalCompositeOperation = 'lighter';
+  for (const s of [-1, 1]) { g.save(); g.translate(s * b * 0.33, b * 0.02); g.rotate(s * 0.35);
+    rg = g.createRadialGradient(0, 0, 0, 0, 0, b * 0.32); rg.addColorStop(0, 'rgba(90,255,180,.9)'); rg.addColorStop(1, 'rgba(90,255,180,0)'); g.fillStyle = rg; g.fillRect(-b * 0.4, -b * 0.3, b * 0.8, b * 0.6);
+    g.fillStyle = '#c8ffe6'; g.beginPath(); g.ellipse(0, 0, b * 0.17, b * 0.07, 0, 0, Math.PI * 2); g.fill(); g.restore(); }
+  g.globalCompositeOperation = 'source-over'; g.fillStyle = '#1d2a78'; g.beginPath(); g.moveTo(-b * 0.12, b * 0.42); g.lineTo(b * 0.12, b * 0.42); g.lineTo(0, b * 0.56); g.closePath(); g.fill();
+  g.restore();
+  g.restore();
+  // estrellitas doradas alrededor del escudo
+  for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i - 2) * 0.42 + (i < 2 ? -0.5 : i > 2 ? 0.5 : 0) * 0 , x = sx + Math.cos(a) * R * 1.3, y = sy + Math.sin(a) * R * 1.22, r = U * (i === 2 ? 2.4 : 1.6);
+    g.save(); g.translate(x, y); g.fillStyle = '#ffd23f'; g.strokeStyle = '#0a1040'; g.lineWidth = U * 0.5; g.beginPath();
+    for (let k = 0; k < 10; k++) { const aa = -Math.PI / 2 + k * Math.PI / 5, rr = k % 2 ? r * 0.45 : r; g.lineTo(Math.cos(aa) * rr, Math.sin(aa) * rr); } g.closePath(); g.stroke(); g.fill(); g.restore(); }
+  // suelo del escenario: césped en franjas con perspectiva + brillo bajo el pedestal
+  const fy = ch * 0.70;
+  g.save(); g.beginPath(); g.moveTo(cw * 0.18, fy); g.lineTo(cw * 0.82, fy); g.lineTo(cw * 1.1, ch); g.lineTo(-cw * 0.1, ch); g.closePath(); g.clip();
+  gr = g.createLinearGradient(0, fy, 0, ch); gr.addColorStop(0, '#1d7a5a'); gr.addColorStop(1, '#0f4a48'); g.fillStyle = gr; g.fillRect(0, fy, cw, ch - fy);
+  for (let i = -8; i < 8; i += 2) { g.fillStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.moveTo(cx + i * cw * 0.04, fy); g.lineTo(cx + (i + 1) * cw * 0.04, fy); g.lineTo(cx + (i + 1) * cw * 0.12, ch); g.lineTo(cx + i * cw * 0.12, ch); g.fill(); }
+  g.strokeStyle = 'rgba(120,255,200,.55)'; g.lineWidth = U * 0.5; g.beginPath(); g.moveTo(cw * 0.18, fy); g.lineTo(cw * 0.82, fy); g.stroke();
+  g.restore();
+  gr = g.createLinearGradient(0, fy - U * 3, 0, fy + U * 1); gr.addColorStop(0, 'rgba(10,16,64,0)'); gr.addColorStop(1, 'rgba(10,16,64,.35)'); g.fillStyle = gr; g.fillRect(0, fy - U * 3, cw, U * 4);
+  rg = g.createRadialGradient(cx, ch * 0.66, 0, cx, ch * 0.66, ch * 0.34); rg.addColorStop(0, 'rgba(255,240,170,.55)'); rg.addColorStop(0.5, 'rgba(255,220,120,.16)'); rg.addColorStop(1, 'rgba(255,220,120,0)');
+  g.save(); g.translate(cx, ch * 0.66); g.scale(1, 0.42); g.translate(-cx, -ch * 0.66); g.fillStyle = rg; g.fillRect(0, 0, cw, ch * 2); g.restore();
+  // viñeta
+  rg = g.createRadialGradient(cx, ch * 0.5, ch * 0.45, cx, ch * 0.5, Math.max(cw, ch) * 0.75); rg.addColorStop(0, 'rgba(5,8,40,0)'); rg.addColorStop(1, 'rgba(5,8,40,.55)'); g.fillStyle = rg; g.fillRect(0, 0, cw, ch);
+  lbFondoTx.needsUpdate = true; menuScene.background = lbFondoTx;
 }
+document.fonts?.load?.('20px "Lilita One"').then(() => { lbFondoPintar.k = ''; if (app.clientWidth) lbFondoPintar(app.clientWidth, app.clientHeight); }).catch(() => {});
 const menuCam = new THREE.PerspectiveCamera(30, 9 / 16, 0.1, 100);
 menuScene.add(new THREE.HemisphereLight(0xffffff, 0x5d6f9c, 1.3));
 const mSun = new THREE.DirectionalLight(0xffffff, 2.0); mSun.position.set(-2.5, 4, 5); menuScene.add(mSun);
@@ -4326,17 +4561,31 @@ const burst = new THREE.Group();
   for (let i = 0; i < N; i += 2) {
     const a0 = i / N * Math.PI * 2, a1 = (i + 1) / N * Math.PI * 2;
     const sh = new THREE.Shape(); sh.moveTo(0, 0); sh.lineTo(Math.cos(a0) * R, Math.sin(a0) * R); sh.lineTo(Math.cos(a1) * R, Math.sin(a1) * R); sh.closePath();
-    burst.add(new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.075, depthWrite: false })));
+    burst.add(new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({ color: '#bff6ff', transparent: true, opacity: 0.05, depthWrite: false })));   // update 45: más suaves sobre el fondo pintado
   }
   burst.position.set(0, 1.4, -8); menuScene.add(burst);
 }
 const ped = new THREE.Group();
-{
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 0.2, 56), new THREE.MeshStandardMaterial({ color: '#ffd23f', roughness: 1, metalness: 0 }));
-  top.position.y = -0.1; ped.add(top);
-  const rim = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.1, 0.2, 56), new THREE.MeshStandardMaterial({ color: '#1b2440', roughness: 1, metalness: 0 }));
-  rim.position.y = -0.2; ped.add(rim);
-  const sh = blob(0.8, 0.28); sh.position.y = 0.005; ped.add(sh);
+let pedNeon = null, pedCono = null;
+{ // update 45: pedestal iluminado: tapa dorada con bisel, base oscura, aro neón verde, foco cónico y brillo en el suelo
+  const gradTx = (stops, w = 4, h = 128) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const g = cv.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, h);
+    for (const [o, c] of stops) gr.addColorStop(o, c); g.fillStyle = gr; g.fillRect(0, 0, w, h); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; };
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.04, 0.16, 56), new THREE.MeshStandardMaterial({ color: '#ffd23f', roughness: 0.55, metalness: 0.15, emissive: '#4a3000', emissiveIntensity: 0.35 }));
+  top.position.y = -0.08; ped.add(top);
+  const disco = new THREE.Mesh(new THREE.CircleGeometry(0.82, 56), new THREE.MeshStandardMaterial({ color: '#ffe680', roughness: 0.7, metalness: 0, emissive: '#6a4a00', emissiveIntensity: 0.4 }));
+  disco.rotation.x = -Math.PI / 2; disco.position.y = 0.002; ped.add(disco);
+  const rim = new THREE.Mesh(new THREE.CylinderGeometry(1.12, 1.2, 0.26, 56), new THREE.MeshStandardMaterial({ color: '#1b2460', roughness: 0.8, metalness: 0.1 }));
+  rim.position.y = -0.27; ped.add(rim);
+  pedNeon = new THREE.Mesh(new THREE.TorusGeometry(1.17, 0.035, 8, 72), new THREE.MeshBasicMaterial({ color: '#4dffb0', transparent: true, opacity: 0.95 }));
+  pedNeon.rotation.x = Math.PI / 2; pedNeon.position.y = -0.2; ped.add(pedNeon);
+  const suelo = new THREE.Mesh(new THREE.CircleGeometry(2.1, 48), new THREE.MeshBasicMaterial({ map: (() => { const cv = document.createElement('canvas'); cv.width = cv.height = 128; const g = cv.getContext('2d'), rg = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    rg.addColorStop(0, 'rgba(120,255,200,.55)'); rg.addColorStop(0.55, 'rgba(90,200,255,.18)'); rg.addColorStop(1, 'rgba(90,200,255,0)'); g.fillStyle = rg; g.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t; })(),
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  suelo.rotation.x = -Math.PI / 2; suelo.position.y = -0.39; suelo.renderOrder = -1; ped.add(suelo);
+  pedCono = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 1.05, 4.2, 40, 1, true), new THREE.MeshBasicMaterial({ map: gradTx([[0, 'rgba(255,255,255,0)'], [0.55, 'rgba(255,250,210,.03)'], [1, 'rgba(255,240,170,.13)']]),
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+  pedCono.position.y = 2.1; pedCono.renderOrder = 5; ped.add(pedCono);
+  const sh = blob(0.8, 0.28); sh.position.y = 0.008; ped.add(sh);
   menuScene.add(ped);
 }
 const menuChars = [];
@@ -4610,6 +4859,7 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
+  { t: 'TIENDA NUEVA', d: 'Por secciones: OFERTA DEL DÍA (-20 %, cambia a medianoche), SKINS con su ficha y probador, MEJORA de PERSONAJES, BOTAS gratis y cómo ganar MONEDAS. Y un lobby renovado.', c: '#ff5ac8' },   // update 45
   { t: 'CAMPOS NUEVOS', d: 'Juega en el VOLCÁN, en el HIELO o en el BOSQUE DE SETAS (o en el estadio de siempre). Elige el CAMPO arriba en el menú, o ALEATORIO.', c: '#ff8a1e' },   // update 39
   { t: 'TURBO Y REGATES', d: 'TURBO ya no regatea: mantén para esprintar. Los regates, con el botón REGATES (dibuja el patrón), siempre a mano.', c: '#19c9b0' },   // update 38
   { t: 'CARTAS CON NIVEL', d: 'Todas empiezan en BRONCE. Gana MONEDAS jugando y MEJORA tus cartas: PLATA, ORO, DIAMANTE y LEYENDA. Cada personaje crece a su manera.', c: '#ffd23f' },
@@ -5248,6 +5498,7 @@ function layoutMenu() {
   const W = app.clientWidth, H = app.clientHeight;
   if (!W || !H) return;
   menuCam.aspect = W / H;
+  lbFondoPintar(W, H);
   if (HORIZONTAL) {
     // el personaje se ve en la mitad izquierda; encuadre un poco más cercano
     // update 35: lobby -> personaje grande en el centro, entre la barra de perfil y la rueda de badges
@@ -5268,6 +5519,7 @@ function layoutMenu() {
 function renderMenu(dt) {
   const m = menuChars[sel]; if (!m) return;
   menuT += dt; burst.rotation.z += dt * 0.07; lbRuedaStep(dt);
+  if (pedNeon) pedNeon.material.opacity = 0.75 + 0.25 * Math.sin(menuT * 2.4); if (pedCono) pedCono.material.opacity = 0.85 + 0.15 * Math.sin(menuT * 1.3);
   popT = Math.min(1, popT + dt * 3.2);
   const k = popT, back = 1 + 2.2 * (k - 1) ** 3 + 1.2 * (k - 1) ** 2;   // easeOutBack
   m.root.scale.setScalar(0.35 + 0.65 * back);
@@ -5738,6 +5990,8 @@ Object.assign(window.__game, {
   setCamMode: (m) => setCamMode(m, true),
   setJoyDir,
   openPause: () => openPause(), resumeGame: () => resumeGame(), quitMatch: () => quitMatch(),
+  lbFondo: () => lbFondoPintar.k || '', pedLuz: () => !!(pedNeon && pedCono), uiTap,
+  ofertaFijar: (v) => { OFERTA_FIJA = v; if (tiendaEl.classList.contains('visible')) renderTiendaTodo(); tiendaAvisos(); }, ofertasDia, skinPrecio, OFERTA_DTO, tiendaIr, tiendaAvisos, tiendaDetAbrir, diaLocal,
   SKINS, skinsSt: () => SKINS_ST, skinsReload: () => { SKINS_ST = skinsLoad(); return refreshSkinsVisual(); }, skinComprar, skinEquipar, skinOf, refreshSkinsVisual, applySkin, tiendaSkinVer, renderProbador, prog: () => PROG, retratos: () => PORTRAITS,
   // pruebas: simula con la física real (stepBall, con postes/larguero/red) un chut alto con carga c desde D m de la línea de gol
   simAlto: (c, D, dt = 1 / 120) => {
