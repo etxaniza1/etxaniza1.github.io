@@ -11,7 +11,7 @@
 <script>
 // update 27: si el navegador/PWA tiene un index.html viejo en caché, se baja el nuevo (cache:'reload' refresca la caché HTTP) y se recarga una vez
 (function () {
-  var V = 'v=44';
+  var V = 'v=45';
   try {
     fetch(location.pathname, { cache: 'reload' }).then(function (r) { return r.text(); }).then(function (t) {
       var m = t.match(/main\.js\?(v=\d+)/); if (!m || m[1] === V) return;
@@ -55,8 +55,8 @@ html,body{margin:0;background:#07080d}
 <link rel="manifest" href="manifest.webmanifest">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
-<link id="mainCss" rel="stylesheet" href="style.css?v=44" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
-<noscript><link rel="stylesheet" href="style.css?v=44"></noscript>
+<link id="mainCss" rel="stylesheet" href="style.css?v=45" media="print" onload="this.onload=null;this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()" onerror="this.media='all';window.__cssOk=1;window.__cssCb&&window.__cssCb()">
+<noscript><link rel="stylesheet" href="style.css?v=45"></noscript>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
@@ -161,6 +161,7 @@ html,body{margin:0;background:#07080d}
   <div id="pistaTeclado">WASD / flechas: mover · ESPACIO: tiro / pase (mantén para cargar) · SHIFT: turbo · E: regate / entrada · Q: chut alto · R: especial · C: pase (2 VS 2) · X: saltar / cabezazo · ESC: pausa</div>
   <div id="menu" class="lobby">
     <div class="lbVineta" aria-hidden="true"></div>
+    <div class="lbChispas" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
     <div id="menuStage" aria-label="Personaje (toca para elegir, arrastra para girar)"></div>
     <div class="lbTop">
       <button id="lbPerfil" class="lbPerfil" aria-label="Perfil">
@@ -174,14 +175,14 @@ html,body{margin:0;background:#07080d}
       <button id="btnAjustes" class="mEngranaje" aria-label="Ajustes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.5A7.4 7.4 0 0 0 7 6.5l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 3l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 2.6 1.5l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 2.6-1.5l2.4 1 2-3.4zM12 15.4a3.4 3.4 0 1 1 0-6.8 3.4 3.4 0 0 1 0 6.8z"/></svg></button>
     </div>
     <div class="lbCol lbColIzq">
-      <button id="btnMenuTienda" class="lbBtn cTienda"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h16l-1.4 11H5.4z"/><path class="ln" d="M8.5 9V7a3.5 3.5 0 0 1 7 0v2"/></svg><span>TIENDA</span></button>
-      <button id="lbBtnPers" class="lbBtn cPers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20c.6-4 3.2-6.2 6.5-6.2s5.9 2.2 6.5 6.2z"/><circle cx="17" cy="7" r="2.6" opacity=".75"/><path d="M15.5 12.5c3 .2 5 2 5.6 5.5h-4" opacity=".75"/></svg><span>PERSONAJES</span></button>
-      <button id="btnMenuCartas" class="lbBtn cCartas"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="11" height="15" rx="2" transform="rotate(-8 8 12)"/><rect x="10" y="4" width="11" height="15" rx="2" opacity=".75"/></svg><span>CARTAS</span></button>
+      <button id="btnMenuTienda" class="lbBtn cTienda"><svg class="ilu" viewBox="0 0 32 32" aria-hidden="true"><path d="M5.5 11h21l-1.9 16.2a2.2 2.2 0 0 1-2.2 1.9H9.6a2.2 2.2 0 0 1-2.2-1.9z" fill="#ff5ac8" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M6.6 13.4h18.8l.3-2.4H6.3z" fill="#ffa6e6"/><path d="M11.3 11V8.6a4.7 4.7 0 0 1 9.4 0V11" fill="none" stroke="#14193a" stroke-width="2.6" stroke-linecap="round"/><path d="M11.3 11V8.6a4.7 4.7 0 0 1 9.4 0V11" fill="none" stroke="#fff" stroke-width="1" stroke-linecap="round"/><circle cx="16" cy="20.2" r="5.2" fill="#ffd23f" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="20.2" r="3.3" fill="none" stroke="#e0a21b" stroke-width="1.2"/><path d="M16 17.9l.7 1.5 1.6.2-1.2 1.1.3 1.6-1.4-.8-1.4.8.3-1.6-1.2-1.1 1.6-.2z" fill="#fff"/></svg><span>TIENDA</span></button>
+      <button id="lbBtnPers" class="lbBtn cPers"><svg class="ilu" viewBox="0 0 32 32" aria-hidden="true"><path d="M17 6.5l2.5 3.2h4.3l2.5-3.2.6 6a7.2 7.2 0 1 1-10.5 0z" fill="#3fd0ff" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M19.4 14.2l1.8.6M25.8 14.2l-1.8.6" stroke="#14193a" stroke-width="1.6" stroke-linecap="round"/><circle cx="20.4" cy="15.8" r="1.1" fill="#14193a"/><circle cx="24.8" cy="15.8" r="1.1" fill="#14193a"/><path d="M4.4 10l3.4 3.6h5.4l3.4-3.6.4 7.4a9 9 0 1 1-13 0z" fill="#ffb21e" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M6.8 19.4a3.6 3.6 0 0 0 7.4 0z" fill="#fff4d6" stroke="#14193a" stroke-width="1.2"/><path d="M6.6 16.2l2.4.9M14.4 16.2l-2.4.9" stroke="#14193a" stroke-width="1.8" stroke-linecap="round"/><circle cx="8.2" cy="18" r="1.2" fill="#14193a"/><circle cx="12.8" cy="18" r="1.2" fill="#14193a"/><path d="M9.6 21.6l.9.8.9-.8" fill="none" stroke="#14193a" stroke-width="1.1" stroke-linecap="round"/></svg><span>PERSONAJES</span></button>
+      <button id="btnMenuCartas" class="lbBtn cCartas"><svg class="ilu" viewBox="0 0 32 32" aria-hidden="true"><rect x="4" y="7" width="14" height="20" rx="2.4" transform="rotate(-12 11 17)" fill="#7b3fe0" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><rect x="13" y="5" width="14" height="20" rx="2.4" transform="rotate(8 20 15)" fill="#fff" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><rect x="15.3" y="7.6" width="9.4" height="11" rx="1.4" transform="rotate(8 20 15)" fill="#b98bff"/><path d="M20.3 9.6l1.2 2.5 2.7.4-2 1.9.5 2.7-2.4-1.3-2.4 1.3.5-2.7-2-1.9 2.7-.4z" fill="#ffd23f" stroke="#14193a" stroke-width="1.1" stroke-linejoin="round"/><path d="M15.8 21.6l7.6 1.1" stroke="#7b3fe0" stroke-width="1.8" stroke-linecap="round"/></svg><span>CARTAS</span></button>
     </div>
     <div class="lbCol lbColDer">
-      <button id="lbBtnNov" class="lbBtn cNov"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4l3 .5L9 20h2.5l-1.5-5 9 3V6L8 10z"/><path class="ln" d="M20.5 9.5v5"/></svg><span>NOVEDADES</span><i class="lbPunto"></i></button>
-      <button id="lbBtnCopas" class="lbBtn cCopas"><svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg><span>COPAS</span></button>
-      <button id="lbBtnAlin" class="lbBtn cAlin"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="2.5" width="17" height="19" rx="2.5"/><path class="ln" d="M3.5 12h17M9 21.5v-3.2h6v3.2"/><circle cx="12" cy="16.4" r="1.9"/><circle cx="8.2" cy="7.2" r="1.9"/><circle cx="15.8" cy="7.2" r="1.9"/></svg><span>ALINEACIÓN</span></button>
+      <button id="lbBtnNov" class="lbBtn cNov"><svg class="ilu" viewBox="0 0 32 32" aria-hidden="true"><path d="M4 13v6.4l3.6.6L11 27h3.4l-1.8-6.2 11.8 4.4V6.8L10 13z" fill="#fff" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 13h6v6.8H4z" fill="#ff5a7a" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M24.4 6.8v18.4" stroke="#14193a" stroke-width="1.8"/><ellipse cx="24.4" cy="16" rx="2.2" ry="9.2" fill="#ffd23f" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M28 10.5l2.2-1.6M28.6 16h2.6M28 21.5l2.2 1.6" stroke="#ffd23f" stroke-width="2" stroke-linecap="round"/></svg><span>NOVEDADES</span><i class="lbPunto"></i></button>
+      <button id="lbBtnCopas" class="lbBtn cCopas"><svg class="ilu icoCopa" viewBox="0 0 32 32" aria-hidden="true"><path d="M9.5 6.5H5.2c0 4.4 2.2 6.8 5.4 7.2M22.5 6.5h4.3c0 4.4-2.2 6.8-5.4 7.2" fill="none" stroke="#14193a" stroke-width="3.6" stroke-linecap="round"/><path d="M9.5 6.5H5.2c0 4.4 2.2 6.8 5.4 7.2M22.5 6.5h4.3c0 4.4-2.2 6.8-5.4 7.2" fill="none" stroke="#ffd23f" stroke-width="1.6" stroke-linecap="round"/><path d="M8.8 3.8h14.4v6.6a7.2 7.2 0 0 1-14.4 0z" fill="#ffd23f" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M11.2 5.6v4.6a4.8 4.8 0 0 0 2.4 4.2" fill="none" stroke="#fff6c0" stroke-width="1.8" stroke-linecap="round"/><path d="M14 17.4h4v4.2h-4z" fill="#e0a21b" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.4 21.6h13.2l1.4 6H8z" fill="#7b3fe0" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M12.6 24.2h6.8" stroke="#ffd23f" stroke-width="1.6" stroke-linecap="round"/></svg><span>COPAS</span></button>
+      <button id="lbBtnAlin" class="lbBtn cAlin"><svg class="ilu" viewBox="0 0 32 32" aria-hidden="true"><rect x="4.5" y="3.5" width="23" height="25" rx="3" fill="#2fbf6a" stroke="#14193a" stroke-width="1.8" stroke-linejoin="round"/><path d="M4.5 9.7h23M4.5 16h23M4.5 22.3h23" stroke="#25a95b" stroke-width="3.2"/><path d="M5 16h22M11.5 28.2v-4h9v4M11.5 3.8v4h9v-4" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="16" cy="16" r="3" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="10" cy="11" r="2.4" fill="#3fa9ff" stroke="#14193a" stroke-width="1.4"/><circle cx="22" cy="11" r="2.4" fill="#3fa9ff" stroke="#14193a" stroke-width="1.4"/><circle cx="16" cy="21.4" r="2.4" fill="#ffd23f" stroke="#14193a" stroke-width="1.4"/><path d="M10 13.6l4.8 6" stroke="#fff" stroke-width="1.2" stroke-dasharray="1.6 1.4"/></svg><span>ALINEACIÓN</span></button>
     </div>
     <div class="lbPlaca"><div id="mNombre">CONAZO</div><div id="mEsp"></div></div>
     <div id="lbRueda" aria-label="Elige personaje (desliza)"><div class="lbRuedaPista"></div><div id="lbRuedaItems"></div></div>
@@ -244,13 +245,28 @@ html,body{margin:0;background:#07080d}
     </div>
   </div>
   <div id="tienda" aria-label="Tienda">
-    <div class="tiCaja">
-      <div class="tiTit">TIENDA <span id="tiendaMon" class="tiMon"></span></div>
-      <div class="tiSub">SKINS <span>NUEVOS COLORES · TOCA PARA PROBAR</span></div>
-      <div class="tiSkinsZona"><div id="tiendaProbador" class="tiProbador" aria-label="Probador"></div><div id="tiendaSkins"></div></div>
-      <div class="tiSub">BOTAS <span>TODO GRATIS</span></div>
-      <div id="tiendaLista"></div>
-      <div class="tiPie"><button id="tiendaCerrar" class="ajBtn ajVolver">VOLVER</button></div>
+    <div class="tiFondo" aria-hidden="true"></div>
+    <div class="tiTop">
+      <button id="tiendaCerrar" class="tiAtras" aria-label="Volver"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 3.5 6.5 12l9 8.5"/></svg><span>VOLVER</span></button>
+      <div class="tiTit">TIENDA</div>
+      <div class="tiPills"><span id="tiendaMon" class="tiMon"></span></div>
+    </div>
+    <div class="tiCuerpo">
+      <nav id="tiendaTabs" class="tiTabs" aria-label="Secciones de la tienda"></nav>
+      <div id="tiendaScroll" class="tiScroll">
+        <section class="tiSec" data-sec="dest"><div class="tiSecTit">OFERTAS DESTACADAS</div><div id="tiendaDest" class="tiFila"></div></section>
+        <section class="tiSec" data-sec="skins"><div class="tiSecTit">SKINS <small>TOCA PARA PROBAR</small></div><div id="tiendaSkins" class="tiFila"></div></section>
+        <section class="tiSec" data-sec="pers"><div class="tiSecTit">PERSONAJES <small>MEJORA SU CARTA</small></div><div id="tiendaPers" class="tiFila"></div></section>
+        <section class="tiSec" data-sec="botas"><div class="tiSecTit">BOTAS <small>TODO GRATIS</small></div><div id="tiendaLista" class="tiFila"></div></section>
+        <section class="tiSec" data-sec="mon"><div class="tiSecTit">MONEDAS <small>SE GANAN JUGANDO</small></div><div id="tiendaRecursos" class="tiFila"></div></section>
+      </div>
+    </div>
+    <div id="tiendaDet" class="tiDet" aria-hidden="true">
+      <div class="tiDetCaja">
+        <div id="tiendaProbador" class="tiProbador" aria-label="Probador"></div>
+        <div id="tiendaDetInfo" class="tiDetInfo"></div>
+        <button id="tiendaDetX" class="tiDetX" aria-label="Cerrar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+      </div>
     </div>
   </div>
   <div id="coleccion" aria-label="Colección de cartas">
@@ -340,6 +356,6 @@ html,body{margin:0;background:#07080d}
     <div class="giraSub">Beast Strikers se juega en horizontal</div>
   </div>
 </div>
-<script type="module" src="main.js?v=44"></script>
+<script type="module" src="main.js?v=45"></script>
 </body>
 </html>
