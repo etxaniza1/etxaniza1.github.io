@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=48';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=49';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=48';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=49';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu', 'kaledy', 'dante'];
@@ -363,7 +363,7 @@ function applyTextureQuality(root) {
       const t = m[k]; if (!t || !t.isTexture) continue;
       const want = t.userData.skinHi ? skinAniso() : an;   // update 48: skins 2048 siempre con anisotrópico >= 8 (nítidas de lado)
       if (t.anisotropy !== want || t.minFilter !== THREE.LinearMipmapLinearFilter) {
-        t.anisotropy = want; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+        t.anisotropy = want; t.generateMipmaps = !t.userData.mipIslas; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
       }
       _texSeen.add(t);
     }
@@ -945,6 +945,7 @@ class Actor {
     this.charScale = (ALL_CHARS.find((c) => c.key === charKey) || {}).scale || 1;   // multiplicador por personaje (todos 1: alturas igualadas en el modelado)
     model.scale.setScalar(ESCALA * this.charScale);
     this.model = model; model.userData.actorRef = this;
+    baseHD(model, charKey);   // update 49: textura base nítida en partido
     applyLOD(this);   // menos triángulos en partida según calidad (el menú usa el modelo completo)
     this.body.add(model);
     this.root.add(this.body);
@@ -3699,10 +3700,72 @@ const _glowC = new THREE.Color();
 // update 48 (t106u): texturas de skins NÍTIDAS: 2048 WebP SIN PÉRDIDAS generadas desde la fuente 2048/4096 (skins_src/gen_*_u48.py)
 function skinTex(c, k, ext = 'webp') {
   const id = c + '_' + k; if (SKIN_TEX[id]) return SKIN_TEX[id];
-  return (SKIN_TEX[id] = new Promise((res) => {
-    new THREE.TextureLoader().load(`assets/skins/${id}.${ext}?${ASSET_V}`, (t) => { t.userData.skinHi = true; t.userData.skinId = id; SKIN_TEX_R[id] = t; res(t); }, undefined, () => { console.warn('skin sin textura', id); res(null); });
-  }));
+  return (SKIN_TEX[id] = texCargar(`assets/skins/${id}.${ext}?${ASSET_V}`).then((t) => { t.userData.skinHi = true; t.userData.skinId = id; SKIN_TEX_R[id] = t; return t; },
+    () => { console.warn('skin sin textura', id); delete SKIN_TEX[id]; return null; }));
 }
+// update 49 (t107u): MIPMAPS POR ISLAS. El generateMipmap del navegador promedia islas VECINAS del atlas de Tripo: a distancia (partido)
+// los rayos neón de pantera/zora y los ojos de gecko sombra se colaban en las costuras del cuerpo negro = motas y rayitas de luz.
+// skins_src/mipatlas49.py hace la cadena offline (cada texel grueso solo con texels de UNA isla) y la guarda como atlas N x 1,5N:
+// nivel 0 arriba y debajo N/2, N/4… en fila. Si la imagen tiene esa forma se trocea en texture.mipmaps (el nivel 0 es idéntico: nada borroso).
+function texCargar(url) {   // update 49: decodifica UNA vez (Blob -> ImageBitmap fuera del hilo principal) y corta los niveles del atlas de ese bitmap
+  if (window.createImageBitmap && window.fetch) return fetch(url).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); })
+    .then((b) => createImageBitmap(b, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' })).then(texDeBitmap);
+  return new Promise((res, rej) => { const im = new Image(); im.decoding = 'async'; im.onload = () => texDeImagen(im).then(res, rej); im.onerror = rej; im.src = url; });
+}
+async function texDeBitmap(bm) {
+  const N = bm.width;
+  if (bm.height !== N * 1.5) { const t = new THREE.Texture(bm); t.flipY = false; t.needsUpdate = true; return t; }
+  const o = { premultiplyAlpha: 'none', colorSpaceConversion: 'none' };
+  const lv = [await createImageBitmap(bm, 0, 0, N, N, o)]; for (let n = N >> 1, x = 0; n >= 1; x += n, n >>= 1) lv.push(await createImageBitmap(bm, x, N, n, n, o));
+  bm.close && bm.close();   // el atlas completo ya no hace falta
+  const t = new THREE.Texture(lv[0]); t.mipmaps = lv; t.generateMipmaps = false; t.flipY = false; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+  t.userData.mipIslas = true; t.needsUpdate = true; return t;
+}
+async function texDeImagen(im) {   // (respaldo sin createImageBitmap: lienzo)
+  const N = im.naturalWidth;
+  if (im.naturalHeight !== N * 1.5) { const t = new THREE.Texture(im); t.needsUpdate = true; return t; }
+  const cut = (x, y, n) => { const cv = document.createElement('canvas'); cv.width = cv.height = n; cv.getContext('2d').drawImage(im, x, y, n, n, 0, 0, n, n); return cv; };
+  const lv = [cut(0, 0, N)]; for (let n = N >> 1, x = 0; n >= 1; x += n, n >>= 1) lv.push(cut(x, N, n));
+  const t = new THREE.Texture(lv[0]); t.mipmaps = lv; t.generateMipmaps = false; t.flipY = false; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter;
+  t.userData.mipIslas = true; t.needsUpdate = true; return t;
+}
+// configura una textura nueva (skin o base HD) como la original del GLB (flipY, espacio de color, repetición) + anisotrópico de skin
+function cfgTex(t, o) {
+  if (t.userData.cfg) return; t.flipY = o.flipY; t.colorSpace = o.colorSpace; t.wrapS = o.wrapS; t.wrapT = o.wrapT; t.anisotropy = Math.max(o.anisotropy || 1, skinAniso());
+  t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = o.magFilter; t.generateMipmaps = !t.userData.mipIslas; t.needsUpdate = true; t.userData.cfg = true;
+}
+// update 49 (t107u): textura BASE nítida (2048 sin pérdida + mipmaps por islas) de estos personajes. El GLB sigue con la suya de 1024 (arranque igual
+// de rápido); la buena se pone al USARSE: el personaje visible del menú/taquilla y los que juegan el partido (skinGC libera las que nadie lleva).
+const HD_BASE = new Set(['gecko', 'dante', 'kaledy', 'pantera', 'zora', 'ajolote']);
+function toonMatsDe(model) { const mats = []; model.traverse((o) => { if (o.isMesh && !o.userData.outline) for (const m of (Array.isArray(o.material) ? o.material : [o.material])) if (m && m.map !== undefined) mats.push(m); }); return mats; }
+function baseHD(model, c, on = true) {
+  if (!model || !HD_BASE.has(c)) return Promise.resolve(false);
+  if (on && AJ.quality === 'baja') on = false;   // update 49: en calidad BAJA (móviles flojos) se queda la 1024 del GLB (menos memoria)
+  const mats = toonMatsDe(model);
+  for (const m of mats) { if (!m.userData.mapOrig) m.userData.mapOrig = m.map; if (!m.userData.mapLo) m.userData.mapLo = m.userData.mapOrig; }
+  if (!on) {
+    if (!model.userData.hd) return Promise.resolve(false);
+    model.userData.hd = false;
+    for (const m of mats) { if (m.map === m.userData.mapOrig) m.map = m.userData.mapLo; m.userData.mapOrig = m.userData.mapLo; }
+    return Promise.resolve(true);
+  }
+  model.userData.hd = true;
+  return skinTex(c, 'base').then((t) => {
+    if (!t || !model.userData.hd) return false;
+    for (const m of mats) { cfgTex(t, m.userData.mapLo); if (m.map === m.userData.mapOrig) m.map = t; m.userData.mapOrig = t; }
+    return true;
+  });
+}
+let hdMenuTm = 0;
+function hdMenu() {
+  clearTimeout(hdMenuTm); hdMenuTm = 0;
+  if (!window.__game || !window.__game.menuReady || performance.now() < (hdMenu.desde || 0)) { hdMenuTm = setTimeout(hdMenu, 600); return; }
+  const vis = TAQ.open ? taqModel(TAQ.c) : menuChars[sel];
+  menuChars.forEach((m, i) => { if (m) baseHD(m.model, CHARS[i].key, m === vis); });
+  for (const [c, g] of Object.entries(GK_PROB)) baseHD(g.model, c, g === vis);
+  skinGCLuego();
+}
+function hdMenuLuego() { clearTimeout(hdMenuTm); hdMenuTm = setTimeout(hdMenu, 350); }
 // update 48: anisotrópico de las skins (2048 px sin pérdida): mínimo 8 aunque la calidad sea Media/Baja (coste mínimo, mucho más nítidas en ángulo)
 function skinAniso() { const q = QUALITY[AJ.quality], maxA = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1; return Math.max(1, Math.min(maxA, Math.max(q.aniso, 8))); }
 // update 48: libera de la GPU las texturas de skin que ya no lleva ningún modelo (pruebas de la tienda/taquilla); 2048² = ~22 MB cada una
@@ -3726,12 +3789,27 @@ function applySkin(model, c, k) {
   const fx = k && (SKINS[c].find((x) => x.k === k) || {}).fx;
   for (const m of mats) if (m.userData.toonU) { m.userData.toonU.uGlowAmt.value = 0; m.userData.toonU.uGlowMap.value = GLOW_NEGRO; GLOW_MATS.delete(m); }   // update 46
   if (!k) { for (const m of mats) if (m.userData.mapOrig) m.map = m.userData.mapOrig; return Promise.resolve(true); }
+  // update 49: al ARRANCAR, las skins equipadas de muñecos del menú que no se ven (atlas 2-3 MB) se piden después del arranque (como la base HD), no compiten con la carga en móvil
+  const espera = skinEspera(model);
+  if (espera) { SKIN_PEND.add(c); const fin = (r) => { SKIN_PEND.delete(c); PORT_DIRTY.add(c); if (!portTm) portTm = setTimeout(portraitPump, 60); return r; };
+    return espera.then(() => model.userData.skin !== k ? false : applySkinYa(model, c, k, mats, fx)).then(fin, (e) => { fin(false); throw e; }); }
+  return applySkinYa(model, c, k, mats, fx);
+}
+const SKIN_PEND = new Set();   // update 49: personajes con skin del menú aún por cargar (su retrato espera)
+function skinListo() { return !!(window.__game && window.__game.menuReady) && performance.now() >= (hdMenu.desde || Infinity); }
+function skinEspera(model) {
+  if (skinListo() || S.mode !== 'menu') return null;
+  const vis = (TAQ.open && taqModel(TAQ.c)) || menuChars[sel];
+  if ((vis && vis.model === model) || !menuChars.some((m) => m && m.model === model)) return null;
+  return new Promise((res) => { const w = () => (skinListo() || S.mode !== 'menu') ? res() : setTimeout(w, 400); w(); });
+}
+function applySkinYa(model, c, k, mats, fx) {
   if (fx) skinTex(c, k + '_fx').then((g) => { if (!g || model.userData.skin !== k) return; g.flipY = false; g.colorSpace = THREE.NoColorSpace; g.needsUpdate = true;
     for (const m of mats) if (m.userData.toonU) { m.userData.toonU.uGlowMap.value = g; m.userData.toonU.uGlowAmt.value = 1; GLOW_MATS.add(m); } });
   return skinTex(c, k).then((t) => {
     if (!t || model.userData.skin !== k) return false;
     for (const m of mats) { const o = m.userData.mapOrig; if (!o) continue;
-      if (!t.userData.cfg) { t.flipY = o.flipY; t.colorSpace = o.colorSpace; t.wrapS = o.wrapS; t.wrapT = o.wrapT; t.anisotropy = Math.max(o.anisotropy || 1, skinAniso()); t.minFilter = o.minFilter; t.magFilter = o.magFilter; t.needsUpdate = true; t.userData.cfg = true; }
+      cfgTex(t, m.userData.mapLo || o);
       m.map = t; }
     return true;
   });
@@ -3998,14 +4076,14 @@ function taqClose() {
   if (!TAQ.open) return;
   TAQ.open = false; menuEl.classList.remove('taq'); taqEl.classList.remove('visible'); taqEl.setAttribute('aria-hidden', 'true');
   for (const g of Object.values(GK_PROB)) g.root.visible = false;
-  menuChars.forEach((m, k) => { m.root.visible = k === sel; });
+  menuChars.forEach((m, k) => { m.root.visible = k === sel; }); hdMenuLuego();
   menuCam.clearViewOffset(); menuCam.updateProjectionMatrix(); userYaw = 0; popT = 0;
   if (TAQ.dirty) { TAQ.dirty = false; refreshSkinsVisual(); }
   lbRender(); uiTap(); skinGCLuego();
 }
 function taqShow(c, pop) {
   TAQ.c = c; const m = taqModel(c);
-  menuChars.forEach((x) => { x.root.visible = x === m; }); for (const g of Object.values(GK_PROB)) g.root.visible = g === m;
+  menuChars.forEach((x) => { x.root.visible = x === m; }); for (const g of Object.values(GK_PROB)) g.root.visible = g === m; hdMenuLuego();
   if (m) {
     if ((m.model.userData.skin || null) !== skinOf(c)) applySkin(m.model, c, skinOf(c));
     if (pop) { popT = 0; userYaw = 0; const a = m.actions; if (a && a.Celebrate && a.Idle) { a.Celebrate.reset().setEffectiveWeight(1).play(); a.Idle.crossFadeTo(a.Celebrate, 0.12, false); } }
@@ -4849,7 +4927,7 @@ function portraitNow(key, asinc) {   // asinc: PNG codificado fuera del hilo (to
 function portrait(key) { if (PORT_DIRTY.has(key) || (PORTRAITS[key] === undefined && CHARS.some((c) => c.key === key))) portraitNow(key); return PORTRAITS[key] || undefined; }
 function portraitPump() {   // de uno en uno, en ratos libres y solo fuera del partido
   portTm = 0; if (!PORT_DIRTY.size) return;
-  if (S.mode === 'menu' && !document.hidden && !drag && performance.now() > portraitPump.desde && performance.now() - PORT_INPUT > 1500 && RUEDA.target === null && !RUEDA.drag) { const sk = CHARS[sel] && PORT_DIRTY.has(CHARS[sel].key) ? CHARS[sel].key : PORT_DIRTY.values().next().value; portraitNow(sk, true); }
+  if (S.mode === 'menu' && !document.hidden && !drag && performance.now() > portraitPump.desde && performance.now() - PORT_INPUT > 1500 && RUEDA.target === null && !RUEDA.drag) { const sk = CHARS[sel] && PORT_DIRTY.has(CHARS[sel].key) && !SKIN_PEND.has(CHARS[sel].key) ? CHARS[sel].key : [...PORT_DIRTY].find((x) => !SKIN_PEND.has(x)); if (sk) portraitNow(sk, true); }   // update 49: no pinta retratos con la skin aún cargando
   if (PORT_DIRTY.size) portTm = (window.requestIdleCallback ? requestIdleCallback(() => setTimeout(portraitPump, 40), { timeout: 400 }) : setTimeout(portraitPump, 90)) || 1;
 }
 portraitPump.desde = 0;
@@ -4988,7 +5066,7 @@ function pickRival() {
 }
 function selectChar(i, celebrate = true, fromWheel = false) {
   sel = (i + CHARS.length) % CHARS.length;
-  menuChars.forEach((m, k) => { m.root.visible = k === sel; });
+  menuChars.forEach((m, k) => { m.root.visible = k === sel; }); hdMenuLuego();
   const m = menuChars[sel];
   popT = 0; userYaw = 0;
   if (celebrate) {
@@ -5090,6 +5168,7 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
+  { t: 'TEXTURAS MÁS NÍTIDAS', d: 'Gecko, Dante, Kaledy, Pantera, Zora y Ajolote con texturas HD que ya no se emborronan de lejos: los brillos neón y los rayos se ven limpios en el partido. Mangas de Kaledy y Dante arregladas, Ajolote sin pupilas y con brazos que ya no se estiran, Gecko GALAXIA sin barriga rosa y DJ Carnero GALAXIA rehecho con su galaxia de estrellas.', c: '#7a5cff' },   // update 49
   { t: 'TAQUILLA Y MÚSICA', d: 'Nuevo botón TAQUILLA en el menú: elige el aspecto de cada personaje entre los que tienes, viéndolo en 3D. Música nueva en el menú (se apaga en AJUSTES). Skins del gecko y de DJ Carnero mucho más nítidas, y en AJUSTES puedes FUSIONAR REGATE Y TURBO: mantén TURBO y mueve el pulgar para regatear sin soltarlo.', c: '#ff5fa2' },   // update 48
   { t: 'NUEVO: DANTE', d: 'Llega DANTE, mediapunta con el mejor REGATE de la liga, mucho EFECTO y precisión. Su ESPECIAL «REGATE MÁGICO»: con el balón, 3 s de regate mágico: más rápido, las entradas no le tocan y los rivales cercanos se quedan mareados. Ya juega en LIGA y TORNEO.', c: '#6cace4' },   // update 47 (t104u)
   { t: 'NUEVO: KALEDY', d: 'Llega KALEDY, delantero centro con el mejor TIRO de la liga. Su ESPECIAL «TRALLAZO»: con el balón suelta un trallazo de hoja seca a la escuadra y el portero reacciona tarde. Ya juega en LIGA y TORNEO.', c: '#d4202a' },   // update 47
@@ -6982,7 +7061,7 @@ Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS,
 // primer toque (política de autoplay + arranque más rápido). Va por WebAudio (GainNode) para poder hacer fundidos también en iOS
 // (allí audio.volume es de solo lectura). Suena SOLO en el menú; al empezar el partido se funde y se pausa; vuelve al volver al menú.
 const MUS = { el: null, g: null, gesto: false, playing: false, vol: 0.32, src: '', tp: 0, err: null };
-function musSrc() { const a = document.createElement('audio'); return a.canPlayType('audio/ogg; codecs="opus"') ? 'assets/audio/menu_musica.ogg?v=48' : 'assets/audio/menu_musica.mp3?v=48'; }
+function musSrc() { const a = document.createElement('audio'); return a.canPlayType('audio/ogg; codecs="opus"') ? 'assets/audio/menu_musica.ogg?v=49' : 'assets/audio/menu_musica.mp3?v=49'; }
 function musInit() {
   if (MUS.el) return;
   const el = MUS.el = new Audio(); el.loop = true; el.preload = 'auto'; el.crossOrigin = 'anonymous'; MUS.src = el.src = musSrc();
@@ -7053,6 +7132,7 @@ Object.defineProperty(window.__game, 'vp', { get: () => lastVP });
     cargando.classList.add('oculto');
     openMenu();
     window.__game.menuReady = true;
+    hdMenu.desde = performance.now() + 2000; hdMenuLuego();   // update 49: textura base nítida del elegido (sin estorbar al arranque)
     setTimeout(regaloBanner, 1100);   // update 47: después del fundido de la pantalla de carga
     requestAnimationFrame(frame);
     if (BOOT) { BOOT.set(0.96); requestAnimationFrame(() => requestAnimationFrame(() => BOOT.done())); }   // fundido cuando el menú ya está pintado
@@ -7073,3 +7153,4 @@ Object.defineProperty(window.__game, 'sel', { get: () => sel, configurable: true
 // update 29 (pruebas): especiales
 Object.assign(window.__game, { espSpeedMul, ESPECIALES, ESP, ESP_T, espUse: (who) => espUse(who === 'rival' ? rival : user), espCanUse: (who) => espCanUse(who === 'rival' ? rival : user),
   espCharge: (who, v = 1) => { const a = who === 'rival' ? rival : user; if (a) a.esp = v; }, setEspeciales: (on) => setEspeciales(on), espClear: () => espClear() });
+Object.assign(window.__game, { GLB, applyToon, matte, SkeletonUtils, baseHD, HD_BASE, hdMenu });   // update 49: pruebas (render de personajes con skin/pose para revisar texturas)
