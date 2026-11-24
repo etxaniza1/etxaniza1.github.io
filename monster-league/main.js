@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=49';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=50';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
-const ESCALA = parseFloat(P.get('escala') || '1.3');      // escala de personajes (1 = 2,00 m; 1.3 se lee mejor en móvil)
+const ESCALA = parseFloat(P.get('escala') || '1.47');     // escala de personajes (1 = 2,00 m). update 50 (t109u): 1.3 -> 1.47 (+13 %): todo lo que depende del cuerpo (radio, pies/regate, cabeza, alcance y estiradas del portero, sombra, aros, discos, marcador) va ×ESCALA
 const LAND_R = 1.9;   // update 31: radio del círculo de caída (m): solo se cabecea dentro
 const DURACION = parseFloat(P.get('tiempo') || '120');   // segundos de partido
 // Por defecto: apaisado 16:9, campo en vertical, cámara G. ?vertical=1 recupera el modo retrato antiguo.
@@ -27,6 +27,7 @@ const GRAV = 11;
 const AIR_K = 0.0065, ROLL_DRAG = 0.45, ROLL_DECEL = 1.2, BOUNCE_E = 0.65, BOUNCE_MIN = 0.9;
 const GK_REACH = 2.0, GK_REACH_DIVE = 1.6;   // altura de alcance del portero (×ESCALA): de pie+salto / en estirada
 const PR = 0.6 * ESCALA;                   // radio de colisión del jugador
+const ESC_N = ESCALA / 1.3;               // update 50: escala relativa a la de diseño (1.3): huecos alrededor de cuerpos ajustados a mano
 const SPEED_USER = 7.6, SPEED_AI = 6.3, SPEED_GK = 5.6;
 const DRIBBLE_T = 0.32, DRIBBLE_CD = 1.5, DRIBBLE_SPEED = 13.5;
 const DASH_T = 0.26, DASH_CD_USER = 1.1, DASH_CD_AI = 2.0, DASH_SPEED = 16, DASH_MISS_STUN = 0.42;
@@ -34,10 +35,10 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=49';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=50';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
-const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu', 'kaledy', 'dante'];
+const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu', 'kaledy', 'dante'];
 const ALL_CHARS = [
   { key: 'conazo', name: 'CONAZO', color: '#F2751A', toon: true },   // update 36: modelo nuevo (Tripo) -> toon con outline
   { key: 'calcetrol', name: 'CALCETROL', color: '#E5343A', toon: true },   // update 22: nuevo modelo Tripo (mismo id/stats/carta)
@@ -45,7 +46,6 @@ const ALL_CHARS = [
   { key: 'lobo', name: 'LOBO', color: '#3B4FA8', toon: true },   // update 29: nuevo modelo Tripo (lobo de verdad)
   { key: 'zorro', name: 'ZORRO', color: '#E2552D', toon: true },
   { key: 'gecko', name: 'GECKO', color: '#58A83A', toon: true },
-  { key: 'rino', name: 'RINO', color: '#7C838B' },
   { key: 'turtobola', name: 'TURTOBOLA', color: '#1F7A5A', toon: true },   // update 20: personaje nuevo (Tripo)
   { key: 'conejo', name: 'CONEJO ANTENA', color: '#7A5CCF', toon: true },   // update 22: personaje nuevo (Tripo)
   { key: 'carnero', name: 'DJ CARNERO', color: '#2E2B3A', toon: true },     // update 22: personaje nuevo (Tripo)
@@ -97,7 +97,6 @@ const STATS = {   // update 31: rehechas. Más variedad: nadie es bueno en todo.
   carnero: { vel: 66, tir: 96, pre: 80, reg: 86, ent: 72, fis: 90, ref: 60, cur: 40, pos: 'SD', lema: 'Pincha el ritmo: aguanta, gira y suelta el bajo' },
   pepi: { vel: 95, tir: 66, pre: 64, reg: 94, ent: 76, fis: 46, ref: 84, cur: 20, pos: 'ED', lema: 'Avinagrado: rapidísimo y escurridizo, pero se cae solo' },
   mofeta: { vel: 54, tir: 68, pre: 60, reg: 50, ent: 93, fis: 94, ref: 82, cur: 5, pos: 'DFC', lema: 'Muro apestoso: nadie quiere acercarse' },
-  rino: { vel: 50, tir: 99, pre: 62, reg: 54, ent: 84, fis: 94, ref: 76, cur: 25, pos: 'DC', lema: 'Ariete lento: el cañón lejano más fuerte de la liga' },
   pantera: { vel: 98, tir: 96, pre: 88, reg: 92, ent: 66, fis: 68, ref: 58, cur: 50, pos: 'DC', lema: 'Sombra letal: aparece de la nada y la clava (no defiende)' },
   murcielago: { vel: 98, tir: 62, pre: 76, reg: 97, ent: 76, fis: 44, ref: 90, cur: 35, pos: 'EI', lema: 'Cazador nocturno: vuela por la banda, pero es de papel' },
   ladri: { vel: 46, tir: 72, pre: 66, reg: 48, ent: 94, fis: 95, ref: 86, cur: 0, pos: 'DFC', lema: 'Muro de ladrillo: por aquí no pasa ni el aire' },
@@ -618,6 +617,19 @@ function updateSideCam(cfg, snap) {
   camera.up.set(0, 1, 0);
   camera.lookAt(g2t(cfg.xLook, camFollowY, 0));
 }
+// update 50 (t109u): personajes más grandes -> en pantallas estrechas (667x375) tu jugador pegado a la banda se cortaba y quedaba
+// debajo de TURBO/ENTRADA. Paneo lateral mínimo: con la cámara centrada (x = 0) se proyecta tu jugador; si pasa del 55 % del medio
+// ancho de pantalla, la cámara se desplaza en x justo lo necesario (paneo puro: el desplazamiento en NDC es p / medio ancho a esa distancia).
+let camPanX = 0; const PAN_LIM = 0.55, _panCam = new THREE.PerspectiveCamera(), _panP = new THREE.Vector3(), _panF = new THREE.Vector3();
+function brawlPanX(cfg) {
+  _panCam.fov = camera.fov; _panCam.aspect = camera.aspect; _panCam.near = camera.near; _panCam.far = camera.far; _panCam.updateProjectionMatrix();
+  _panCam.position.copy(g2tS(0, camFollowY - cfg.D, cfg.H)); _panCam.up.set(0, 1, 0); _panCam.lookAt(g2t(0, camFollowY + cfg.lookOff, 0)); _panCam.updateMatrixWorld(true);
+  _panP.copy(g2tS(user.pos.x, user.pos.y, 0.9 * ESCALA)); _panCam.getWorldDirection(_panF);
+  const depth = _panF.dot(_panP.clone().sub(_panCam.position)); if (depth <= 0.1) return 0;
+  const e = _panP.project(_panCam).x, over = Math.abs(e) - PAN_LIM; if (over <= 0) return 0;
+  const halfW = depth * Math.tan(THREE.MathUtils.degToRad(_panCam.fov) / 2) * _panCam.aspect;
+  return Math.sign(e) * over * halfW;
+}
 function updateBrawlCam(cfg, snap) {
   if (cfg.follow && user && (S.mode === 'play' || S.mode === 'kickoff' || S.mode === 'goal' || S.mode === 'out' || S.mode === 'end')) {
     const behind = cfg.behind || 8;
@@ -625,11 +637,12 @@ function updateBrawlCam(cfg, snap) {
     const hi =  HL - (cfg.aheadPlay != null ? cfg.aheadPlay : (cfg.ahead || 16) * 0.28);
     const target = THREE.MathUtils.clamp(user.pos.y, lo, hi);
     camFollowY = snap ? target : camFollowY + (target - camFollowY) * 0.16;
-    camera.position.copy(g2tS(0, camFollowY - cfg.D, cfg.H));
+    const px = brawlPanX(cfg); camPanX = snap ? px : camPanX + (px - camPanX) * 0.12;   // update 50: paneo lateral junto a la banda
+    camera.position.copy(g2tS(camPanX, camFollowY - cfg.D, cfg.H));
     camera.up.set(0, 1, 0);
-    camera.lookAt(g2t(0, camFollowY + cfg.lookOff, 0));
+    camera.lookAt(g2t(camPanX, camFollowY + cfg.lookOff, 0));
   } else {
-    camFollowY = 0;
+    camFollowY = 0; camPanX = 0;
     camera.position.copy(g2tS(0, -cfg.D, cfg.H));
     camera.up.set(0, 1, 0);
     camera.lookAt(g2t(0, cfg.yLook || 0, 0));
@@ -1727,7 +1740,7 @@ function patStep(a, dt) {   // movimiento del jugador durante el truco (lo llama
 function hatLaunch(a, pm) {
   const d = pm.back ? pm.f.clone().multiplyScalar(-1) : pm.f.clone(), h = pm.h;
   const vz = Math.sqrt(2 * GRAV * (h.apex - BR)), tLow = (vz + Math.sqrt(Math.max(0, vz * vz - 2 * GRAV * (BALL_LOW - BR)))) / GRAV;
-  const vh = h.dist / tLow * 1.05;   // +5 %: rozamiento del aire
+  const vh = h.dist * ESC_N / tLow * 1.05;   // +5 %: rozamiento del aire · u50: distancia a la medida de los cuerpos (×ESCALA/1.3)
   ball.owner = null; ball.pos.z = BR + 0.05;   // sale desde donde está (en el pie)
   ball.vel.set(d.x * vh, d.y * vh, vz); ball.backspin = 0; ball.w.set(0, 0, 0);
   Object.assign(ball.fx, { curve: 0, lift: 0, dip: 0 }); applyEffect(null);
@@ -1736,14 +1749,14 @@ function hatLaunch(a, pm) {
   // rodea al defensor (no lo atraviesa ni lo empuja): sale por el lado contrario al rival más cercano en la trayectoria
   const lat = new THREE.Vector2(d.y, -d.x); let best = null, bd = 1e9;
   for (const o of fieldPlayers()) { if (o.team === a.team) continue; const rx = o.pos.x - a.pos.x, ry = o.pos.y - a.pos.y, al = rx * d.x + ry * d.y, side = rx * lat.x + ry * lat.y;
-    if (al > -0.3 && al < h.dist + 1 && Math.abs(side) < 1.8 && al < bd) { bd = al; best = side; } }
-  ball.hatBeat = []; ball.hatBeatT = tLow + 0.45;   // los vendidos no la tocan hasta que bota y el regateador llega (primer toque suyo)
+    if (al > -0.3 && al < h.dist * ESC_N + 1 && Math.abs(side) < 1.8 * ESC_N && al < bd) { bd = al; best = side; } }
+  ball.hatBeat = []; ball.hatBeatT = tLow + 0.45 + 2.3 * (ESC_N - 1);   // los vendidos no la tocan hasta que bota y el regateador llega (primer toque suyo) · u50: +0,3 s a ESCALA 1.47 (con cuerpos mayores el vendido llegaba antes a la zona de control; 0,45 s exactos a 1.3)
   for (const o of fieldPlayers()) if (o.team !== a.team && Math.hypot(o.pos.x - a.pos.x, o.pos.y - a.pos.y) < 3.5) {   // vendidos: miran arriba un momento
     ball.hatBeat.push(o);
     o.hatLag = THREE.MathUtils.clamp(0.5 + ((a.sf.t ? a.sf.t.reg : 70) - (o.sf.t ? o.sf.t.ent : 70)) / 200, 0.3, 0.7);
     if (o.dashT > 0) { o.dashT = 0; o.dashEnded = false; o.dashHit = true; o.stun = DASH_MISS_STUN * 1.6; o.vel.multiplyScalar(0.2); LOG('regate_falla_entrada', a, { vs: NAME(o), truco: pm.back ? 'HB' : 'H' }); }   // entró a por el balón y se lo han pasado por encima
   }
-  pm.lat = lat; pm.amp = best === null ? 0 : 1.5 * (best > 0.05 ? -1 : best < -0.05 ? 1 : pm.turn);
+  pm.lat = lat; pm.amp = best === null ? 0 : 1.5 * ESC_N * (best > 0.05 ? -1 : best < -0.05 ? 1 : pm.turn);   // u50: rodeo a la medida de los cuerpos (×ESCALA/1.3)
   sfx.kick(0.35); if (a === user || !S.practice) showBanner(pm.back ? '¡SOMBRERITO DE TACÓN!' : '¡SOMBRERITO!', a.team === 0 ? 'bAzul' : 'bRojo', 800);
   LOG('sombrerito', a, { back: pm.back, vh: +vh.toFixed(1), vz: +vz.toFixed(1) });
 }
@@ -2138,7 +2151,6 @@ function giveBall(a) {
 function moveActor(a, wish, speed, dt) {
   if (a.freezeT > 0) { a.freezeT = Math.max(0, a.freezeT - dt); a.vel.set(0, 0); a.dashCd = Math.max(0, a.dashCd - dt); a.dribbleCd = Math.max(0, a.dribbleCd - dt); return; }   // update 29: BOTÓN DE PAUSA
   if (a.slipT > 0) { a.slipT -= dt; a.vel.copy(a.slipV).multiplyScalar(Math.max(0.25, a.slipT / 1.1)); }   // RESBALÓN: desliza sin control
-  else if (a.chargeT > 0) { a.chargeT -= dt; a.vel.copy(a.face).multiplyScalar(17); }   // EMBESTIDA
   else if (a.scaredT > 0 && a.stun <= 0) { a.vel.lerp(a.scaredDir.clone().multiplyScalar(5.5), 1 - Math.exp(-10 * dt)); a.face.copy(a.scaredDir).multiplyScalar(-1); }   // AULLIDO: recula asustado
   else if (a.diveT > 0) {
     a.diveT -= dt; const el = a.diveDur - a.diveT;
@@ -2732,7 +2744,6 @@ const ESPECIALES = {
   lobo: { name: 'AULLIDO', desc: 'Aúlla: el rival cercano se asusta, suelta el balón y recula.', need: 'cerca', rango: 9, col: '#8fa6ff' },
   zorro: { name: 'FINTA ASTUTA', desc: 'Regate automático que deja al rival clavado en el sitio.', need: 'balon', col: '#ff7a3d' },
   gecko: { name: 'LENGUA PEGAJOSA', desc: 'Atrapa con la lengua un balón suelto a distancia (hasta 11 m).', need: 'suelto', col: '#ff6fa8' },
-  rino: { name: 'EMBESTIDA', desc: 'Carga en línea recta: derriba a quien se cruce y le quita el balón.', col: '#c9d0d6' },
   conejo: { name: 'INTERFERENCIA', desc: 'Señal pirata: los controles del rival se invierten 2 s.', col: '#a98bff' },
   carnero: { name: 'DROP DEL BAJO', desc: 'Onda expansiva de bajo: empuja al rival y al balón.', need: 'cerca', rango: 8, col: '#ff3fd0' },
   pepi: { name: 'RESBALÓN', desc: 'Charco de vinagre: el rival que lo pisa resbala sin control.', col: '#d8ef4a' },
@@ -2831,7 +2842,6 @@ const espSfx = {
   lobo: () => { espTone(330, 1.3, { type: 'sawtooth', vol: 0.07, f2: 620, vib: 14, vibF: 5.5, att: 0.15 }); espTone(495, 1.3, { type: 'sine', vol: 0.06, f2: 760, vib: 10, vibF: 5.5, att: 0.2 }); },
   zorro: () => { espNoise(0.25, { f: 3000, f2: 800, vol: 0.12 }); espTone(700, 0.18, { type: 'triangle', vol: 0.08, f2: 1400 }); },
   gecko: () => { espTone(300, 0.12, { type: 'square', vol: 0.06, f2: 1200 }); espTone(1200, 0.22, { type: 'sine', vol: 0.09, f2: 200, delay: 0.14 }); espNoise(0.08, { f: 1500, vol: 0.1, delay: 0.32 }); },
-  rino: () => { espNoise(0.9, { f: 180, f2: 90, q: 1, vol: 0.25, type: 'lowpass' }); espTone(70, 0.8, { type: 'sawtooth', vol: 0.08, f2: 45 }); },
   golpe: () => { espNoise(0.25, { f: 400, f2: 100, vol: 0.25, type: 'lowpass' }); espTone(90, 0.25, { type: 'square', vol: 0.12, f2: 40 }); },
   conejo: () => { espNoise(0.9, { f: 4000, f2: 1500, q: 0.5, vol: 0.06, type: 'highpass' }); [0, 0.12, 0.24].forEach((d, i) => espTone(1500 - i * 300, 0.08, { type: 'square', vol: 0.05, delay: d })); },
   carnero: () => { espNoise(0.15, { f: 3000, f2: 8000, vol: 0.05 }); espTone(140, 0.9, { type: 'sine', vol: 0.35, f2: 38, delay: 0.12 }); espTone(70, 0.9, { type: 'square', vol: 0.06, f2: 30, delay: 0.12 }); espNoise(0.5, { f: 120, vol: 0.2, type: 'lowpass', delay: 0.12 }); },
@@ -2984,13 +2994,6 @@ const ESP_FN = {
     ball.owner = null;
     return true;
   },
-  rino(a, foe) {   // embestida recta 0,9 s
-    const md = a === user ? moveDir() : null;
-    let dir = md ? md.clone() : a.face.clone();
-    if (a !== user && foe) dir = foe.pos.clone().sub(a.pos).normalize();
-    a.face.copy(dir.normalize()); a.chargeT = 0.9; a.chargeHit = false; a.dashT = 0; a.dribbleT = 0;
-    return true;
-  },
   conejo(a, foe) {   // controles invertidos 2 s (el bot se mueve errático)
     if (!foe) return false;
     foe.invertT = 2.0;
@@ -3123,7 +3126,7 @@ const ESP_FN = {
     if (a.root) a.root.position.copy(g2tS(a.pos.x, a.pos.y, 0));
     if (foe) {
       const t = THREE.MathUtils.clamp(foe.pos.clone().sub(p0).dot(seg) / L2, 0, 1), dd = foe.pos.distanceTo(p0.clone().addScaledVector(seg, t));
-      if (dd < 1.5) { foe.stun = Math.max(foe.stun, 0.9); foe.kickPending = null; foe.dashT = 0; if (ball.owner === foe) giveBall(a); espIcon(foe, 'ZAS', '#3dff7a', 1.1, 1.4); LOG('rayo_golpe', a, {}); }
+      if (dd < 1.5 * ESC_N) { foe.stun = Math.max(foe.stun, 0.9);   /* u50: pasillo del rayo a la medida del cuerpo */ foe.kickPending = null; foe.dashT = 0; if (ball.owner === foe) giveBall(a); espIcon(foe, 'ZAS', '#3dff7a', 1.1, 1.4); LOG('rayo_golpe', a, {}); }
     }
     const n = 9;
     for (let i = 0; i <= n; i++) { const k = i / n, j = i === 0 || i === n ? 0 : (Math.random() - 0.5) * 1.1; espPuffs(p0.x + seg.x * k - dir.y * j, p0.y + seg.y * k + dir.x * j, 1.0 + Math.random() * 0.6, i % 2 ? 0xeaffd0 : 0x3dff7a, 2, 0.6, 0.9, 0.35, 0.15); }
@@ -3204,7 +3207,7 @@ function espAiWish(a, wish, dt) {
   return wish;
 }
 // ---- update 37 (t83u): PINCHOS de Cacutu ----
-const CACTUS_T = 4.0, CACTUS_R = 3.2, CACTUS_TOQUE = 1.7, CACTUS_STUN = 1.1;
+const CACTUS_T = 4.0, CACTUS_R = 3.2, CACTUS_TOQUE = 1.7 * ESC_N, CACTUS_STUN = 1.1;   // u50: TOQUE ×ESCALA/1.3 (con cuerpos ×1,13 el contacto 2·PR = 1,76 m ya no bajaba de 1,7: nadie se pinchaba)
 let _spikeGeo = null, _spikeMat = null;
 function espSpikeMesh() {   // pincho: cono fino verde claro con punta amarilla (toon, sin luces)
   if (!_spikeGeo) { _spikeGeo = new THREE.ConeGeometry(0.11, 0.75, 6); _spikeGeo.rotateX(Math.PI / 2); _spikeMat = new THREE.MeshBasicMaterial({ color: 0xd9f78a, transparent: true, opacity: 1, depthWrite: false }); _spikeMat.userData.keep = true; }
@@ -3235,7 +3238,7 @@ function espPinch(a, o, entrada) {   // 'a' (Cacutu) pincha a 'o': aturdido, reb
   LOG('pinchazo', a, { vs: NAME(o), entrada: !!entrada }); return true;
 }
 function espSpikeTick(a, dt, playing) {   // mientras está erizado: aura de pinchos y pincha a quien se le pega
-  if ((a._spikeFx = (a._spikeFx || 0) - dt) <= 0) { a._spikeFx = 0.45; espSpikeRing(a, 1.25, 10, 0.22); espShock(a.pos.x, a.pos.y, 0x9be05a, 1.5, 0.3); }
+  if ((a._spikeFx = (a._spikeFx || 0) - dt) <= 0) { a._spikeFx = 0.45; espSpikeRing(a, 1.25 * ESC_N, 10, 0.22); espShock(a.pos.x, a.pos.y, 0x9be05a, 1.5, 0.3); }
   if (!playing || S.mode !== 'play') return;
   for (const o of fieldPlayers()) if (o && o.team !== a.team && !(o.stun > 0) && o.pos.distanceTo(a.pos) < CACTUS_TOQUE) espPinch(a, o, false);
 }
@@ -3255,7 +3258,6 @@ function espAI(a, opp, dt) {
     case 'lobo': want = oppBall && d < 6.5; break;
     case 'zorro': want = myBall && d < 3.8; break;
     case 'gecko': want = !ball.owner && bD > 3 && bD < 10.5 && oD < bD + 2; break;
-    case 'rino': want = oppBall && d < 8 && d > 2.5; break;
     case 'conejo': want = (oppBall && d < 10) || (myBall && d < 4.5); break;
     case 'carnero': want = d < 6 && (oppBall || (!ball.owner && bD < 5)); break;
     case 'pepi': want = oppBall && d < 9 && d > 3; break;
@@ -3333,18 +3335,6 @@ function espUpdate(dt, playing) {
     if (a._ghostOn && a.ghostT <= 0) espGhostVis(a, false);
     if (a.magiaT > 0 && (a._magT = (a._magT || 0) - dt) <= 0) { a._magT = 0.06; espPuffs(a.pos.x, a.pos.y, 0.4, Math.random() < 0.5 ? 0x6cace4 : 0xffffff, 1, 0.45, 0.9, 0.4, 0.2, true); }   // update 47: estela celeste
     if (a.ghostT > 0 && (a._trailT = (a._trailT || 0) - dt) <= 0) { a._trailT = 0.05; espPuffs(a.pos.x, a.pos.y, 1.1, 0x2a2f6a, 1, 0.5, 1.6, 0.45, 0.1); }
-    // rino: choque durante la embestida
-    if (a.chargeT > 0) {
-      if ((a._dustT = (a._dustT || 0) - dt) <= 0) { a._dustT = 0.045; espPuffs(a.pos.x - a.face.x * 0.8, a.pos.y - a.face.y * 0.8, 0.2, 0xc8b89a, 1, 0.6, 1.3, 0.5, 0.4); }
-      const f = espFoe(a);
-      if (f && !a.chargeHit && f.pos.distanceTo(a.pos) < PR * 2 + 0.5) {
-        a.chargeHit = true; a.chargeT = Math.min(a.chargeT, 0.12);
-        const d = f.pos.clone().sub(a.pos).normalize();
-        f.vel.copy(d).multiplyScalar(11); f.stun = Math.max(f.stun, 1.4); f.downT = 1.4; f.kickPending = null; f.dashT = 0; f.dribbleT = 0;
-        if (ball.owner === f) giveBall(a), f.stun = Math.max(f.stun, 1.4);
-        espSfx.golpe(); espPuffs(f.pos.x, f.pos.y, 0.6, 0xffffff, 8, 1.5, 1.2, 0.6); espIcon(f, '*', '#ffd23f', 1.2, 1.5); LOG('embestida_golpe', a, {});
-      }
-    }
     // zonas
     for (const z of ESP.zonas) {
       if (z.team === a.team || z.r <= 0) continue;
@@ -5168,6 +5158,7 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
+  { t: 'BESTIAS MÁS GRANDES', d: 'Jugadores y porteros se ven un 13 % más grandes en el campo, con el balón, los aros y las sombras a su medida. Si vas pegado a la banda, la cámara se desplaza un poco para que no te tapen los botones. RINO deja la liga.', c: '#3d8bff' },   // update 50 (t109u)
   { t: 'TEXTURAS MÁS NÍTIDAS', d: 'Gecko, Dante, Kaledy, Pantera, Zora y Ajolote con texturas HD que ya no se emborronan de lejos: los brillos neón y los rayos se ven limpios en el partido. Mangas de Kaledy y Dante arregladas, Ajolote sin pupilas y con brazos que ya no se estiran, Gecko GALAXIA sin barriga rosa y DJ Carnero GALAXIA rehecho con su galaxia de estrellas.', c: '#7a5cff' },   // update 49
   { t: 'TAQUILLA Y MÚSICA', d: 'Nuevo botón TAQUILLA en el menú: elige el aspecto de cada personaje entre los que tienes, viéndolo en 3D. Música nueva en el menú (se apaga en AJUSTES). Skins del gecko y de DJ Carnero mucho más nítidas, y en AJUSTES puedes FUSIONAR REGATE Y TURBO: mantén TURBO y mueve el pulgar para regatear sin soltarlo.', c: '#ff5fa2' },   // update 48
   { t: 'NUEVO: DANTE', d: 'Llega DANTE, mediapunta con el mejor REGATE de la liga, mucho EFECTO y precisión. Su ESPECIAL «REGATE MÁGICO»: con el balón, 3 s de regate mágico: más rápido, las entradas no le tocan y los rivales cercanos se quedan mareados. Ya juega en LIGA y TORNEO.', c: '#6cace4' },   // update 47 (t104u)
@@ -5643,6 +5634,17 @@ function compLoad() {
   try { const c = JSON.parse(localStorage.getItem(COMP_KEY) || 'null'); return c && typeof c === 'object' ? c : {}; } catch (_) { return {}; }
 }
 function compSave(all) { try { localStorage.setItem(COMP_KEY, JSON.stringify(all)); } catch (_) {} }
+// update 50 (t109u): RINO eliminado del juego. Los guardados antiguos ya se leen sin él (niveles, dúo y skins se filtran por los
+// personajes que existen y una competición con él no es válida -> se crea otra). Aquí se limpian también los datos guardados una vez.
+(function migraSinRino() {
+  try {
+    const raw = (k) => localStorage.getItem(k) || '';
+    if (/"rino"/.test(raw(PROG_KEY))) progSave();
+    if (/"rino"/.test(raw(ALIN_KEY))) alinSave();
+    if (/"rino/.test(raw(SKIN_KEY))) skinsSave();
+    if (/"rino"/.test(raw(COMP_KEY))) { const all = compLoad(); for (const t of Object.keys(all)) if (JSON.stringify(all[t] || '').includes('"rino"')) delete all[t]; compSave(all); }
+  } catch (_) {}
+})();
 function compValid(c) { return c && c.fmt === COMP_FMT && c.teams && c.teams.every((k) => STATS[k] && CHARS.some((x) => x.key === k)); }   // update 43: formato nuevo (todos los personajes)
 // ---- interfaz ----
 const compEl = document.getElementById('comp'), coCuerpo = document.getElementById('coCuerpo'), coTit = document.getElementById('coTit');
@@ -7051,7 +7053,7 @@ Object.assign(window.__game, { avisoEvento, hatVivo, MS_get, msShow, msHide, get
 Object.defineProperties(window.__game, { perf: { get: () => PERF, configurable: true }, rueda: { get: () => ({ pos: RUEDA.pos, target: RUEDA.target, sp: RUEDA.sp, n: RUEDA.items.length }), configurable: true } });   // update 35 (getters de verdad: Object.assign los congela)
 Object.defineProperty(window.__game, 'campoDeco', { get: () => campoDeco, configurable: true });   // update 39
 Object.defineProperty(window.__game, 'campoRoot', { get: () => campoRoot, configurable: true });   // update 40: para el escaneo del terreno de juego
-Object.assign(window.__game, { buildCampo, setCampo, campoAplicar, CAMPO_OPS, CROP: { CROP_X, CROP_Y, CROP_H }, GEO: { HW, HL, WX, WY, SIDE_X, GW, POST_X, POST_R, GH, GD, NET_X, NET_Z, BR }, CAMS, CAMPOS, TEMAS, NOVEDADES, comboOn, patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
+Object.assign(window.__game, { startDive, startGkJump, buildCampo, setCampo, campoAplicar, CAMPO_OPS, CROP: { CROP_X, CROP_Y, CROP_H }, GEO: { HW, HL, WX, WY, SIDE_X, GW, POST_X, POST_R, GH, GD, NET_X, NET_Z, BR }, CAMS, CAMPOS, TEMAS, NOVEDADES, comboOn, patParse, patParseDirs, patDir, tryPattern: (m, who) => tryPattern(who || user, m), patImmune, PAT, get PG() { return PG; }, lobDeEspaldas, LOB_BACK_DEG, precompileFx, SIDE_X, QUALITY });   // update 35
 Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS, GK_ONLY, GK_STATS, GK_STAT_KEYS, statsAt, progCurve, lvCost, LV_MAX, LV_REF, TIERS, tierDe, progMejorar, monedasPartido, monedasTitulo, MON_PARTIDO, MON_TITULO,
   rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, gkEnCampo, LOB_NERF, LOB_K_MAX, GK44, lobErrK, lobErrRoll, LOB_ERR, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
   progReload: () => { PROG = progLoad(); lbRender(); return PROG; }, alinReload: () => { ALIN = alinLoad(); return ALIN; },
@@ -7061,7 +7063,7 @@ Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS,
 // primer toque (política de autoplay + arranque más rápido). Va por WebAudio (GainNode) para poder hacer fundidos también en iOS
 // (allí audio.volume es de solo lectura). Suena SOLO en el menú; al empezar el partido se funde y se pausa; vuelve al volver al menú.
 const MUS = { el: null, g: null, gesto: false, playing: false, vol: 0.32, src: '', tp: 0, err: null };
-function musSrc() { const a = document.createElement('audio'); return a.canPlayType('audio/ogg; codecs="opus"') ? 'assets/audio/menu_musica.ogg?v=49' : 'assets/audio/menu_musica.mp3?v=49'; }
+function musSrc() { const a = document.createElement('audio'); return a.canPlayType('audio/ogg; codecs="opus"') ? 'assets/audio/menu_musica.ogg?v=50' : 'assets/audio/menu_musica.mp3?v=50'; }
 function musInit() {
   if (MUS.el) return;
   const el = MUS.el = new Audio(); el.loop = true; el.preload = 'auto'; el.crossOrigin = 'anonymous'; MUS.src = el.src = musSrc();
