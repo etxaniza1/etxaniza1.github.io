@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=47';   // update 39
+import { CAMPOS, CAMPO_NOM, TEMAS, buildDeco } from './campos.js?v=48';   // update 39
 
 // ===================== CONSTANTES (metros, coords "Blender": x derecha, y hacia la portería rival) =====================
 const P = new URLSearchParams(location.search);
@@ -34,7 +34,7 @@ const TURBO_MULT = 1.38, TURBO_DRAIN = 1 / 2.5, TURBO_REGEN = 1 / 4.2, TURBO_MIN
 const g2t = (x, y, z = 0) => new THREE.Vector3(x, z, -y);   // juego -> three (Y-up)
 const _g2tS = new THREE.Vector3(), g2tS = (x, y, z = 0) => _g2tS.set(x, z, -y);   // update 31: versión sin crear objeto (solo para .copy inmediato)
 // personajes jugables (glb con rig + animaciones) y parámetros de animación (anim_meta.json, exportado desde Blender)
-const ASSET_V = 'v=47';   // cache busting de modelos y tarjetas
+const ASSET_V = 'v=48';   // cache busting de modelos y tarjetas
 // update 27: badges (retratos ilustrados) del selector. Añadir la clave aquí y el archivo assets/badges/<clave>.webp
 // (recortado con rig/badge.py). Los personajes sin badge siguen con su tarjeta de siempre.
 const BADGES = ['conazo', 'calcetrol', 'buton', 'lobo', 'zorro', 'gecko', 'rino', 'turtobola', 'conejo', 'carnero', 'pepi', 'mofeta', 'pantera', 'murcielago', 'ladri', 'tubi', 'ajolote', 'rubibot', 'frogetto', 'zora', 'tiburon', 'mushom', 'cacutu', 'kaledy', 'dante'];
@@ -341,6 +341,8 @@ function loadAjustes() {
   a.tiroPase = a.tiroPase !== false;
   a.campo = ['estadio', 'volcan', 'hielo', 'setas', 'aleatorio'].includes(a.campo) ? a.campo : 'estadio';   // update 39: campo elegido
   a.largoStat = a.largoStat !== false; delete a.altoCaida; a.ocultaCaida = a.ocultaCaida === true;   // update 33: indicador del chut alto como en v31 (completo + diana) por defecto; el corto de v32 es opcional; el ajuste antiguo de v32 se descarta   // update 32: chut alto según TIR (SÍ)   // update 32: TIRO/PASE   // update 32: TURBO + REGATE en un botón   // update 31: 2 VS 2 con círculos sólidos azul (tu equipo) / rojo (rivales)   // update 31: BALÓN TRAMPA apuntado (NO = como antes: chut automático + señuelo)   // update 31: cabezazo solo dentro del círculo de caída
+  a.musica = a.musica !== false;   // update 48: música del menú (SÍ por defecto)
+  a.fusionTR = a.fusionTR === true;   // update 48: FUSIONAR REGATE Y TURBO (NO por defecto)
   if (!a.ctrl || typeof a.ctrl !== 'object') a.ctrl = {};
   return a;
 }
@@ -359,8 +361,9 @@ function applyTextureQuality(root) {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) for (const k of ['map', 'normalMap', 'roughnessMap', 'emissiveMap', 'aoMap', 'metalnessMap']) {
       const t = m[k]; if (!t || !t.isTexture) continue;
-      if (t.anisotropy !== an || t.minFilter !== THREE.LinearMipmapLinearFilter) {
-        t.anisotropy = an; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+      const want = t.userData.skinHi ? skinAniso() : an;   // update 48: skins 2048 siempre con anisotrópico >= 8 (nítidas de lado)
+      if (t.anisotropy !== want || t.minFilter !== THREE.LinearMipmapLinearFilter) {
+        t.anisotropy = want; t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
       }
       _texSeen.add(t);
     }
@@ -1841,17 +1844,20 @@ function pgStart(e) {
   if (S.mode !== 'play' || S.paused || !user || editor.on) return;
   e.preventDefault(); e.stopPropagation();
   PG.id = e.pointerId; try { btnPatron.setPointerCapture(e.pointerId); } catch (_) {}
+  pgOpenAt(e.clientX, e.clientY);
+}
+function pgOpenAt(cx, cy) {   // update 48: abre la rejilla centrada en (cx, cy) (REGATES o TURBO fusionado)
   const ar = appRect(), W = ar.width, H = ar.height;
   PG.s = THREE.MathUtils.clamp(Math.min(W, H) * 0.17, 48, 82);   // update 36: rejilla más grande
-  PG.sx = e.clientX; PG.sy = e.clientY; PG.ax = e.clientX; PG.ay = e.clientY; PG.dirs = []; PG.cell = 4;
+  PG.sx = cx; PG.sy = cy; PG.ax = cx; PG.ay = cy; PG.dirs = []; PG.cell = 4;
   // update 36: la rejilla se centra donde pulsa el dedo (solo se desplaza lo justo para caber en pantalla)
-  const m = PG.s * 1.5; PG.gx = THREE.MathUtils.clamp(e.clientX - ar.left, m, Math.max(m, W - m)); PG.gy = THREE.MathUtils.clamp(e.clientY - ar.top, m, Math.max(m, H - m));
+  const m = PG.s * 1.5; PG.gx = THREE.MathUtils.clamp(cx - ar.left, m, Math.max(m, W - m)); PG.gy = THREE.MathUtils.clamp(cy - ar.top, m, Math.max(m, H - m));
   PG.dots = [4]; clearTimeout(PG.hideT);
   patronGrid.style.setProperty('--s', PG.s + 'px');
   patronGrid.className = 'on'; const nm = patronGrid.querySelector('.pgNombre'); nm.textContent = ''; nm.classList.remove('vivo');
   for (let i = 0; i < 9; i++) { const [x, y] = pgDotXY(i); PG.els[i].style.left = x + 'px'; PG.els[i].style.top = y + 'px'; }
   const fo = patronGrid.querySelector('.pgFondo'); if (fo) { fo.style.left = PG.gx + 'px'; fo.style.top = PG.gy + 'px'; }
-  btnPatron.classList.add('pulsado'); pgDraw(PG.gx, PG.gy);
+  if (PG.id !== FU_PID) btnPatron.classList.add('pulsado'); pgDraw(PG.gx, PG.gy);
 }
 const PG_STEP = { U: [-1, 0], D: [1, 0], L: [0, -1], R: [0, 1], UR: [-1, 1], UL: [-1, -1], DR: [1, 1], DL: [1, -1] };
 function pgFeed(x, y) {   // un punto del dedo: cuando se aleja PAT.th px del ancla se lee la dirección dominante de ese tramo
@@ -1894,7 +1900,72 @@ function pgEnd(e, cancel) {
   if (cola) LOG('patron_cola', user, { m: moves.join('+') });
   PG.hideT = setTimeout(() => { patronGrid.className = ''; }, ok || cola ? 460 : 560);
 }
+// ===================== update 48 (t106u): FUSIONAR REGATE Y TURBO (ajuste, NO por defecto) =====================
+// TURBO se convierte en un joystick mientras lo mantienes: sigues esprintando y, con balón, mover el pulgar dibuja los MISMOS regates
+// que el botón REGATES (mismo lector de direcciones patParseDirs, misma rejilla y nombre en vivo, mismo enfriamiento y búfer):
+//  → / ← rueda · ↓ arrastre · ↗ / ↖ (o ↑ y →/←) bicicleta · ↓↑ sombrerito · ↑↓ sombrerito atrás · → ← croqueta (encadenados).
+// Se ejecuta SIN soltar el turbo: cuando el pulgar se para FU.dwell ms (o al momento si es un sombrerito, que cierra la cadena),
+// o al soltar. Volver al centro no cuenta como regate (el último tramo que acaba en la zona muerta del centro se descarta), así
+// "→ y vuelta" = RUEDA ►, pero "↓ y ↑ pasando el centro" = SOMBRERITO.
+const FU_PID = 'fusion';
+const FU = { id: null, ox: 0, oy: 0, ax: 0, ay: 0, x: 0, y: 0, on: false, tMove: 0, dead: 0, dwell: 130, dwellV: 230, n: 0 };
+function fusionOn() { return !!AJ.fusionTR; }
+function fuStart(x, y) {
+  if (PG.id !== null) return false;   // el botón REGATES está en uso
+  PG.id = FU_PID; pgOpenAt(FU.ax, FU.ay);   // rejilla centrada donde empieza el trazo
+  FU.on = true; FU.tMove = performance.now(); btnTurbo.classList.add('fuRegate');
+  return true;
+}
+function fuFeed(x, y) {
+  FU.x = x; FU.y = y;
+  if (!FU.on) {
+    if (Math.hypot(x - FU.ax, y - FU.ay) < PAT.th || S.mode !== 'play' || S.paused || !user || ball.owner !== user) return;
+    if (!fuStart(x, y)) return;
+  }
+  if (pgFeed(x, y)) { pgPreview(); FU.tMove = performance.now(); }
+  else if (Math.hypot(x - PG.ax, y - PG.ay) > 6) FU.tMove = performance.now();
+  // sombrerito al instante, pero solo cuando el pulgar ya ha CRUZADO el centro (si solo vuelve al centro es un arrastre / rueda)
+  if (PG.dirs.length >= 2) { const mv = patParseDirs(PG.dirs), last = PG.dirs[PG.dirs.length - 1];
+    if (mv.length && /^H/.test(mv[mv.length - 1]) && Math.hypot(x - FU.ox, y - FU.oy) >= FU.dead && patDir(x - FU.ox, y - FU.oy) === last) { fuCommit(false); return; } }
+  const [lx, ly] = pgDotXY(PG.cell); pgDraw(lx + (x - PG.ax), ly + (y - PG.ay));
+}
+function fuCommit(cancel) {
+  if (!FU.on) return;
+  FU.on = false; btnTurbo.classList.remove('fuRegate');
+  // el tramo final que vuelve a la zona muerta del centro no es un regate (es soltar el joystick)
+  if (PG.dirs.length && Math.hypot(FU.x - FU.ox, FU.y - FU.oy) < FU.dead) PG.dirs.pop();
+  pgEnd({ pointerId: FU_PID, clientX: null, clientY: null, timeStamp: performance.now() }, cancel);
+  FU.ax = FU.x; FU.ay = FU.y; FU.n++;
+}
+function fuTick() {   // pulgar quieto -> se ejecuta el regate dibujado (sin soltar el turbo)
+  if (!FU.on || FU.id === null) return;
+  const idle = performance.now() - FU.tMove, last = PG.dirs[PG.dirs.length - 1];
+  if (idle < (last === 'D' || last === 'U' ? FU.dwellV : FU.dwell)) return;   // ↓ / ↑ pueden seguir a sombrerito o bicicleta: espera algo más
+  const inDead = Math.hypot(FU.x - FU.ox, FU.y - FU.oy) < FU.dead, d2 = inDead ? PG.dirs.slice(0, -1) : PG.dirs;
+  if (!patParseDirs(d2).length) { if (inDead || idle > 700) fuCommit(true); return; }   // trazo a medias (p. ej. solo ↑): no hace nada raro
+  fuCommit(false);
+}
+btnTurbo.addEventListener('pointerdown', (e) => {
+  if (!fusionOn() || e.pointerId === joyId || FU.id !== null) return;
+  FU.id = e.pointerId; FU.ox = FU.ax = FU.x = e.clientX; FU.oy = FU.ay = FU.y = e.clientY; FU.on = false; FU.dead = PAT.th * 0.9;
+});
+btnTurbo.addEventListener('pointermove', (e) => {
+  if (e.pointerId !== FU.id) return;
+  const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+  for (const ev of (evs && evs.length ? evs : [e])) { fuFeed(ev.clientX, ev.clientY); if (FU.id === null) break; }
+});
+const fuEnd = (e, cancel) => { if (e.pointerId !== FU.id) return; if (!cancel && e.clientX != null) fuFeed(e.clientX, e.clientY); fuCommit(!!cancel); FU.id = null; };
+btnTurbo.addEventListener('pointerup', (e) => fuEnd(e, false));
+btnTurbo.addEventListener('pointercancel', (e) => fuEnd(e, true));
+btnTurbo.addEventListener('lostpointercapture', (e) => { if (e.pointerId === FU.id) fuEnd(e, false); });
+function setFusion(on) {
+  AJ.fusionTR = !!on; saveAjustes();
+  const b = document.getElementById('ajFusion'); if (b) { b.textContent = 'FUSIONAR REGATE Y TURBO: ' + (AJ.fusionTR ? 'SÍ' : 'NO'); b.classList.toggle('on', AJ.fusionTR); }
+  document.body.classList.toggle('fusionTR', AJ.fusionTR);
+  if (!AJ.fusionTR && FU.on) fuCommit(true);
+}
 function pgBufUpdate(dt) {   // update 36: ejecuta el truco que quedó en el búfer
+  fuTick();   // update 48: turbo fusionado (se ejecuta al parar el pulgar)
   if (!PG.buf) return;
   PG.buf.t -= dt;
   if (PG.buf.t <= 0 || !user || ball.owner !== user || S.mode !== 'play') { PG.buf = null; return; }
@@ -3497,6 +3568,9 @@ function precompileFx() {
     const par = renderer.extensions && renderer.extensions.has('KHR_parallel_shader_compile');
     if (par && renderer.compileAsync) renderer.compileAsync(scene, camera).catch(() => {}); else renderer.compile(scene, camera);
   } catch (_) {}
+  // update 48: los retratos ya no se pintan todos al arrancar (antes subían de paso las texturas de todos a la GPU): se suben aquí,
+  // antes del saque, para que la primera vez no tironee justo en el saque (initTexture solo sube las que aún no están)
+  try { if (renderer.initTexture) { const vistas = new Set(); scene.traverse((o) => { if (!o.isMesh) return; for (const m of (Array.isArray(o.material) ? o.material : [o.material])) if (m) for (const k of ['map', 'normalMap', 'emissiveMap']) { const t = m[k]; if (t && t.isTexture && !vistas.has(t)) { vistas.add(t); renderer.initTexture(t); } } }); } } catch (_) {}
   for (const o of hid) o.visible = false;
   precompileFx.done = matchKeys + '|' + AJ.quality + '|' + renderer.shadowMap.enabled; precompileFx.n = hid.length;
 }
@@ -3622,12 +3696,27 @@ function glowTick(t) {
   for (const m of GLOW_MATS) { m.userData.toonU.uGlow.value.copy(c); m.userData.toonU.uGlowAmt.value = amt; }
 }
 const _glowC = new THREE.Color();
-function skinTex(c, k, ext = 'jpg') {
+// update 48 (t106u): texturas de skins NÍTIDAS: 2048 WebP SIN PÉRDIDAS generadas desde la fuente 2048/4096 (skins_src/gen_*_u48.py)
+function skinTex(c, k, ext = 'webp') {
   const id = c + '_' + k; if (SKIN_TEX[id]) return SKIN_TEX[id];
   return (SKIN_TEX[id] = new Promise((res) => {
-    new THREE.TextureLoader().load(`assets/skins/${id}.${ext}?${ASSET_V}`, (t) => res(t), undefined, () => { console.warn('skin sin textura', id); res(null); });
+    new THREE.TextureLoader().load(`assets/skins/${id}.${ext}?${ASSET_V}`, (t) => { t.userData.skinHi = true; t.userData.skinId = id; SKIN_TEX_R[id] = t; res(t); }, undefined, () => { console.warn('skin sin textura', id); res(null); });
   }));
 }
+// update 48: anisotrópico de las skins (2048 px sin pérdida): mínimo 8 aunque la calidad sea Media/Baja (coste mínimo, mucho más nítidas en ángulo)
+function skinAniso() { const q = QUALITY[AJ.quality], maxA = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1; return Math.max(1, Math.min(maxA, Math.max(q.aniso, 8))); }
+// update 48: libera de la GPU las texturas de skin que ya no lleva ningún modelo (pruebas de la tienda/taquilla); 2048² = ~22 MB cada una
+const SKIN_TEX_R = {}; let skinGCtm = 0;
+function skinGC() {
+  skinGCtm = 0; const used = new Set();
+  const mark = (root) => root && root.traverse((o) => { if (!o.isMesh) return; for (const m of (Array.isArray(o.material) ? o.material : [o.material])) { if (!m) continue; if (m.map) used.add(m.map); const g = m.userData.toonU && m.userData.toonU.uGlowMap.value; if (g) used.add(g); } });
+  mark(scene); mark(menuScene); for (const g of Object.values(GK_PROB)) mark(g.root);
+  if (skinPrev) return;   // la tienda está probando una skin: nada que liberar ahora
+  let n = 0; for (const [id, t] of Object.entries(SKIN_TEX_R)) if (!used.has(t)) { t.dispose(); delete SKIN_TEX_R[id]; delete SKIN_TEX[id]; n++; }
+  if (n) LOG('skinGC', null, { n });
+  return n;
+}
+function skinGCLuego() { clearTimeout(skinGCtm); skinGCtm = setTimeout(skinGC, 2500); }
 // pone (o quita, k = null) la skin en un modelo de ese personaje; devuelve una promesa (la textura se carga una vez y se comparte)
 function applySkin(model, c, k) {
   if (!model || !SKINS[c]) return Promise.resolve(false);
@@ -3637,12 +3726,12 @@ function applySkin(model, c, k) {
   const fx = k && (SKINS[c].find((x) => x.k === k) || {}).fx;
   for (const m of mats) if (m.userData.toonU) { m.userData.toonU.uGlowAmt.value = 0; m.userData.toonU.uGlowMap.value = GLOW_NEGRO; GLOW_MATS.delete(m); }   // update 46
   if (!k) { for (const m of mats) if (m.userData.mapOrig) m.map = m.userData.mapOrig; return Promise.resolve(true); }
-  if (fx) skinTex(c, k + '_fx', 'png').then((g) => { if (!g || model.userData.skin !== k) return; g.flipY = false; g.colorSpace = THREE.NoColorSpace; g.needsUpdate = true;
+  if (fx) skinTex(c, k + '_fx').then((g) => { if (!g || model.userData.skin !== k) return; g.flipY = false; g.colorSpace = THREE.NoColorSpace; g.needsUpdate = true;
     for (const m of mats) if (m.userData.toonU) { m.userData.toonU.uGlowMap.value = g; m.userData.toonU.uGlowAmt.value = 1; GLOW_MATS.add(m); } });
   return skinTex(c, k).then((t) => {
     if (!t || model.userData.skin !== k) return false;
     for (const m of mats) { const o = m.userData.mapOrig; if (!o) continue;
-      if (!t.userData.cfg) { t.flipY = o.flipY; t.colorSpace = o.colorSpace; t.wrapS = o.wrapS; t.wrapT = o.wrapT; t.anisotropy = o.anisotropy; t.minFilter = o.minFilter; t.magFilter = o.magFilter; t.needsUpdate = true; t.userData.cfg = true; }
+      if (!t.userData.cfg) { t.flipY = o.flipY; t.colorSpace = o.colorSpace; t.wrapS = o.wrapS; t.wrapT = o.wrapT; t.anisotropy = Math.max(o.anisotropy || 1, skinAniso()); t.minFilter = o.minFilter; t.magFilter = o.magFilter; t.needsUpdate = true; t.userData.cfg = true; }
       m.map = t; }
     return true;
   });
@@ -3769,7 +3858,7 @@ function persCard(k, rib) {
   const ch = ALL_CHARS.find((x) => x.key === k); if (!ch) return '';
   const L = PROG.lv[k] || 0, max = L >= LV_MAX, cost = lvCost(L), t = statsAt(k, L), falta = !max && PROG.mon < cost;
   return `<div class="tiCard tiPers r-${t.rareza}" data-c="${k}" style="--g1:${ch.color || '#3fa9ff'}">${rib ? `<div class="tiCardRib">${rib}</div>` : ''}
-    <div class="tiArteZona"><img class="tiArte retrato" src="${PORTRAITS[k] || ch.badge || ch.card}" alt="" draggable="false"><span class="tiNivel">NV ${L}</span><span class="tiMedia">${t.media}<small>${t.tier}</small></span></div>
+    <div class="tiArteZona"><img class="tiArte retrato" src="${portrait(k) || ch.badge || ch.card}" alt="" draggable="false"><span class="tiNivel">NV ${L}</span><span class="tiMedia">${t.media}<small>${t.tier}</small></span></div>
     <div class="tiCardNom"><b>${ch.name}</b><small>${isGK(k) ? 'PORTERO · ' : ''}MEJORA DE CARTA</small></div>
     <button class="tiPrecio tiMejBtn${max ? ' eq' : ''}${falta ? ' falta' : ''}"${max || falta ? ' disabled' : ''}>${max ? 'NIVEL MÁX' : `${MONEDA_SVG}${cost}`}</button></div>`;
 }
@@ -3874,9 +3963,110 @@ tiendaEl.addEventListener('click', (e) => {
 });
 function openTienda() { if (S.mode !== 'menu') return; skinPrev = null; tiendaDetAbrir(false); renderTiendaTodo(); tiendaEl.classList.add('visible'); tiendaIr('dest', false);
   try { localStorage.setItem(TI_VISTO_KEY, String(diaLocal())); } catch (_) {}
-  const c0 = SKINS[CHARS[sel].key] ? CHARS[sel].key : 'tiburon'; tiendaSkinVer(c0, skinOf(c0));
+  // update 48: el probador (oculto hasta tocar una skin) se prepara DESPUÉS de la animación de entrada, en un rato libre (antes tironeaba al abrir)
+  const c0 = SKINS[CHARS[sel].key] ? CHARS[sel].key : 'tiburon'; clearTimeout(openTienda.pv);
+  openTienda.pv = setTimeout(function pv() {   // solo pinta la imagen del probador (no rehace la lista: un toque justo entonces no se pierde) y nunca mientras tocas
+    if (!tiendaEl.classList.contains('visible') || skinPrev) return;
+    if (performance.now() - PORT_INPUT < 1500) { openTienda.pv = setTimeout(pv, 400); return; }
+    const go = () => { if (tiendaEl.classList.contains('visible') && !skinPrev && performance.now() - PORT_INPUT >= 1500) probadorPinta(c0, skinOf(c0)); };
+    window.requestIdleCallback ? requestIdleCallback(go, { timeout: 500 }) : go(); }, 450);
   clearInterval(openTienda.tm); openTienda.tm = setInterval(() => { if (!tiendaEl.classList.contains('visible')) return clearInterval(openTienda.tm); const f = fmtFalta(msMedianoche()); for (const c of document.querySelectorAll('#tienda .tiChip')) c.lastChild.textContent = f; }, 20000); }
-function closeTienda() { tiendaEl.classList.remove('visible'); tiendaDetAbrir(false); renderTiendaTabs(); tiendaAvisos(); if (skinPrev) { skinPrev = null; refreshSkinsVisual(); } }   // update 42: fuera la prueba de skin
+function closeTienda() { tiendaEl.classList.remove('visible'); tiendaDetAbrir(false); renderTiendaTabs(); tiendaAvisos(); if (skinPrev) { skinPrev = null; refreshSkinsVisual(); } skinGCLuego(); }   // update 42: fuera la prueba de skin
+// ===================== update 48 (t106u): TAQUILLA =====================
+// Elegir el aspecto EQUIPADO de cada personaje entre los que ya tienes (+ ORIGINAL). Usa el muñeco 3D del lobby (misma escena y
+// renderer: sin contexto WebGL extra), con la cámara desplazada al hueco central; arrastrar = girar, deslizar rápido = otro personaje.
+// Los porteros (Turtobola) usan su modelo de probador (pose GK_Idle). Tocar una tarjeta = se equipa al momento; los retratos y
+// el resto del lobby se rehacen UNA vez al salir.
+const TAQ = { open: false, c: null, dirty: false };
+const taqEl = document.getElementById('taquilla');
+const TAQ_RAREZA = { 300: ['ESPECIAL', '#5fd0ff'], 450: ['ÉPICA', '#d49bff'], 600: ['LEGENDARIA', '#ffd23f'] };
+const taqChars = () => Object.keys(SKINS).filter((c) => ALL_CHARS.some((x) => x.key === c));
+const taqOwned = (c) => (SKINS[c] || []).filter((x) => SKINS_ST.owned.includes(c + ':' + x.k));
+function taqModel(c) { const i = CHARS.findIndex((x) => x.key === c); return i >= 0 ? menuChars[i] : probModel(c); }
+function taqOpen(c) {
+  if (S.mode !== 'menu' || !taqEl) return false;
+  lbCerrar(true); if (tiendaEl.classList.contains('visible')) closeTienda();
+  const cur = CHARS[sel] && CHARS[sel].key, lista = taqChars();
+  TAQ.open = true; TAQ.dirty = false; TAQ.c = lista.includes(c) ? c : lista.includes(cur) ? cur : lista[0];
+  menuEl.classList.add('taq'); taqEl.classList.add('visible'); taqEl.setAttribute('aria-hidden', 'false');
+  taqRenderPjs(); taqShow(TAQ.c, true); taqLayout();
+  requestAnimationFrame(() => { const b = taqEl.querySelector('.tqPj.sel'); if (b) b.scrollIntoView({ block: 'center' }); });
+  sfx.dribble && actx && sfx.dribble(); LOG('taquilla', null, { c: TAQ.c });
+  return true;
+}
+function taqClose() {
+  if (!TAQ.open) return;
+  TAQ.open = false; menuEl.classList.remove('taq'); taqEl.classList.remove('visible'); taqEl.setAttribute('aria-hidden', 'true');
+  for (const g of Object.values(GK_PROB)) g.root.visible = false;
+  menuChars.forEach((m, k) => { m.root.visible = k === sel; });
+  menuCam.clearViewOffset(); menuCam.updateProjectionMatrix(); userYaw = 0; popT = 0;
+  if (TAQ.dirty) { TAQ.dirty = false; refreshSkinsVisual(); }
+  lbRender(); uiTap(); skinGCLuego();
+}
+function taqShow(c, pop) {
+  TAQ.c = c; const m = taqModel(c);
+  menuChars.forEach((x) => { x.root.visible = x === m; }); for (const g of Object.values(GK_PROB)) g.root.visible = g === m;
+  if (m) {
+    if ((m.model.userData.skin || null) !== skinOf(c)) applySkin(m.model, c, skinOf(c));
+    if (pop) { popT = 0; userYaw = 0; const a = m.actions; if (a && a.Celebrate && a.Idle) { a.Celebrate.reset().setEffectiveWeight(1).play(); a.Idle.crossFadeTo(a.Celebrate, 0.12, false); } }
+  }
+  for (const b of taqEl.querySelectorAll('.tqPj')) b.classList.toggle('sel', b.dataset.c === c);
+  taqRenderSkins();
+}
+function taqEquip(c, k) {
+  if ((skinOf(c) || null) === (k || null)) return true;
+  if (!skinEquipar(c, k)) return false;
+  TAQ.dirty = true; const m = taqModel(c);
+  if (m) { applySkin(m.model, c, k); popT = 0.55; userYaw += 0.9; }
+  sfx.steal && actx && sfx.steal();
+  taqRenderPjs(); taqRenderSkins();
+  const card = taqEl.querySelector(`.tqSk[data-k="${k || ''}"]`); if (card) card.classList.add('pon');
+  LOG('taquilla_equipar', null, { c, k: k || null });
+  return true;
+}
+function taqStep(d) { const l = taqChars(), i = l.indexOf(TAQ.c); taqShow(l[(i + d + l.length) % l.length], true); const b = taqEl.querySelector('.tqPj.sel'); if (b) b.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+function taqRenderPjs() {
+  const el = document.getElementById('taqPjs'); if (!el) return;
+  el.innerHTML = taqChars().map((c) => { const ch = ALL_CHARS.find((x) => x.key === c), n = taqOwned(c).length, t = SKINS[c].length;
+    return `<button class="tqPj${c === TAQ.c ? ' sel' : ''}" data-c="${c}" style="--c:${ch.color}"><img src="${cBadgeImg(c)}" alt="" draggable="false"><span>${ch.name}</span><em>${n}/${t}</em></button>`; }).join('');
+  const tot = taqChars().reduce((a, c) => a + SKINS[c].length, 0), own = taqChars().reduce((a, c) => a + taqOwned(c).length, 0);
+  const cu = document.getElementById('taqCuenta'); if (cu) cu.innerHTML = `ASPECTOS <b>${own}/${tot}</b>`;
+}
+function taqRenderSkins() {
+  const el = document.getElementById('taqSkins'), c = TAQ.c; if (!el || !c) return;
+  const ch = ALL_CHARS.find((x) => x.key === c), eq = skinOf(c) || null, own = taqOwned(c), faltan = SKINS[c].length - own.length;
+  const ops = [{ k: null, name: 'ORIGINAL', pal: [ch.color, '#2a3b8f', '#ffffff'] }, ...own];
+  el.innerHTML = ops.map((o) => { const es = (o.k || null) === eq, r = o.k ? (TAQ_RAREZA[o.precio] || ['ESPECIAL', '#5fd0ff']) : ['ASPECTO BASE', '#cfe3ff'];
+    return `<button class="tqSk${es ? ' eq' : ''}" data-c="${c}" data-k="${o.k || ''}" style="--g1:${o.pal[0]};--g2:${o.pal[1]};--rc:${r[1]}" aria-pressed="${es}">` +
+      `<img class="tqArte" src="${skArte(c, o.k)}" alt="" draggable="false"><b>${o.name}</b><small>${r[0]}</small><span class="tqUsar">${es ? 'EQUIPADA' : 'USAR'}</span></button>`; }).join('') +
+    (faltan > 0 ? `<button class="tqSk tqMas" data-c="${c}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 9.5h13l-1.2 10.3a1.6 1.6 0 0 1-1.6 1.4H8.3a1.6 1.6 0 0 1-1.6-1.4z"/><path d="M9 9.5V7.6a3 3 0 0 1 6 0v1.9" fill="none"/></svg>` +
+      `<b>${faltan} ${faltan === 1 ? 'ASPECTO' : 'ASPECTOS'} MÁS</b><small>EN LA TIENDA</small><span class="tqUsar">VER</span></button>` : '');
+  const sk = SKINS[c].find((x) => x.k === eq);
+  const nom = document.getElementById('taqSkNom'), pj = document.getElementById('taqPjNom');
+  if (nom) { nom.textContent = sk ? sk.name : 'ORIGINAL'; nom.parentElement.style.setProperty('--pc', sk ? sk.pal[0] : ch.color); }
+  if (pj) pj.textContent = ch.name;
+}
+// la cámara del lobby se desplaza (setViewOffset) para centrar el muñeco en el hueco entre la lista y las tarjetas, un poco más grande
+function taqLayout() {
+  if (!TAQ.open) return;
+  const W = renderer.domElement.clientWidth || innerWidth, H = renderer.domElement.clientHeight || innerHeight;
+  const L = document.getElementById('taqPjs').getBoundingClientRect(), R = document.getElementById('taqSkins').getBoundingClientRect();
+  const l = Math.max(0, L.right), r = Math.min(W, R.left > l ? R.left : W);
+  menuEl.style.setProperty('--tqL', (l / W * 100).toFixed(2) + '%'); menuEl.style.setProperty('--tqR', ((W - r) / W * 100).toFixed(2) + '%');
+  taqEl.style.setProperty('--tqL', (l / W * 100).toFixed(2) + '%'); taqEl.style.setProperty('--tqR', ((W - r) / W * 100).toFixed(2) + '%');
+  const z = 1.12, tx = (l + r) / 2, ty = H * 0.54;
+  menuCam.setViewOffset(W, H, W / 2 - tx / z, H * 0.47 - ty / z, W / z, H / z); menuCam.updateProjectionMatrix();
+}
+for (const t of [window, window.visualViewport]) t && t.addEventListener('resize', () => requestAnimationFrame(taqLayout));
+taqEl && taqEl.addEventListener('click', (e) => {
+  const t = e.target;
+  if (t.closest('#taqVolver')) { taqClose(); return; }
+  const pj = t.closest('.tqPj'); if (pj) { uiTap(); taqShow(pj.dataset.c, true); return; }
+  const mas = t.closest('.tqMas'); if (mas) { const c = mas.dataset.c, k = (SKINS[c].find((x) => !SKINS_ST.owned.includes(c + ':' + x.k)) || {}).k;
+    taqClose(); openTienda(); tiendaIr('skins', false); if (k) tiendaSkinVer(c, k); return; }
+  const sk = t.closest('.tqSk'); if (sk) taqEquip(sk.dataset.c, sk.dataset.k || null);
+});
+document.getElementById('lbBtnTaq')?.addEventListener('click', () => { uiTap(); taqOpen(); });
 document.getElementById('btnMenuTienda').addEventListener('click', openTienda);
 document.getElementById('tiendaCerrar').addEventListener('click', () => { uiTap(); closeTienda(); });
 tiendaAvisos();
@@ -4608,35 +4798,68 @@ function buildMenuChars() {
 // ===================== CARTAS (update 17) =====================
 // Retratos: render offscreen de los modelos 3D reales del menú (con las botas equipadas) a una imagen por personaje.
 const PORTRAITS = {};
-function renderPortraits() {
+// update 48 (optimización): los 23 retratos ya NO se pintan todos al arrancar (eran ~60% del tiempo hasta ver el menú: un
+// readPixels + PNG por personaje). Se marcan "pendientes" y se pintan (mismo render, misma calidad) a ratos libres en el menú,
+// o al momento si una carta los necesita (portrait(key)). Si cambian skins/botas se vuelven a marcar y la carta visible se
+// repinta al pedirla.
+const PORT_DIRTY = new Set(); let PORT_R = null, portTm = 0;
+function portraitRes() {
+  if (PORT_R) return PORT_R;
+  const W = 600, H = 660;   // update 48: 2x (antes 300x330, se veía borroso en móviles DPR 2-3); mismo encuadre, contorno x2
+  const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 }); rt.texture.colorSpace = THREE.SRGBColorSpace;
+  const ps = new THREE.Scene();
+  ps.add(new THREE.HemisphereLight(0xffffff, 0x3a4566, 2.4));
+  const dl = new THREE.DirectionalLight(0xffffff, 2.0); dl.position.set(2.5, 4, 5); ps.add(dl);
+  const cam = new THREE.PerspectiveCamera(26, W / H, 0.05, 100);
+  const buf = new Uint8Array(W * H * 4), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const cx = cv.getContext('2d'), img = cx.createImageData(W, H);
+  return (PORT_R = { W, H, rt, ps, cam, buf, cv, cx, img });
+}
+function portraitNow(key, asinc) {   // asinc: PNG codificado fuera del hilo (toBlob) -> blob: URL (no ocupa el heap JS)
+  const i = CHARS.findIndex((c) => c.key === key), m = menuChars[i]; PORT_DIRTY.delete(key); if (!m) return;
   try {
-    const W = 300, H = 330;
-    const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 }); rt.texture.colorSpace = THREE.SRGBColorSpace;
-    const ps = new THREE.Scene();
-    ps.add(new THREE.HemisphereLight(0xffffff, 0x3a4566, 2.4));
-    const dl = new THREE.DirectionalLight(0xffffff, 2.0); dl.position.set(2.5, 4, 5); ps.add(dl);
-    const cam = new THREE.PerspectiveCamera(26, W / H, 0.05, 100);
-    const buf = new Uint8Array(W * H * 4), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-    const cx = cv.getContext('2d'), img = cx.createImageData(W, H);
+    const { W, H, rt, ps, cam, buf, cv, cx, img } = portraitRes();
     const prevRT = renderer.getRenderTarget(), pc = new THREE.Color(); renderer.getClearColor(pc); const pa = renderer.getClearAlpha();
     renderer.setClearColor(0x000000, 0);
-    CHARS.forEach((c, i) => {
-      const m = menuChars[i]; if (!m) return;
-      const parent = m.root.parent, vis = m.root.visible, sc = m.root.scale.x, ry = m.root.rotation.y;
-      ps.add(m.root); m.root.visible = true; m.root.scale.setScalar(1); m.root.rotation.y = -0.38;
-      m.mixer.update(0.0001); m.root.updateMatrixWorld(true);
-      const box = new THREE.Box3().setFromObject(m.model, true), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
-      const h = size.y * 0.8, cy = box.max.y - h / 2 + size.y * 0.03;      // de las rodillas a la cabeza
-      const dist = h / 2 / Math.tan(THREE.MathUtils.degToRad(13)) + size.z / 2;
-      cam.position.set(ctr.x, cy + h * 0.08, ctr.z + dist); cam.lookAt(ctr.x, cy, ctr.z);
-      setOutlinePx(W, H, 1.6); renderer.setRenderTarget(rt); renderer.clear(); renderer.render(ps, cam);
-      renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
-      for (let y = 0; y < H; y++) img.data.set(buf.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
-      cx.putImageData(img, 0, 0); PORTRAITS[c.key] = cv.toDataURL('image/png');
-      parent.add(m.root); m.root.visible = vis; m.root.scale.setScalar(sc); m.root.rotation.y = ry;
-    });
-    renderer.setRenderTarget(prevRT); renderer.setClearColor(pc, pa); rt.dispose();
+    const parent = m.root.parent, vis = m.root.visible, sc = m.root.scale.x, ry = m.root.rotation.y;
+    // misma pose que el retrato de siempre (inicio del Idle) aunque el muñeco ya se esté moviendo en el menú
+    const run = m.mixer._actions.filter((a) => a.isRunning()), tKeep = m.mixer.time, rePose = run.length === 1 && run[0] === m.actions.Idle && tKeep > 0.001;
+    if (rePose) m.mixer.setTime(0);
+    ps.add(m.root); m.root.visible = true; m.root.scale.setScalar(1); m.root.rotation.y = -0.38;
+    m.mixer.update(0.0001); m.root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(m.model, true), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
+    const h = size.y * 0.8, cy = box.max.y - h / 2 + size.y * 0.03;      // de las rodillas a la cabeza
+    const dist = h / 2 / Math.tan(THREE.MathUtils.degToRad(13)) + size.z / 2;
+    cam.position.set(ctr.x, cy + h * 0.08, ctr.z + dist); cam.lookAt(ctr.x, cy, ctr.z);
+    setOutlinePx(W, H, 3.2); renderer.setRenderTarget(rt); renderer.clear(); renderer.render(ps, cam);
+    renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
+    for (let y = 0; y < H; y++) img.data.set(buf.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+    cx.putImageData(img, 0, 0);
+    if (asinc && cv.toBlob) {
+      const c2 = document.createElement('canvas'); c2.width = W; c2.height = H; c2.getContext('2d').drawImage(cv, 0, 0);
+      c2.toBlob((b) => { if (!b || PORT_DIRTY.has(key)) return; const old = PORTRAITS[key]; PORTRAITS[key] = URL.createObjectURL(b); if (old && old.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(old), 4000); }, 'image/png');
+      if (!PORTRAITS[key]) PORTRAITS[key] = '';   // (cuenta como pedido; la URL llega en unos ms)
+    } else { const old = PORTRAITS[key]; PORTRAITS[key] = cv.toDataURL('image/png'); if (old && old.startsWith('blob:')) setTimeout(() => URL.revokeObjectURL(old), 4000); }
+    parent.add(m.root); m.root.visible = vis; m.root.scale.setScalar(sc); m.root.rotation.y = ry;
+    if (rePose) m.mixer.setTime(tKeep);
+    renderer.setRenderTarget(prevRT); renderer.setClearColor(pc, pa); syncOutline();
   } catch (e) { console.info('retratos: se usan las imágenes', e); }
+  if (!PORT_DIRTY.size && PORT_R) { PORT_R.rt.dispose(); PORT_R = null; }
+}
+function portrait(key) { if (PORT_DIRTY.has(key) || (PORTRAITS[key] === undefined && CHARS.some((c) => c.key === key))) portraitNow(key); return PORTRAITS[key] || undefined; }
+function portraitPump() {   // de uno en uno, en ratos libres y solo fuera del partido
+  portTm = 0; if (!PORT_DIRTY.size) return;
+  if (S.mode === 'menu' && !document.hidden && !drag && performance.now() > portraitPump.desde && performance.now() - PORT_INPUT > 1500 && RUEDA.target === null && !RUEDA.drag) { const sk = CHARS[sel] && PORT_DIRTY.has(CHARS[sel].key) ? CHARS[sel].key : PORT_DIRTY.values().next().value; portraitNow(sk, true); }
+  if (PORT_DIRTY.size) portTm = (window.requestIdleCallback ? requestIdleCallback(() => setTimeout(portraitPump, 40), { timeout: 400 }) : setTimeout(portraitPump, 90)) || 1;
+}
+portraitPump.desde = 0;
+// update 48: nunca se pinta un retrato mientras el jugador toca la pantalla (ni 1,5 s después) o la rueda se mueve: cero tirones al usar el menú
+let PORT_INPUT = 0;
+for (const t of ['pointerdown', 'pointermove', 'touchstart', 'keydown', 'wheel']) window.addEventListener(t, () => { PORT_INPUT = performance.now(); }, { capture: true, passive: true });
+function renderPortraits() {
+  if (!window.__game || !window.__game.menuReady) portraitPump.desde = performance.now() + 1500;   // al arrancar: deja respirar al menú 1,5 s
+  for (const c of CHARS) PORT_DIRTY.add(c.key);
+  if (!portTm) portTm = setTimeout(portraitPump, 60);
 }
 // update 42: probador de la tienda: render del muñeco del menú (con su skin) a una imagen, como los retratos pero de cuerpo entero
 // update 46: PORTEROS (Turtobola) en el probador/arte de la tienda: modelo propio en pose de reposo (no están en la rueda del menú)
@@ -4650,7 +4873,8 @@ function probModel(c) {
   applySkin(model, c, skinOf(c));
   return (GK_PROB[c] = { root, model, mixer });
 }
-function renderProbador(i, W = 260, H = 320) {
+function renderProbador(i, W0 = 260, H0 = 320, k = 2) {   // update 48: k = resolución (2x: nítido en móviles DPR 2-3; mismo encuadre y contorno)
+  const W = Math.round(W0 * k), H = Math.round(H0 * k);
   const m = typeof i === 'string' ? probModel(i) : menuChars[i]; if (!m) return null;
   try {
     const rt = new THREE.WebGLRenderTarget(W, H, { samples: 4 }); rt.texture.colorSpace = THREE.SRGBColorSpace;
@@ -4663,7 +4887,7 @@ function renderProbador(i, W = 260, H = 320) {
     const box = new THREE.Box3().setFromObject(m.model, true), size = box.getSize(new THREE.Vector3()), ctr = box.getCenter(new THREE.Vector3());
     const h = size.y * 1.08, dist = h / 2 / Math.tan(THREE.MathUtils.degToRad(13)) + size.z / 2;
     cam.position.set(ctr.x, ctr.y + h * 0.05, ctr.z + dist); cam.lookAt(ctr.x, ctr.y, ctr.z);
-    renderer.setClearColor(0x000000, 0); setOutlinePx(W, H, 1.8); renderer.setRenderTarget(rt); renderer.clear(); renderer.render(ps, cam);
+    renderer.setClearColor(0x000000, 0); setOutlinePx(W, H, 1.8 * k); renderer.setRenderTarget(rt); renderer.clear(); renderer.render(ps, cam);
     const buf = new Uint8Array(W * H * 4); renderer.readRenderTargetPixels(rt, 0, 0, W, H, buf);
     parent.add(m.root); m.root.visible = vis; m.root.scale.setScalar(sc); m.root.rotation.y = ry;
     renderer.setRenderTarget(prevRT); renderer.setClearColor(pc, pa); rt.dispose(); syncOutline();
@@ -4680,7 +4904,7 @@ function cardHTML(key, lv) {   // update 37: carta del NIVEL actual (categoría 
     : STAT_KEYS.map((k, i) => bar(k, STAT_NAMES[k], i < 4 ? 'at' : 'de')).join('') + `<div class="cs ef"><span>EFE</span><i><b style="width:${t.cur || 0}%"></b></i><em>${t.cur || 0}</em></div>`;   // update 31: EFECTO
   const e = ESPECIALES[key];
   return `<div class="mlCard ${t.rareza}${gk ? ' portero' : ''}" data-k="${key}" data-lv="${t.lv}" style="--c:${c.color}">` +
-    `<div class="mlMarco"></div><div class="mlFoto"><img src="${PORTRAITS[key] || c.card}" alt="" draggable="false"></div>` +
+    `<div class="mlMarco"></div><div class="mlFoto"><img src="${portrait(key) || c.card}" alt="" draggable="false"></div>` +
     `<div class="mlTop"><div class="mlMedia">${t.media}</div><div class="mlPos">${t.pos}</div></div><div class="mlRar">${t.tier}</div><div class="mlNv">NV ${t.lv}</div>` +
     `<div class="mlNom">${c.name}</div>` + (e ? `<div class="mlEsp" style="--ec:${e.col}">★ ${e.name}</div>` : '') +
     (gk ? `<div class="mlAD gkAD"><div class="mlG">${GUANTE_SVG}<span>PORTERO</span></div></div>` : `<div class="mlAD"><div class="mlA"><small>ATQ</small>${t.atq}</div><div class="mlD"><small>DEF</small>${t.def}</div></div>`) +
@@ -4750,6 +4974,7 @@ function buildMenuUI() {
   const end = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.x0, dtm = performance.now() - drag.t;
+    if (TAQ.open) { if (Math.abs(dx) > 70 && (dtm < 300 || Math.abs(dx) / dtm > 0.2)) { userYaw -= dx * 0.012; taqStep(dx < 0 ? 1 : -1); } drag = null; return; }   // update 48: taquilla
     if (Math.abs(dx) > 70 && dtm < 300) { userYaw -= dx * 0.012; menuStep(dx < 0 ? 1 : -1); }   // deslizar rápido = cambiar
     else if (Math.abs(dx) < 8 && dtm < 400 && e.type === 'pointerup') lbAbrir('lbPers');   // update 35: tocar el muñeco = abrir la selección
     drag = null;
@@ -4781,7 +5006,7 @@ function selectChar(i, celebrate = true, fromWheel = false) {
   if (!fromWheel && RUEDA.items.length) lbRuedaIr(sel);
   lbRender();
 }
-function menuStep(d) { if (S.mode === 'menu') selectChar(sel + d); }
+function menuStep(d) { if (S.mode === 'menu' && !TAQ.open) selectChar(sel + d); }
 // ===================== LOBBY (update 35): perfil, copas por modo, rueda de personajes, JUGAR + modo =====================
 const TRO_SVG = '<svg class="icoCopa" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v5a5 5 0 0 1-10 0zM10.5 13h3v3h-3zM8 16h8l1 4H7z"/><path class="asa" d="M7 5H4c0 3 1.5 4.5 3.5 4.8M17 5h3c0 3-1.5 4.5-3.5 4.8"/></svg>';
 const MODOS = [
@@ -4865,6 +5090,7 @@ function lbBuild() {
   lbRender();
 }
 const NOVEDADES = [
+  { t: 'TAQUILLA Y MÚSICA', d: 'Nuevo botón TAQUILLA en el menú: elige el aspecto de cada personaje entre los que tienes, viéndolo en 3D. Música nueva en el menú (se apaga en AJUSTES). Skins del gecko y de DJ Carnero mucho más nítidas, y en AJUSTES puedes FUSIONAR REGATE Y TURBO: mantén TURBO y mueve el pulgar para regatear sin soltarlo.', c: '#ff5fa2' },   // update 48
   { t: 'NUEVO: DANTE', d: 'Llega DANTE, mediapunta con el mejor REGATE de la liga, mucho EFECTO y precisión. Su ESPECIAL «REGATE MÁGICO»: con el balón, 3 s de regate mágico: más rápido, las entradas no le tocan y los rivales cercanos se quedan mareados. Ya juega en LIGA y TORNEO.', c: '#6cace4' },   // update 47 (t104u)
   { t: 'NUEVO: KALEDY', d: 'Llega KALEDY, delantero centro con el mejor TIRO de la liga. Su ESPECIAL «TRALLAZO»: con el balón suelta un trallazo de hoja seca a la escuadra y el portero reacciona tarde. Ya juega en LIGA y TORNEO.', c: '#d4202a' },   // update 47
   { t: '¡20.000 MONEDAS DE REGALO!', d: 'Te hemos regalado 20.000 monedas para la TIENDA: skins, personajes y mejoras de cartas. ¡Gástalas!', c: '#ffb700' },   // update 47
@@ -4905,6 +5131,7 @@ function lbRender() {
   if (!lbEls.lbNombre) return;
   const c = CHARS[sel];
   lbEls.lbAvatarImg.src = c.badge || c.card; menuEl.style.setProperty('--selc', c.color);
+  { const tc = document.getElementById('lbTaqCnt'); if (tc) tc.textContent = SKINS[c.key] ? `${taqOwned(c.key).length}/${SKINS[c.key].length}` : ''; }   // update 48: aspectos tuyos de este personaje
   lbEls.lbNombre.textContent = PERF.nombre;
   const nv = nivelDe(PERF.xp); lbEls.lbNivel.textContent = nv.n; lbEls.lbXpBar.style.width = (nv.xp / nv.need * 100).toFixed(1) + '%'; lbEls.lbXpTxt.textContent = `${nv.xp}/${nv.need}`;
   const tot = copasTotal(), rg = rangoDe(tot);
@@ -5428,7 +5655,7 @@ function finalHTML(c) {
   else if (!won) { const ri = c.rounds.findIndex((rs) => rs.some((m) => (m.a === c.user || m.b === c.user) && m.w !== c.user)); extra = `<div class="coFinTxt">Has caído en ${ri >= 0 ? koNom(c, ri).toLowerCase().replace('final', 'la final') : 'el torneo'}</div>`; }
   else { const nv = c.rounds.reduce((s, rs) => s + rs.filter((m) => !m.bye && (m.a === c.user || m.b === c.user)).length, 0); extra = `<div class="coFinTxt">${nv} victorias seguidas entre ${c.teams.length} bestias: ¡imbatible!</div>`; }   // update 43
   return `<div class="coFin${won ? ' gana' : ''}"><div class="coRayos"></div>${won ? '<div class="coConfeti">' + Array.from({ length: 26 }, (_, i) => `<i style="--i:${i}"></i>`).join('') + '</div>' : ''}` +
-    `<div class="coFinCopa">${trophySVG()}</div><div class="coFinFoto${cHasBadge(c.champion) ? ' bdg' : ''}" style="--c:${cCol(c.champion)}"><img src="${cHasBadge(c.champion) ? cImg(c.champion) : (PORTRAITS[c.champion] || cImg(c.champion))}" alt=""></div>` +
+    `<div class="coFinCopa">${trophySVG()}</div><div class="coFinFoto${cHasBadge(c.champion) ? ' bdg' : ''}" style="--c:${cCol(c.champion)}"><img src="${cHasBadge(c.champion) ? cImg(c.champion) : (portrait(c.champion) || cImg(c.champion))}" alt=""></div>` +
     `<div class="coFinSub">${sub}</div><div class="coFinNom" style="--c:${cCol(c.champion)}">${cName(c.champion)}</div>${extra}</div>`;
 }
 function renderComp(view) {
@@ -5528,7 +5755,7 @@ function layoutMenu() {
   if (lbListo) lbRuedaMedir();
 }
 function renderMenu(dt) {
-  const m = menuChars[sel]; if (!m) return;
+  const m = (TAQ.open && taqModel(TAQ.c)) || menuChars[sel]; if (!m) return;   // update 48: taquilla
   menuT += dt; burst.rotation.z += dt * 0.07; lbRuedaStep(dt);
   popT = Math.min(1, popT + dt * 3.2);
   const k = popT, back = 1 + 2.2 * (k - 1) ** 3 + 1.2 * (k - 1) ** 2;   // easeOutBack
@@ -5536,6 +5763,7 @@ function renderMenu(dt) {
   if (!drag) userYaw *= Math.exp(-0.8 * dt);
   m.root.rotation.y = Math.sin(menuT * 0.7) * 0.5 + userYaw;
   m.mixer.update(dt);
+  if (tiendaEl.classList.contains('visible') && !TAQ.open) return;   // update 48: la tienda (opaca) tapa el 3D: no se pinta
   syncOutline(); renderer.render(menuScene, menuCam);
 }
 
@@ -6002,7 +6230,8 @@ Object.assign(window.__game, {
   openPause: () => openPause(), resumeGame: () => resumeGame(), quitMatch: () => quitMatch(),
   lbFondo: () => '', pedLuz: () => false, uiTap,
   ofertaFijar: (v) => { OFERTA_FIJA = v; if (tiendaEl.classList.contains('visible')) renderTiendaTodo(); tiendaAvisos(); }, ofertasDia, skinPrecio, OFERTA_DTO, tiendaIr, tiendaAvisos, tiendaDetAbrir, diaLocal,
-  SKINS, probModel, glowN: () => GLOW_MATS.size, skinsSt: () => SKINS_ST, skinsReload: () => { SKINS_ST = skinsLoad(); return refreshSkinsVisual(); }, skinComprar, skinEquipar, skinOf, refreshSkinsVisual, applySkin, tiendaSkinVer, renderProbador, prog: () => PROG, retratos: () => PORTRAITS,
+  SKINS, probModel, glowN: () => GLOW_MATS.size, skinsSt: () => SKINS_ST, skinsReload: () => { SKINS_ST = skinsLoad(); return refreshSkinsVisual(); }, skinComprar, skinEquipar, skinOf, refreshSkinsVisual, applySkin, tiendaSkinVer, renderProbador, prog: () => PROG, retratos: () => { for (const k of [...PORT_DIRTY]) portraitNow(k); return PORTRAITS; },   // (tests: pinta ya lo pendiente)
+ 
   // pruebas: simula con la física real (stepBall, con postes/larguero/red) un chut alto con carga c desde D m de la línea de gol
   simAlto: (c, D, dt = 1 / 120) => {
     const sv = { pos: ball.pos.clone(), vel: ball.vel.clone(), owner: ball.owner, le: ball.lineEvent, bs: ball.backspin };
@@ -6748,6 +6977,49 @@ Object.assign(window.__game, { tryDash, espPinch, CACTUS_T, ALL_CHARS, GK_CHARS,
   rivalLv, rivalGK, alinSet, abrirMejora, mejorarAhora, gkEspFire, gkEnCampo, LOB_NERF, LOB_K_MAX, GK44, lobErrK, lobErrRoll, LOB_ERR, actorStats, progLv, isGK, LV_REF_MODE, COL_KEYS, openColeccion, colGo,
   progReload: () => { PROG = progLoad(); lbRender(); return PROG; }, alinReload: () => { ALIN = alinLoad(); return ALIN; },
   setLv: (k, lv) => { PROG.lv[k] = lv; progSave(); lbRender(); }, setMon: (m) => { PROG.mon = m; progSave(); lbRender(); } });   // update 37
+// ===================== update 48 (t106u): MÚSICA DEL MENÚ =====================
+// «Blitz Stadium» (musiccreator.ai). Opus 96k (.ogg) o MP3 128k si el navegador no tiene Opus (iOS antiguo). No se descarga hasta el
+// primer toque (política de autoplay + arranque más rápido). Va por WebAudio (GainNode) para poder hacer fundidos también en iOS
+// (allí audio.volume es de solo lectura). Suena SOLO en el menú; al empezar el partido se funde y se pausa; vuelve al volver al menú.
+const MUS = { el: null, g: null, gesto: false, playing: false, vol: 0.32, src: '', tp: 0, err: null };
+function musSrc() { const a = document.createElement('audio'); return a.canPlayType('audio/ogg; codecs="opus"') ? 'assets/audio/menu_musica.ogg?v=48' : 'assets/audio/menu_musica.mp3?v=48'; }
+function musInit() {
+  if (MUS.el) return;
+  const el = MUS.el = new Audio(); el.loop = true; el.preload = 'auto'; el.crossOrigin = 'anonymous'; MUS.src = el.src = musSrc();
+  el.addEventListener('error', () => { MUS.err = 'error'; });
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  try { const s = actx.createMediaElementSource(el); MUS.g = actx.createGain(); MUS.g.gain.value = 0; s.connect(MUS.g); MUS.g.connect(actx.destination); } catch (e) { MUS.g = null; el.volume = 0; }
+}
+function musFade(to, t) {
+  if (MUS.g && actx) { const g = MUS.g.gain, n = actx.currentTime; g.cancelScheduledValues(n); g.setValueAtTime(g.value, n); g.linearRampToValueAtTime(to, n + t); }
+  else if (MUS.el) MUS.el.volume = to;
+}
+function musVol() { return MUS.g ? MUS.g.gain.value : MUS.el ? MUS.el.volume : 0; }
+function musTick() {
+  const want = MUS.gesto && AJ.musica && S.mode === 'menu' && !document.hidden;
+  if (want && !MUS.playing) {
+    musInit(); actx?.resume?.(); MUS.playing = true; clearTimeout(MUS.tp);
+    const p = MUS.el.play(); if (p && p.catch) p.catch(() => { MUS.playing = false; });
+    musFade(MUS.vol, 0.9);
+  } else if (!want && MUS.playing) {
+    MUS.playing = false; musFade(0, 0.6); clearTimeout(MUS.tp); MUS.tp = setTimeout(() => { if (!MUS.playing && MUS.el) MUS.el.pause(); }, 700);
+  }
+}
+for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { if (!MUS.gesto) { MUS.gesto = true; setTimeout(musTick, 0); } }, { capture: true, passive: true });
+setInterval(musTick, 300); document.addEventListener('visibilitychange', musTick);
+function setMusica(on) {
+  AJ.musica = !!on; saveAjustes();
+  const b = document.getElementById('ajMusica'); if (b) { b.textContent = 'MÚSICA DEL MENÚ: ' + (AJ.musica ? 'SÍ' : 'NO'); b.classList.toggle('on', AJ.musica); }
+  musTick();
+}
+document.getElementById('ajMusica')?.addEventListener('click', () => setMusica(!AJ.musica));
+setMusica(AJ.musica);
+Object.assign(window.__game, { musica: () => ({ on: AJ.musica, gesto: MUS.gesto, playing: MUS.playing, paused: MUS.el ? MUS.el.paused : null, t: MUS.el ? +MUS.el.currentTime.toFixed(2) : 0, vol: +musVol().toFixed(3), src: MUS.src, err: MUS.err, loop: MUS.el ? MUS.el.loop : null }), setMusica });
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && TAQ.open) taqClose(); });
+document.getElementById('ajFusion')?.addEventListener('click', () => setFusion(!AJ.fusionTR)); setFusion(AJ.fusionTR);
+Object.assign(window.__game, { skinGC, skinTexN: () => Object.keys(SKIN_TEX_R).length, skinTexAniso: () => Object.values(SKIN_TEX_R).map((t) => t.anisotropy), portraitsPend: () => PORT_DIRTY.size, setFusion, fusion: () => ({ on: fusionOn(), id: FU.id, activo: FU.on, n: FU.n, dirs: PG.dirs.slice(), pg: PG.id, dwell: FU.dwell, dead: FU.dead, turbo: !!input.turboDown }), taqOpen, taqClose, taqEquip, taqStep, taqShow, taq: () => ({ open: TAQ.open, c: TAQ.c, dirty: TAQ.dirty, skin: TAQ.c ? skinOf(TAQ.c) : null,
+  shown: (() => { const m = TAQ.c && taqModel(TAQ.c); return m ? { visible: m.root.visible, skin: m.model.userData.skin || null } : null; })(),
+  others: menuChars.filter((m) => m.root.visible).length + Object.values(GK_PROB).filter((g) => g.root.visible).length, view: menuCam.view ? { ...menuCam.view } : null }) });
 Object.assign(window.__game, { regalo: () => ({ hoy: REGALO_HOY, key: REGALO_KEY, mon: REGALO_MON }), HL, lobStatKTir: (t) => lobStatK({ sf: { t: { tir: t } } }), altoSens, altoSensU });
 Object.defineProperties(window.__game, { META: { get: () => META, configurable: true }, PROG: { get: () => PROG, configurable: true }, ALIN: { get: () => ALIN, configurable: true }, matchSig: { get: () => matchSig, configurable: true } });
 Object.assign(window.__game, { effectPlan, EF_THETA, EF_A, EF_B, efShape, gkCurveCross: (lineY, s) => { const r = gkCurveCross(lineY, s); return r && { tt: r.tt, x: r.x, z: r.z }; } });   // update 34
@@ -6757,7 +7029,7 @@ Object.defineProperties(window.__game, {
   mateA: { get: () => mateA, configurable: true }, mateB: { get: () => mateB, configurable: true },
 });
 Object.defineProperty(window.__game, 'rivalSel', { get: () => rivalSel });
-Object.defineProperty(window.__game, 'portraits', { get: () => Object.keys(PORTRAITS).length });
+Object.defineProperty(window.__game, 'portraits', { get: () => Object.values(PORTRAITS).filter(Boolean).length });
 Object.defineProperty(window.__game, 'camMode', { get: () => camMode });
 Object.defineProperty(window.__game, 'inputBuf', { get: () => input.buf });
 Object.defineProperty(window.__game, 'simplifierReady', { get: () => !!Simplifier });
